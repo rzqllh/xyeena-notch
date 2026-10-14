@@ -224,3 +224,14 @@ input[type="range"]:disabled{opacity:.35;cursor:not-allowed}
 .agent-approval-box strong{font-size:11px;color:var(--accent)}
 .agent-approval-actions{display:flex;align-items:center;gap:8px}
 
+/* Settings navigation pills, sections and recap preview */
+.settings-nav-pills{display:flex;align-items:center;gap:4px;overflow-x:auto;padding-bottom:6px;margin:6px 0 10px;scrollbar-width:none}
+.settings-nav-pills::-webkit-scrollbar{display:none}
+.settings-pill{background:var(--panel);border:1px solid var(--line);border-radius:6px;font-size:10px;padding:4px 9px;color:var(--sub);white-space:nowrap;cursor:pointer;transition:all .15s ease}
+.settings-pill:hover{color:var(--text);border-color:var(--accent)}
+.settings-pill.current{background:var(--focus);color:var(--accent);border-color:var(--accent);font-weight:600}
+.settings-section{display:flex;flex-direction:column;gap:8px}
+.badge-tag{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:4px;padding:2px 6px;font-size:10px;color:var(--sub);align-self:flex-start}
+.recap-preview-box{background:var(--base);border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:6px}
+.recap-text{font-family:monospace;font-size:10px;color:var(--text);margin:0;white-space:pre-wrap}
+

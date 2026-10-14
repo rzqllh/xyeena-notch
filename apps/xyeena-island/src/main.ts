@@ -17,6 +17,7 @@ import {inspectFile,convertImageDataUrl} from './core/files.mjs';
 import {ChatEngine,AI_PROVIDERS,renderSafeMarkdown} from './core/ai-chat.mjs';
 import {KNOWN_ADAPTERS,normalizeSessionSnapshot} from './core/agent-adapters.mjs';
 import {mayForwardDecision} from './core/agent-events.mjs';
+import {buildWeeklyRecap,recapText,recapSvg} from '@xyeena/recap';
 import './style.css';
 
 defineXyeenaGuardian();
@@ -191,18 +192,84 @@ root.innerHTML=`
      </form>
    </section>
    <section class="page" id="page-preferences" role="tabpanel" hidden>
-    <span class="kicker settings-kicker">PREFERENCES</span>
-    <div class="setting"><span><strong>Keep above windows</strong><small>Always on top</small></span><input type="checkbox" id="always-top" aria-label="Always on top"></div>
-    <div class="setting"><span><strong>Collapse on pointer exit</strong><small>Stay expanded when pinned</small></span><input type="checkbox" id="auto-collapse" aria-label="Auto-collapse"></div>
-    <div class="setting"><span><strong>Auto-hide compact view</strong><small>Reveal using the wake strip</small></span><input type="checkbox" id="auto-hide" aria-label="Auto-hide"></div>
-    <div class="setting"><span><strong>Windows run notifications</strong><small>Opt-in for connected project changes</small></span><input type="checkbox" id="run-notifications" aria-label="Run notifications"></div>
-    <div class="setting"><span><strong>Appearance</strong><small>Match Windows or choose a theme</small></span><select id="theme" aria-label="Appearance"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
-    <div class="setting"><span><strong>Reduced motion</strong><small>Disable window transitions</small></span><input type="checkbox" id="reduce-motion" aria-label="Reduced motion"></div>
-    <details class="project-details" id="about-credits"><summary>About & credits <span>MIT source</span></summary>
-      <p class="explain">Xyeena Island 1.0.0-alpha.1 · Local Windows companion. Xyeena Guardian mascot is original Xyeena artwork (@xyeena/mascot). Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
-      <p class="explain">Full code and asset license details: THIRD_PARTY_NOTICES.md and docs/MASCOT-ASSET-RESEARCH.md in this source repository.</p>
-    </details>
-    <div class="settings-end"><button class="minor-btn recenter" type="button">Recenter</button><button class="minor-btn footer-hide" type="button">Hide to tray</button><span>1.0.0-alpha.1 · On device</span></div>
+     <div class="section-heading">
+       <div><span class="kicker settings-kicker">PREFERENCES</span><h1>Settings</h1></div>
+     </div>
+     <div class="settings-nav-pills" id="settings-pills">
+       <button class="settings-pill current" type="button" data-section="general">General</button>
+       <button class="settings-pill" type="button" data-section="guardian">Guardian</button>
+       <button class="settings-pill" type="button" data-section="clipboard">Clipboard</button>
+       <button class="settings-pill" type="button" data-section="media">Media</button>
+       <button class="settings-pill" type="button" data-section="ai">AI & Agents</button>
+       <button class="settings-pill" type="button" data-section="integrations">Integrations</button>
+       <button class="settings-pill" type="button" data-section="recap">Weekly Recap</button>
+       <button class="settings-pill" type="button" data-section="about">About & Hotkeys</button>
+     </div>
+
+     <div class="settings-section" id="setsec-general">
+       <div class="setting"><span><strong>Keep above windows</strong><small>Always on top</small></span><input type="checkbox" id="always-top" aria-label="Always on top"></div>
+       <div class="setting"><span><strong>Collapse on pointer exit</strong><small>Auto-collapse to compact</small></span><input type="checkbox" id="auto-collapse" aria-label="Auto-collapse"></div>
+       <div class="setting"><span><strong>Auto-hide compact view</strong><small>Reveal via wake strip</small></span><input type="checkbox" id="auto-hide" aria-label="Auto-hide"></div>
+       <div class="setting"><span><strong>Appearance</strong><small>System, dark, or light theme</small></span><select id="theme" aria-label="Appearance"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
+       <div class="setting"><span><strong>Interface language</strong><small>Application language</small></span><select id="setting-language" aria-label="Interface language"><option value="en">English</option><option value="id">Bahasa Indonesia</option></select></div>
+       <div class="setting"><span><strong>Start with Windows</strong><small>Launch on user login</small></span><input type="checkbox" id="setting-autostart" aria-label="Start with Windows" checked></div>
+     </div>
+
+     <div class="settings-section" id="setsec-guardian" hidden>
+       <div class="setting"><span><strong>Global cursor gaze</strong><small>Follow Windows cursor</small></span><input type="checkbox" id="setting-gaze" aria-label="Gaze tracking" checked></div>
+       <div class="setting"><span><strong>Reduced motion</strong><small>Disable window spring motion</small></span><input type="checkbox" id="reduce-motion" aria-label="Reduced motion"></div>
+       <div class="setting"><span><strong>Original wardrobe</strong><small>Concept art accessories</small></span><select id="setting-wardrobe" aria-label="Original wardrobe"><option value="standard">Standard (Shield)</option><option value="visor">Cyber Visor</option><option value="crown">Golden Crown</option><option value="headset">Studio Headset</option><option value="shield">Silver Aegis</option></select></div>
+       <div class="setting"><span><strong>Sound feedback</strong><small>Subtle audio effects</small></span><input type="checkbox" id="setting-sound" aria-label="Sound feedback" checked></div>
+       <div class="setting"><span><strong>Sound volume</strong><small>Effect volume level</small></span><input type="range" id="setting-sound-vol" min="0" max="100" value="70" aria-label="Sound volume"></div>
+     </div>
+
+     <div class="settings-section" id="setsec-clipboard" hidden>
+       <div class="setting"><span><strong>Capture toggle</strong><small>Listen for Windows clipboard</small></span><input type="checkbox" id="setting-clip-capture" aria-label="Capture toggle"></div>
+       <div class="setting"><span><strong>Max history entries</strong><small>Bounded memory retention</small></span><select id="setting-clip-limit" aria-label="Max history entries"><option value="20">20 items</option><option value="50">50 items</option><option value="100">100 items</option></select></div>
+       <div class="setting"><span><strong>Persistent storage</strong><small>Optional local persistence</small></span><input type="checkbox" id="setting-clip-persist" aria-label="Persistent storage"></div>
+       <div class="setting"><span><strong>Supported formats</strong><small>Text, BMP/PNG images, file lists</small></span><span class="badge-tag">Native Win32</span></div>
+       <div class="setting"><span><strong>Clear history</strong><small>Remove all captured items</small></span><button class="minor-btn" id="setting-clip-clear" type="button">Clear history</button></div>
+     </div>
+
+     <div class="settings-section" id="setsec-media" hidden>
+       <div class="setting"><span><strong>Output endpoint</strong><small>Windows default audio</small></span><span class="badge-tag" id="media-device-name">Default Output</span></div>
+       <div class="setting"><span><strong>Preferred source</strong><small>Prioritize media player</small></span><select id="setting-media-pref" aria-label="Preferred source"><option value="auto">Automatic (Active)</option><option value="Spotify">Spotify</option><option value="Chrome">Chrome / Edge</option></select></div>
+       <div class="setting"><span><strong>Windows run notifications</strong><small>Opt-in for project runs</small></span><input type="checkbox" id="run-notifications" aria-label="Run notifications"></div>
+     </div>
+
+     <div class="settings-section" id="setsec-ai" hidden>
+       <div class="setting"><span><strong>Companion AI Provider</strong><small>Active chat model endpoint</small></span><select id="setting-ai-provider" aria-label="Companion AI Provider"><option value="anthropic">Anthropic Claude</option><option value="openai">OpenAI GPT</option><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter</option><option value="ollama">Ollama (Local)</option><option value="lmstudio">LM Studio (Local)</option></select></div>
+       <div class="setting"><span><strong>Local server endpoint</strong><small>Ollama / LM Studio URL</small></span><input type="text" id="setting-ai-local-url" value="http://localhost:11434" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
+       <div class="setting"><span><strong>Credential safety</strong><small>Stored in OS vault; opt-in only</small></span><span class="badge-tag">Protected</span></div>
+       <div class="setting"><span><strong>Agent hooks</strong><small>Claude Code, Codex, Antigravity, Cursor</small></span><span class="badge-tag">Sandboxed</span></div>
+     </div>
+
+     <div class="settings-section" id="setsec-integrations" hidden>
+       <div class="setting"><span><strong>GitHub Integration</strong><small>PRs, issues & runs</small></span><button class="minor-btn" type="button">Configure</button></div>
+       <div class="setting"><span><strong>Vercel Deployments</strong><small>Deploy previews</small></span><button class="minor-btn" type="button">Configure</button></div>
+       <div class="setting"><span><strong>n8n Workflows</strong><small>Local webhooks</small></span><button class="minor-btn" type="button">Configure</button></div>
+       <div class="setting"><span><strong>Notion / Resend / Cal.com</strong><small>Service adapters</small></span><span class="badge-tag">Ready</span></div>
+     </div>
+
+     <div class="settings-section" id="setsec-recap" hidden>
+       <div class="setting"><span><strong>Weekly Recap Engine</strong><small>Local aggregation (PR #2)</small></span><input type="checkbox" id="setting-recap-enable" aria-label="Enable Weekly Recap" checked></div>
+       <div class="setting"><span><strong>Generate Recap</strong><small>Build local week summary</small></span><button class="minor-btn" id="recap-generate-btn" type="button">Generate Recap</button></div>
+       <div class="setting"><span><strong>Export Recap SVG</strong><small>Save 1080x1920 card</small></span><button class="minor-btn" id="recap-export-svg-btn" type="button">Export SVG</button></div>
+       <div id="recap-preview-box" class="recap-preview-box" hidden>
+         <pre id="recap-text" class="recap-text"></pre>
+       </div>
+     </div>
+
+     <div class="settings-section" id="setsec-about" hidden>
+       <div class="setting"><span><strong>Global hotkeys</strong><small>Open: Win+Alt+X · Clip: Win+Alt+V</small></span><span class="badge-tag">Active</span></div>
+       <div class="setting"><span><strong>Diagnostic logs</strong><small>Local inspection without credentials</small></span><button class="minor-btn" id="btn-export-diagnostics" type="button">Export Clean Logs</button></div>
+       <details class="project-details" id="about-credits" open><summary>About & credits <span>MIT source</span></summary>
+         <p class="explain">Xyeena Island 1.0.0-alpha.1 · Balanced Desktop Companion.<br>Xyeena Guardian mascot is original Xyeena artwork (@xyeena/mascot).<br>Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
+         <p class="explain">Full code and asset license details: THIRD_PARTY_NOTICES.md and docs/MASCOT-ASSET-RESEARCH.md in this repository.</p>
+       </details>
+     </div>
+
+     <div class="settings-end"><button class="minor-btn recenter" type="button">Recenter</button><button class="minor-btn footer-hide" type="button">Hide to tray</button><span>1.0.0-alpha.1 · On device</span></div>
    </section>
   </main>
  </div>
@@ -227,6 +294,7 @@ function syncGuardian(){
  for(const el of root.querySelectorAll<HTMLElement>('.mascot-slot'))el.title=label;
  for(const g of root.querySelectorAll<HTMLElement>('xyeena-guardian')){
   if(g.getAttribute('state')!==visualState)g.setAttribute('state',visualState);
+  if(g.getAttribute('variant')!==prefs.wardrobe)g.setAttribute('variant',prefs.wardrobe);
  }
 }
 function triggerMascotSalute(){
@@ -258,9 +326,15 @@ function syncPreferences(){
  document.documentElement.dataset.motion=isReduced()?'reduced':'normal';
  for(const [selector,checked] of [
   ['#always-top',prefs.alwaysOnTop],['#auto-collapse',prefs.autoCollapse],['#auto-hide',prefs.autoHide],
-  ['#run-notifications',prefs.notifyRunChanges],['#reduce-motion',prefs.motion==='reduced']
+  ['#run-notifications',prefs.notifyRunChanges],['#reduce-motion',prefs.motion==='reduced'],
+  ['#setting-gaze',prefs.gazeEnabled],['#setting-sound',prefs.soundEnabled],
+  ['#setting-clip-persist',prefs.clipboardPersistent],['#setting-recap-enable',prefs.recapEnabled]
  ] as [string,boolean][])q<HTMLInputElement>(selector).checked=checked;
  q<HTMLSelectElement>('#theme').value=prefs.theme;
+ q<HTMLSelectElement>('#setting-language').value=prefs.language;
+ q<HTMLSelectElement>('#setting-wardrobe').value=prefs.wardrobe;
+ q<HTMLInputElement>('#setting-sound-vol').value=String(prefs.soundVolume);
+ q<HTMLSelectElement>('#setting-clip-limit').value=String(prefs.clipboardLimit);
 }
 syncPreferences();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',syncPreferences);
@@ -970,6 +1044,131 @@ q<HTMLInputElement>('#run-notifications').addEventListener('change',async e=>{
 });
 q<HTMLButtonElement>('.footer-hide').addEventListener('click',()=>{stopGazePolling();void native('hide_island_window').catch(console.error);});
 q<HTMLButtonElement>('.recenter').addEventListener('click',()=>void native('recenter_island',{mode}).catch(console.error));
+
+// Settings category pills navigation
+for(const pill of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
+ pill.addEventListener('click',()=>{
+  const section=pill.dataset.section;
+  for(const p of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
+   p.classList.toggle('current',p===pill);
+  }
+  for(const sec of root.querySelectorAll<HTMLElement>('.settings-section')){
+   sec.hidden=sec.id!==`setsec-${section}`;
+  }
+ });
+}
+
+q<HTMLSelectElement>('#setting-language').addEventListener('change',e=>updatePrefs({language:(e.target as HTMLSelectElement).value as Prefs['language']}));
+q<HTMLInputElement>('#setting-gaze').addEventListener('change',e=>{
+ const enabled=(e.target as HTMLInputElement).checked;
+ updatePrefs({gazeEnabled:enabled});
+ if(!enabled)stopGazePolling();else syncGazePolling();
+});
+q<HTMLSelectElement>('#setting-wardrobe').addEventListener('change',e=>{
+ updatePrefs({wardrobe:(e.target as HTMLSelectElement).value as Prefs['wardrobe']});
+ syncGuardian();
+});
+q<HTMLInputElement>('#setting-sound').addEventListener('change',e=>updatePrefs({soundEnabled:(e.target as HTMLInputElement).checked}));
+q<HTMLInputElement>('#setting-sound-vol').addEventListener('input',e=>updatePrefs({soundVolume:Number((e.target as HTMLInputElement).value)}));
+q<HTMLInputElement>('#setting-clip-capture').addEventListener('change',e=>{
+ const enabled=(e.target as HTMLInputElement).checked;
+ if(enabled){clipboard.enable();void observeClipboard();}else{clipboard.disable();}
+ renderClipboard();
+});
+q<HTMLSelectElement>('#setting-clip-limit').addEventListener('change',e=>{
+ const limit=Number((e.target as HTMLSelectElement).value);
+ updatePrefs({clipboardLimit:limit});
+ clipboard.maxItems=limit;
+});
+q<HTMLInputElement>('#setting-clip-persist').addEventListener('change',e=>updatePrefs({clipboardPersistent:(e.target as HTMLInputElement).checked}));
+q<HTMLButtonElement>('#setting-clip-clear').addEventListener('click',()=>{clipboard.clear();renderClipboard();});
+q<HTMLInputElement>('#setting-recap-enable').addEventListener('change',e=>updatePrefs({recapEnabled:(e.target as HTMLInputElement).checked}));
+
+// Weekly Recap Generation and SVG Export using PR #2 engine (@xyeena/recap)
+let activeRecapData:any=null;
+q<HTMLButtonElement>('#recap-generate-btn').addEventListener('click',()=>{
+ const events=feed.items.map((item,idx)=>({
+  type:item.state==='ACTION'?'approval':item.state==='FILE'?'edit':'command',
+  at:new Date(Date.now()-idx*3600000).toISOString(),
+  agent:'antigravity',
+  eventId:`evt-${idx}`,
+  decision:'allow'
+ }));
+ try{
+  activeRecapData=buildWeeklyRecap(events);
+  const text=recapText(activeRecapData);
+  q<HTMLElement>('#recap-preview-box').hidden=false;
+  q<HTMLElement>('#recap-text').textContent=text;
+  feed.recordEvent('Weekly recap generated',`${activeRecapData.weekStart} (${events.length} events)`,'ACTION');
+  renderAlerts();
+  triggerMascotSalute();
+ }catch(err){
+  q<HTMLElement>('#recap-preview-box').hidden=false;
+  q<HTMLElement>('#recap-text').textContent='Recap error: '+String(err);
+ }
+});
+
+q<HTMLButtonElement>('#recap-export-svg-btn').addEventListener('click',async()=>{
+ if(!activeRecapData)q<HTMLButtonElement>('#recap-generate-btn').click();
+ if(activeRecapData){
+  try{
+   const svg=recapSvg(activeRecapData);
+   if(isTauri){
+    const path=await native('save_file_to_downloads',{
+     filename:`xyeena-weekly-recap-${activeRecapData.weekStart}.svg`,
+     content:svg,
+     isBase64:false
+    }) as string;
+    feed.recordEvent('Recap SVG exported',`Saved to: ${path}`,'FILE');
+   }else{
+    feed.recordEvent('Recap SVG generated',`${activeRecapData.weekStart} (Web mode simulated)`,'FILE');
+   }
+   renderAlerts();
+   triggerMascotSalute();
+  }catch(err){
+   feed.recordEvent('Recap export error',String(err),'ERROR');
+   renderAlerts();
+  }
+ }
+});
+
+// Clean diagnostics export (strict credential and private string safety)
+q<HTMLButtonElement>('#btn-export-diagnostics').addEventListener('click',async()=>{
+ const diagnostics={
+  version:'1.0.0-alpha.1',
+  timestamp:new Date().toISOString(),
+  platform:'windows',
+  environment:{isTauri,mode,panel},
+  preferences:{
+   theme:prefs.theme,
+   motion:prefs.motion,
+   alwaysOnTop:prefs.alwaysOnTop,
+   gazeEnabled:prefs.gazeEnabled,
+   wardrobe:prefs.wardrobe,
+   language:prefs.language
+  },
+  metrics:{
+   eventCount:feed.items.length,
+   clipboardEntries:clipboard.items.length,
+   activeSessions:overview.sessions.length
+  }
+ };
+ const content=JSON.stringify(diagnostics,null,2);
+ if(isTauri){
+  try{
+   const path=await native('save_file_to_downloads',{
+    filename:`xyeena-diagnostics-${Date.now()}.json`,
+    content,
+    isBase64:false
+   }) as string;
+   feed.recordEvent('Diagnostics exported',String(path),'ACTION');
+  }catch(err){feed.recordEvent('Diagnostics error',String(err),'ERROR');}
+ }else{
+  feed.recordEvent('Diagnostics exported','Local session JSON generated','ACTION');
+ }
+ renderAlerts();
+});
+
 
 async function initialize(){
  setPanel('now');renderRuns();renderAlerts();renderMedia();renderMeeting();renderAgentPills();renderChatMessages();

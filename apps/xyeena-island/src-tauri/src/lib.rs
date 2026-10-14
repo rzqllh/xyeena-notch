@@ -151,7 +151,11 @@ fn write_native_image(data_url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn save_file_to_downloads(filename: String, content: String, is_base64: bool) -> Result<String, String> {
+fn save_file_to_downloads(
+    filename: String,
+    content: String,
+    is_base64: bool,
+) -> Result<String, String> {
     let base_dir = std::env::var_os("USERPROFILE")
         .map(|p| std::path::PathBuf::from(p).join("Downloads"))
         .filter(|p| p.exists())

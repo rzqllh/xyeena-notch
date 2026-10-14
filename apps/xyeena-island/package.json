@@ -19,7 +19,8 @@
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.0.0",
     "@tauri-apps/plugin-notification": "^2.0.0",
-    "@xyeena/mascot": "*"
+    "@xyeena/mascot": "*",
+    "@xyeena/recap": "*"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

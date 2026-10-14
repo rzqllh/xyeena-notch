@@ -30,7 +30,7 @@ fn calculate_hash_bytes(b: &[u8]) -> u64 {
 
 fn simple_base64_encode(data: &[u8]) -> String {
     const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
@@ -163,7 +163,8 @@ pub fn read_native_clipboard_item() -> Result<Option<NativeClipboardItem>, Strin
                         let _ = GlobalUnlock(hglobal);
                         if let Some(bmp) = bmp_bytes {
                             let sample_len = std::cmp::min(bmp.len(), 512);
-                            let hash = format!("img:{:x}", calculate_hash_bytes(&bmp[..sample_len]));
+                            let hash =
+                                format!("img:{:x}", calculate_hash_bytes(&bmp[..sample_len]));
                             let base64 = simple_base64_encode(&bmp);
                             let data_url = format!("data:image/bmp;base64,{base64}");
                             let size_mb = (bmp.len() as f64) / (1024.0 * 1024.0);
@@ -229,9 +230,7 @@ pub fn write_native_image_to_clipboard(data_url: &str) -> Result<(), String> {
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
     };
-    use windows::Win32::System::Memory::{
-        GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE,
-    };
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 
     const CF_DIB: u32 = 8;
 
@@ -286,7 +285,7 @@ pub fn write_native_image_to_clipboard(_data_url: &str) -> Result<(), String> {
 
 pub fn base64_decode(s: &str) -> Option<Vec<u8>> {
     let clean: Vec<u8> = s.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
-    if clean.len() % 4 != 0 {
+    if !clean.len().is_multiple_of(4) {
         return None;
     }
     let mut out = Vec::with_capacity(clean.len() / 4 * 3);
