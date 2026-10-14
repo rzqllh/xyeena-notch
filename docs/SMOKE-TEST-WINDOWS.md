@@ -5,8 +5,8 @@
 **Target OS:** Windows 10 / 11 (x64)<br>
 **Binary Type:** Unsigned NSIS Installer (`currentUser` scope)<br>
 **Binary Location:** `apps/xyeena-island/src-tauri/target/release/bundle/nsis/Xyeena Island_1.0.0-alpha.1_x64-setup.exe`<br>
-**Binary Size:** 2,332,692 bytes (~2.22 MB)<br>
-**SHA256 Checksum:** `CE37E7F7BBBA80B5F79BA83E365B97487AD7F4CC16F3E6D61A79847AEFAF9526`<br>
+**Binary Size:** 2,370,262 bytes (~2.26 MB)<br>
+**SHA256 Checksum:** `4A34EF0CE09468C94A7FEDC30CEAE4C188FDC8B281CC7B3DD4B8A5E8F810F45C`<br>
 **Execution Date:** 2026-10-14
 
 ---
@@ -15,8 +15,8 @@
 
 Automated gates executed and verified prior to manual test distribution:
 
-- [x] Node.js workspace unit tests: 53 tests passed (Island: 42, Mascot: 8, Playground: 3)
-- [x] Native Rust tests: 4 tests passed (`cargo test --locked`)
+- [x] Node.js workspace unit tests: 60 tests passed (Island: 49, Mascot: 8, Playground: 3)
+- [x] Native Rust tests: 5 tests passed (`cargo test --locked`)
 - [x] Rust Clippy: 0 warnings (`cargo clippy --locked --all-targets -- -D warnings`)
 - [x] Rust formatting: Checked and verified (`cargo fmt --all -- --check`)
 - [x] TypeScript & Vite build: 0 errors
@@ -239,6 +239,24 @@ Instructions: Perform each test on a physical or dedicated virtual Windows machi
   4. Inspect focus outlines on all interactive controls.
   5. Check Task Manager for idle CPU and GPU usage while compact bar is stationary.
 - **Expected Result:** Full keyboard accessibility with high-contrast visible focus outlines. Reduced motion disables RAF loops immediately. Idle CPU/GPU remains negligible (< 0.5% CPU when idle).
+- **Status:** `[ ] PENDING MANUAL SMOKE` (PASS / FAIL / BLOCKED)
+- **Observations:**
+
+---
+
+### Scenario 17: Detached Desktop Guardian (Perch, Follow, Drag, Return, and Click-Through)
+
+- **Procedure:**
+  1. In expanded Island header, click the Lion button (`🦁`).
+  2. Confirm Guardian detaches: Island mascot slot hides cleanly and transparent Guardian window appears on desktop.
+  3. Inspect Windows Taskbar and Alt+Tab: confirm no separate taskbar button or Alt+Tab entry is created (`skipTaskbar: true`, `WS_EX_TOOLWINDOW`).
+  4. In Perch mode, drag the Guardian across desktop; verify smooth repositioning without focus-stealing from underlying windows.
+  5. Click through the transparent corners outside the Lion's body; verify clicks hit underlying desktop/browser without obstruction.
+  6. Right-click Guardian to open the context menu (`Return home`, `Switch mode`, `Sleep`).
+  7. Switch to Follow mode: verify Guardian follows cursor with offset and full click-through to apps below.
+  8. Switch back to Perch mode; double-click Guardian or click `🦁` in Island header to return home.
+  9. Confirm Guardian window hides and Island companion reappears.
+- **Expected Result:** Shared presence across Island and desktop; smooth non-activating secondary window; reliable click-through; Perch position persisted in `guardian-desktop.json`.
 - **Status:** `[ ] PENDING MANUAL SMOKE` (PASS / FAIL / BLOCKED)
 - **Observations:**
 

@@ -21,3 +21,9 @@ test('app CSP does not permit remote scripts or unsafe eval',()=>{
   assert.match(csp,/script-src 'self'/);
   assert.doesNotMatch(csp,/unsafe-eval|https:\/\//);
 });
+test('detached Guardian has its own least-privilege window capability',()=>{
+  const config=JSON.parse(fs.readFileSync(path.join(root,'src-tauri/capabilities/guardian.json'),'utf8'));
+  assert.deepEqual(config.windows,['guardian']);
+  assert.deepEqual(config.permissions,['core:default','core:window:allow-start-dragging']);
+  assert.equal(config.permissions.some(permission=>permission.startsWith('clipboard-manager:')||permission.startsWith('notification:')),false);
+});

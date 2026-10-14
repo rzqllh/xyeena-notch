@@ -15,7 +15,14 @@ gate(conf.version===expected,'Tauri version differs from npm version');
 gate(new RegExp('^version\\s*=\\s*"'+expected.replace(/\./g,'\\.')+'"','m').test(native),'Cargo version differs');
 gate(pkg.private===true,'Island must remain private in npm (GitHub artifact only)');
 gate(conf.bundle?.active===true&&conf.bundle?.targets?.includes('nsis'),'Windows NSIS bundling is not enabled');
-gate(Array.isArray(conf.app?.windows)&&conf.app.windows.length===1&&conf.app.windows[0].label==='main'&&conf.app.windows[0].skipTaskbar&&conf.app.windows[0].transparent&&conf.app.windows[0].alwaysOnTop,'Island window config regression');
+gate(Array.isArray(conf.app?.windows)&&conf.app.windows.length===2&&
+ conf.app.windows.some(w=>w.label==='main'&&w.skipTaskbar&&w.transparent&&w.alwaysOnTop)&&
+ conf.app.windows.some(w=>w.label==='guardian'&&w.skipTaskbar&&w.transparent&&w.alwaysOnTop&&w.visible===false&&w.focus===false),
+ 'Island/Guardian window configuration regression');
+const guardianCap=JSON.parse(read('src-tauri/capabilities/guardian.json'));
+gate(JSON.stringify(guardianCap.windows)===JSON.stringify(['guardian'])&&
+ JSON.stringify(guardianCap.permissions)===JSON.stringify(['core:default','core:window:allow-start-dragging']),
+ 'Guardian privilege boundary regression');
 for(const needed of ['LICENSE','THIRD_PARTY_NOTICES.md','licenses/COUCOU-CODE-MIT.txt','src-tauri/icons/icon.ico','src-tauri/icons/tray.png','docs/RELEASE_GATES.md']) gate(fs.existsSync(path.join(root,needed)),`Missing ${needed}`);
 gate(fs.existsSync(path.join(workspaceRoot,'SECURITY.md')),'Missing root SECURITY.md');
 gate(fs.existsSync(path.join(workspaceRoot,'package-lock.json')),'Missing genuine workspace package-lock.json');

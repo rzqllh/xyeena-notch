@@ -22,7 +22,7 @@ This table is the user-facing source of truth. **Implemented** means source exis
 | GitHub/Vercel/other services | NOT implemented | OAuth scopes, credentials, API integration |
 | File drop / code diff | NOT implemented | Windows WebView2 drop path + explicit consent |
 | Weekly recap / analytics | NOT implemented | Verified aggregate source, local retention controls |
-| Desktop-floating mascot / wardrobes | NOT implemented | Owned rig and assets, window safety |
+| Detached desktop Guardian | Implemented candidate (perch, follow, drag, click-through, shared presence) | Physical Windows acceptance pending (see docs/SMOKE-TEST-WINDOWS.md) |
 | Autostart / signed updater | NOT implemented | Opt-in autostart, signing keys and rollback |
 | Phone pairing / Linux | NOT implemented | Separate architecture and security review |
 
