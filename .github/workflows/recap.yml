@@ -1,0 +1,23 @@
+name: Xyeena Recap
+on:
+  pull_request:
+    paths:
+      - 'packages/xyeena-recap/**'
+      - 'package-lock.json'
+      - '.github/workflows/recap.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recap:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check --workspace @xyeena/recap
+      - run: npm run test --workspace @xyeena/recap
