@@ -30,6 +30,6 @@ test('follow moves away from pointer, including right/bottom edges',()=>{
 test('invalid modes and unsupported context never imply running agents',()=>{
  assert.equal(sanitizeGuardianMode('danger'),'perch');
  assert.equal(guardianContextState('unknown'),'idle');
- assert.equal(guardianContextState('attention'),'approval');
+ assert.equal(guardianContextState('attention'),'surprised');
  assert.equal(guardianContextState('playing'),'dancing');
 });
