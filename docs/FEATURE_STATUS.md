@@ -6,7 +6,7 @@ This table is the user-facing source of truth. **Implemented** means source exis
 |---|---|---|
 | Top-edge Island / tray / topmost | Implemented, Windows acceptance pending | Native build, DPI/fullscreen/focus/restart QA |
 | Coucou-style spring geometry | Implemented; performance unverified | 60/120Hz frame capture and pointer hit testing |
-| Xyeena Fold | Original static-vector/animated states | Visual and accessibility review |
+| Xyeena Guardian (original lion companion) | Implemented via @xyeena/mascot in Island compact/expanded views; Fold compatibility retained | Visual, interaction, and accessibility review |
 | Windows media playback + transport | Implemented, acceptance pending | Browser/Spotify supported-session tests |
 | Seek, shuffle and repeat | Implemented, player-dependent | Player capability tests; accurate status labels |
 | Windows default-output volume/mute | Implemented, acceptance pending | Windows Core Audio device tests |
