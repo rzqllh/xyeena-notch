@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.vite/
+*.log
+.DS_Store
+Thumbs.db
+src-tauri/target/
+src-tauri/gen/schemas/
+.env
+.env.*
+!.env.example
+
+# Local state, diagnostics and release outputs
+*.zip
+*.tgz
+*.msi
+*.exe
+*.pdb
+.vscode/
+.idea/
+coverage/
+.release/
+*.bak
+*.tmp
+.DS_Store

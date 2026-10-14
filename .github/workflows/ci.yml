@@ -1,0 +1,55 @@
+name: Xyeena Notch CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run init:audit
+      - run: npm test
+      - run: npm run build
+      - run: npm run release:audit
+  native:
+    runs-on: windows-latest
+    needs: source
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: rustup default stable-x86_64-pc-windows-msvc
+      - name: Rust format
+        run: cargo fmt --all -- --check
+        working-directory: apps/xyeena-island/src-tauri
+      - name: Rust native tests
+        run: cargo test --locked
+        working-directory: apps/xyeena-island/src-tauri
+      - name: Rust clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: apps/xyeena-island/src-tauri
+      - name: Unsigned NSIS build
+        run: npm run tauri --workspace @xyeena/island -- build --bundles nsis
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xyeena-island-alpha-windows-unsigned
+          path: apps/xyeena-island/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 7
