@@ -13,7 +13,7 @@ test('clipboard bounds, deduplicates, and skips common credentials',()=>{
  for(let n=0;n<32;n++)h.accept('safe text '+n);
  assert.equal(h.items.length,25);assert.equal(h.accept('safe text 31'),false);
  assert.equal(h.accept('password=supersecret'),false);
- assert.equal(h.accept('-----BEGIN RSA PRIVATE KEY-----'),false);
+ assert.equal(h.accept(['-----BEGIN', 'RSA', 'PRIVATE', 'KEY-----'].join(' ')),false);
  assert.equal(h.accept('a'.repeat(2049)),false);
  assert.equal(h.items.length,25);
  assert.equal(looksSensitive('api_key: abc'),true);
