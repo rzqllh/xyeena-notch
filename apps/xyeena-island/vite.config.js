@@ -4,5 +4,5 @@ export default defineConfig({
   clearScreen: false,
   server: { host: '127.0.0.1', port: 1420, strictPort: true },
   envPrefix: ['VITE_'],
-  build: { target: 'chrome105', minify: false, rollupOptions: { input: { main: 'index.html', guardian: 'guardian.html' } } },
+  build: { target: 'chrome105', minify: false, rollupOptions: { input: { main: 'index.html' } } },
 });

@@ -156,6 +156,3 @@ input[type="range"]:disabled{opacity:.35;cursor:not-allowed}
 .clip-entry .minor-btn{flex:none;border:1px solid var(--line)}
 @media(max-width:550px){.audio-toolbar{align-items:stretch;flex-direction:column}.volume-controls{justify-content:flex-end}.navigation{padding:0 7px;gap:1px}.nav-tab{padding:0 7px}}
 
-/* A detached Guardian is represented as a subdued home marker, never two animated lions. */
-.island[data-guardian-detached="true"] .mascot-slot{visibility:hidden}
-.guardian-toggle[aria-pressed="true"]{color:var(--accent,#8dbfe0)}

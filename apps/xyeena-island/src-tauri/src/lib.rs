@@ -1,6 +1,5 @@
 //! Xyeena Island MVP: transparent top-edge companion, tray, and opt-in read-only run summaries.
 //! No hooks, agent approvals, autostart, sockets, or network endpoints.
-mod guardian_desktop;
 mod media;
 mod volume;
 use std::fs;
@@ -8,6 +7,42 @@ use std::path::Path;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, WebviewWindow};
+
+// On-demand read-only cursor sampling. No hooks, stored coordinates, or desktop pet.
+#[derive(serde::Serialize)]
+struct IslandCursor {
+    x: f64,
+    y: f64,
+}
+
+#[tauri::command]
+fn read_island_cursor(window: WebviewWindow) -> Result<Option<IslandCursor>, String> {
+    if window.label() != "main" {
+        return Err("Cursor access is limited to the main Island".into());
+    }
+    if !window.is_visible().map_err(|e| e.to_string())? {
+        return Ok(None);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let mut cursor = windows::Win32::Foundation::POINT::default();
+        unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut cursor) }
+            .map_err(|e| format!("Cannot read cursor position: {e}"))?;
+        let position = window.inner_position().map_err(|e| e.to_string())?;
+        let scale = window.scale_factor().map_err(|e| e.to_string())?;
+        if !scale.is_finite() || scale <= 0.0 {
+            return Err("Invalid monitor scale".into());
+        }
+        Ok(Some(IslandCursor {
+            x: (f64::from(cursor.x) - f64::from(position.x)) / scale,
+            y: (f64::from(cursor.y) - f64::from(position.y)) / scale,
+        }))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(None)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Mode {
@@ -93,6 +128,7 @@ fn set_window_priority(window: WebviewWindow, enabled: bool) -> Result<(), Strin
 
 #[tauri::command]
 fn hide_island_window(window: WebviewWindow) -> Result<(), String> {
+    let _ = window.emit("island:visibility", "hidden");
     window
         .hide()
         .map_err(|e| format!("Hide window failed: {e}"))
@@ -200,17 +236,16 @@ fn show_island(app: &tauri::AppHandle, requested: &str) {
         let _ = set_mode(&window, Mode::Compact);
         let _ = window.show();
         let _ = window.set_focus();
+        let _ = window.emit("island:visibility", "shown");
         let _ = window.emit("island:tray", requested);
     }
 }
 
 pub fn run() {
     tauri::Builder::default()
-        .manage(guardian_desktop::DesktopGuardian::default())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
-            guardian_desktop::init(app.handle());
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| std::io::Error::other("Main Island window missing"))?;
@@ -234,6 +269,7 @@ pub fn run() {
                     "compact" => show_island(app, "compact"),
                     "hide" => {
                         if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit("island:visibility", "hidden");
                             let _ = window.hide();
                         }
                     }
@@ -256,9 +292,8 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                if window.label() == "guardian" {
-                    let _ = guardian_desktop::guardian_return(window.app_handle().clone());
-                } else {
+                if window.label() == "main" {
+                    let _ = window.emit("island:visibility", "hidden");
                     let _ = window.hide();
                 }
             }
@@ -279,15 +314,7 @@ pub fn run() {
             volume::get_master_volume,
             volume::set_master_volume,
             volume::set_master_mute,
-            guardian_desktop::guardian_status,
-            guardian_desktop::guardian_detach,
-            guardian_desktop::guardian_return,
-            guardian_desktop::guardian_set_mode,
-            guardian_desktop::guardian_set_menu,
-            guardian_desktop::guardian_set_dragging,
-            guardian_desktop::guardian_set_sleeping,
-            guardian_desktop::guardian_update_context,
-            guardian_desktop::guardian_save_position,
+            read_island_cursor,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");
