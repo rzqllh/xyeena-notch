@@ -14,6 +14,7 @@ coverage/
 *.exe
 *.zip
 *.tgz
+*.patch
 .env
 .env.*
 !.env.example
@@ -22,3 +23,18 @@ coverage/
 .idea/
 .DS_Store
 Thumbs.db
+
+# AI agent artifacts and internal harness
+.agents/
+.xyeena/
+.system_generated/
+
+# Internal AI planning and audit documents
+docs/superpowers/
+docs/archive/
+docs/05-ACCEPTANCE.md
+docs/ACCEPTANCE.md
+docs/AUDIT_REPORT.md
+docs/INIT_AUDIT.md
+docs/MVP.md
+docs/V04-KNOWN-LIMITATIONS.md
