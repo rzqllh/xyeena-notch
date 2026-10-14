@@ -13,6 +13,7 @@ import {normalizeSessions,pickSession,sourceLabel} from './core/media-sessions.m
 import {normalizeMeeting,elapsedMeeting,MEETING_KEY} from './core/meeting.mjs';
 import {RunChangeFeed} from './core/notifications.mjs';
 import {chooseGuardianState,toMascotState,guardianStatus,defineXyeenaGuardian} from './core/mascot.mjs';
+import {inspectFile,convertImageDataUrl} from './core/files.mjs';
 import './style.css';
 
 defineXyeenaGuardian();
@@ -42,6 +43,7 @@ function icon(name:string,size=18){
 root.innerHTML=`
 <div class="island" data-mode="compact" data-panel="now" role="region" aria-label="Xyeena Island">
  <button class="wake" type="button" aria-label="Show Xyeena Island"><span></span></button>
+ <div class="drop-overlay" id="drop-overlay"><span class="drop-icon">${icon('folder',32)}</span><strong>Drop file to inspect or convert</strong><small>Images, code, documents</small></div>
  <div class="compact">
    <span class="mascot-slot mascot-compact" id="compact-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
      <xyeena-guardian id="compact-guardian" size="84" interactive animated></xyeena-guardian>
@@ -115,6 +117,22 @@ root.innerHTML=`
      <div id="media-feedback" class="feedback" role="status">Volume controls Windows default output, not individual apps.</div>
     </div>
     <div class="source-line"><label for="media-choice">Playback source</label><select id="media-choice" aria-label="Windows playback source"><option value="">No compatible source</option></select></div>
+    <div class="file-card" id="file-card" hidden>
+     <div class="file-card-header">
+       <img class="file-card-thumb" id="file-thumb" src="" alt="File preview" hidden>
+       <div class="file-card-info">
+         <strong class="file-card-title" id="file-title">File</strong>
+         <span class="file-card-meta" id="file-meta">0 KB</span>
+       </div>
+       <button class="icon-btn" id="file-close" type="button" title="Dismiss">×</button>
+     </div>
+     <div class="file-actions-row" id="file-actions">
+       <button class="file-action-btn file-action-accent" id="file-convert-webp" type="button">Convert to WebP</button>
+       <button class="file-action-btn" id="file-convert-png" type="button">PNG</button>
+       <button class="file-action-btn" id="file-convert-jpeg" type="button">JPEG</button>
+       <button class="file-action-btn" id="file-copy-info" type="button">Copy Info</button>
+     </div>
+    </div>
     <div class="section-heading calls-heading"><div><span class="kicker">CALLS & MEETINGS</span><h2>Meeting mode</h2></div><span class="meeting-duration" id="meeting-clock" aria-live="off"></span></div>
     <div class="call-row"><span class="call-icon" aria-hidden="true">${icon('headset',19)}</span>
       <p id="meeting-summary">Not tracking a meeting</p>
@@ -285,6 +303,114 @@ shell.addEventListener('pointerleave',()=>{
  if(mode==='expanded'&&prefs.autoCollapse)exitTimer=setTimeout(()=>{if(!isInteracting())apply('collapse');},3000);
 });
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&(mode==='expanded'||mode==='pinned'))apply('collapse');});
+
+let activeFileDataUrl='';
+let activeFileName='';
+function closeFileCard(){
+ const card=q<HTMLElement>('#file-card');
+ card.hidden=true;activeFileDataUrl='';activeFileName='';
+}
+q<HTMLButtonElement>('#file-close').addEventListener('click',closeFileCard);
+
+async function handleFileDrop(file:File){
+ const meta=inspectFile(file);
+ if(!meta.valid){
+  feed.recordEvent('File rejected',meta.error||'Invalid file','FILE');
+  renderAlerts();return;
+ }
+ activeFileName=meta.name;
+ const card=q<HTMLElement>('#file-card');
+ const title=q<HTMLElement>('#file-title');
+ const info=q<HTMLElement>('#file-meta');
+ const thumb=q<HTMLImageElement>('#file-thumb');
+ const convertWebp=q<HTMLButtonElement>('#file-convert-webp');
+ const convertPng=q<HTMLButtonElement>('#file-convert-png');
+ const convertJpeg=q<HTMLButtonElement>('#file-convert-jpeg');
+
+ title.textContent=meta.name;
+ info.textContent=`${meta.formattedSize} · ${meta.category.toUpperCase()}`;
+ card.hidden=false;
+ setPanel('now');
+ apply('activate');
+
+ const isImg=meta.category==='image';
+ convertWebp.hidden=!isImg;
+ convertPng.hidden=!isImg;
+ convertJpeg.hidden=!isImg;
+
+ if(isImg){
+  const reader=new FileReader();
+  reader.onload=()=>{
+   activeFileDataUrl=reader.result as string;
+   thumb.src=activeFileDataUrl;
+   thumb.hidden=false;
+  };
+  reader.readAsDataURL(file);
+ }else{
+  thumb.hidden=true;
+ }
+
+ feed.recordEvent('File inspected',`${meta.name} (${meta.formattedSize})`,'FILE');
+ renderAlerts();
+ triggerMascotSalute();
+}
+
+async function convertActiveImage(targetMime:'image/webp'|'image/png'|'image/jpeg',ext:string){
+ if(!activeFileDataUrl)return;
+ try{
+  const result=await convertImageDataUrl(activeFileDataUrl,targetMime);
+  const newName=activeFileName.replace(/\.[^.]+$/,'')+'.'+ext;
+  if(isTauri){
+   const saved=await native('save_file_to_downloads',{
+    filename:newName,
+    content:result.dataUrl,
+    isBase64:true
+   }) as string;
+   feed.recordEvent('Image converted',`${newName} saved to ${saved}`,'FILE');
+  }else{
+   feed.recordEvent('Image converted',`${newName} (${Math.round(result.sizeBytes/1024)} KB)`,'FILE');
+  }
+  renderAlerts();
+  triggerMascotSalute();
+ }catch(err){
+  feed.recordEvent('Conversion failed',String(err),'ERROR');
+  renderAlerts();
+ }
+}
+
+q<HTMLButtonElement>('#file-convert-webp').addEventListener('click',()=>void convertActiveImage('image/webp','webp'));
+q<HTMLButtonElement>('#file-convert-png').addEventListener('click',()=>void convertActiveImage('image/png','png'));
+q<HTMLButtonElement>('#file-convert-jpeg').addEventListener('click',()=>void convertActiveImage('image/jpeg','jpg'));
+q<HTMLButtonElement>('#file-copy-info').addEventListener('click',async()=>{
+ const infoText=`${q<HTMLElement>('#file-title').textContent} - ${q<HTMLElement>('#file-meta').textContent}`;
+ try{
+  await writeText(infoText);
+  feed.recordEvent('File info copied',infoText,'CLIPBOARD');
+  renderAlerts();
+ }catch{}
+});
+
+window.addEventListener('dragenter',e=>{
+ e.preventDefault();
+ shell.dataset.dropHover='true';
+});
+window.addEventListener('dragover',e=>{
+ e.preventDefault();
+ shell.dataset.dropHover='true';
+});
+window.addEventListener('dragleave',e=>{
+ if(e.clientX<=0||e.clientY<=0||e.clientX>=window.innerWidth||e.clientY>=window.innerHeight){
+  shell.dataset.dropHover='false';
+ }
+});
+window.addEventListener('drop',e=>{
+ e.preventDefault();
+ shell.dataset.dropHover='false';
+ const files=e.dataTransfer?.files;
+ if(files&&files.length>0){
+  void handleFileDrop(files[0]);
+ }
+});
 
 // Native Windows cursor sampling runs only when the top-screen Lion is visible.
 // The coordinates stay in memory; nothing is logged, persisted or transmitted.

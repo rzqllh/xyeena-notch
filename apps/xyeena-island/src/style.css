@@ -184,6 +184,23 @@ input[type="range"]:disabled{opacity:.35;cursor:not-allowed}
 .clip-btn{padding:3px 7px;font-size:10px;background:transparent;border:1px solid var(--line);border-radius:5px;color:var(--sub);cursor:pointer}
 .clip-btn:hover{background:var(--hover);color:var(--text)}
 .clip-btn-accent{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
-.clip-btn-accent:hover{filter:brightness(1.1)}
 @media(max-width:550px){.audio-toolbar{align-items:stretch;flex-direction:column}.volume-controls{justify-content:flex-end}.navigation{padding:0 7px;gap:1px}.nav-tab{padding:0 7px}}
+
+/* Drag and Drop Overlay */
+.drop-overlay{display:none;position:absolute;inset:0;z-index:99;background:rgba(18,21,26,.96);border:2px dashed var(--accent);border-radius:0 0 20px 20px;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--text);pointer-events:none}
+.island[data-drop-hover="true"] .drop-overlay{display:flex}
+.drop-icon{color:var(--accent);filter:drop-shadow(0 0 8px var(--focus))}
+
+/* File inspection & conversion card */
+.file-card{margin:10px 0 12px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;gap:8px}
+.file-card-header{display:flex;align-items:center;gap:10px}
+.file-card-thumb{width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--line);background:var(--base)}
+.file-card-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.file-card-title{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-card-meta{font-size:10px;color:var(--muted)}
+.file-actions-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.file-action-btn{font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid var(--line);background:transparent;color:var(--sub);cursor:pointer}
+.file-action-btn:hover{background:var(--hover);color:var(--text)}
+.file-action-accent{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+.file-action-accent:hover{filter:brightness(1.1)}
 

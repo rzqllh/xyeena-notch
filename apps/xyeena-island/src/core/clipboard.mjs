@@ -44,12 +44,14 @@ export class ClipboardHistory {
     this.last = null;
   }
 
+  /** @param {number} id */
   deleteItem(id) {
     const prevLen = this.items.length;
     this.items = this.items.filter(item => item.id !== id);
     return this.items.length < prevLen;
   }
 
+  /** @param {number} id */
   togglePin(id) {
     const item = this.items.find(i => i.id === id);
     if (!item) return false;
@@ -57,6 +59,7 @@ export class ClipboardHistory {
     return true;
   }
 
+  /** @param {string} [query] */
   filter(query) {
     const q = (query || '').trim().toLowerCase();
     if (!q) return [...this.items];

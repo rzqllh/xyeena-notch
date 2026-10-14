@@ -31,7 +31,7 @@
         "focus": false,
         "visible": true,
         "center": false,
-        "dragDropEnabled": false
+        "dragDropEnabled": true
       }
     ]
   },
