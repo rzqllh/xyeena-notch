@@ -12,8 +12,10 @@ import {normalizeRuns} from './core/run-summaries.mjs';
 import {normalizeSessions,pickSession,sourceLabel} from './core/media-sessions.mjs';
 import {normalizeMeeting,elapsedMeeting,MEETING_KEY} from './core/meeting.mjs';
 import {RunChangeFeed} from './core/notifications.mjs';
-import {chooseFoldState,foldStatus,FOLD_ART} from './core/mascot.mjs';
+import {chooseGuardianState,toMascotState,guardianStatus,defineXyeenaGuardian} from './core/mascot.mjs';
 import './style.css';
+
+defineXyeenaGuardian();
 
 type Panel='now'|'clipboard'|'activity'|'preferences';
 type Prefs=ReturnType<typeof sanitizeSettings>;
@@ -41,13 +43,19 @@ root.innerHTML=`
 <div class="island" data-mode="compact" data-panel="now" role="region" aria-label="Xyeena Island">
  <button class="wake" type="button" aria-label="Show Xyeena Island"><span></span></button>
  <div class="compact">
-   <span class="mascot-slot mascot-compact" aria-hidden="true">${FOLD_ART}</span>
+   <span class="mascot-slot mascot-compact" id="compact-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Watching over your workspace">
+     <xyeena-guardian id="compact-guardian" size="26" interactive animated></xyeena-guardian>
+   </span>
    <span class="compact-copy"><strong>Xyeena</strong><small id="compact-context">Ready</small></span>
    <span class="compact-dot" aria-hidden="true"></span>
    <button class="icon-btn compact-expand" type="button" aria-label="Expand Island">${icon('chevron',19)}</button>
  </div>
  <div class="expanded">
-  <header class="header"><span class="mascot-slot mascot-header" aria-hidden="true">${FOLD_ART}</span><strong>Xyeena</strong><span class="header-status" id="header-status">Ready</span>
+  <header class="header">
+    <span class="mascot-slot mascot-header" id="header-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Watching over your workspace">
+      <xyeena-guardian id="header-guardian" size="30" interactive animated></xyeena-guardian>
+    </span>
+    <strong>Xyeena</strong><span class="header-status" id="header-status">Ready</span>
     <button class="icon-btn pin" type="button" aria-label="Pin Island" aria-pressed="false" title="Keep expanded">${icon('pin',16)}</button>
     <button class="icon-btn collapse" type="button" aria-label="Collapse Island" title="Collapse">${icon('chevron',18)}</button>
   </header>
@@ -74,7 +82,7 @@ root.innerHTML=`
      <div class="timeline"><span id="position-label">0:00</span><input id="media-seek" type="range" min="0" max="1000" step="1" value="0" disabled aria-label="Playback position"><span id="duration-label">0:00</span></div>
      <div class="audio-toolbar">
       <div class="mode-controls"><button id="shuffle" class="small-tool" type="button" disabled title="Request shuffle for selected player" aria-label="Shuffle">Shuffle</button><button id="repeat" class="small-tool" type="button" disabled title="Request repeat for selected player" aria-label="Repeat">Repeat: Off</button></div>
-      <div class="volume-controls" title="Windows default output device, not app-specific"><button id="mute" type="button" aria-label="Mute Windows output" class="icon-btn">${icon('volume',15)}</button><input id="master-volume" type="range" min="0" max="100" value="50" aria-label="Windows master output volume"><output id="volume-value">—</output></div>
+      <div class="volume-controls" title="Windows default output device, not app-specific"><button id="mute" type="button" aria-label="Mute Windows output" class="icon-btn">${icon('volume',15)}</button><input id="master-volume" type="range" min="0" max="100" value="50" aria-label="Windows master output volume"><output id="volume-value">50%</output></div>
      </div>
      <div id="media-feedback" class="feedback" role="status">Volume controls Windows default output, not individual apps.</div>
     </div>
@@ -114,7 +122,7 @@ root.innerHTML=`
     <div class="setting"><span><strong>Appearance</strong><small>Match Windows or choose a theme</small></span><select id="theme" aria-label="Appearance"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
     <div class="setting"><span><strong>Reduced motion</strong><small>Disable window transitions</small></span><input type="checkbox" id="reduce-motion" aria-label="Reduced motion"></div>
     <details class="project-details" id="about-credits"><summary>About & credits <span>MIT source</span></summary>
-      <p class="explain">Xyeena Island 1.0.0-alpha.1 · Local Windows companion. Fold mascot is original Xyeena artwork. Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
+      <p class="explain">Xyeena Island 1.0.0-alpha.1 · Local Windows companion. Xyeena Guardian mascot is original Xyeena artwork (@xyeena/mascot). Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
       <p class="explain">Full code and asset license details: THIRD_PARTY_NOTICES.md and docs/MASCOT-ASSET-RESEARCH.md in this source repository.</p>
     </details>
     <div class="settings-end"><button class="minor-btn recenter" type="button">Recenter</button><button class="minor-btn footer-hide" type="button">Hide to tray</button><span>1.0.0-alpha.1 · On device</span></div>
@@ -132,12 +140,28 @@ let meeting=normalizeMeeting(initialMeeting);
 let mode:IslandMode='compact',panel:Panel='now';
 const motion=new GeometryMotion(shellDimensions(mode));
 const feed=new RunChangeFeed();
-let lastFoldState='idle';
-function syncFold(){
- const state=chooseFoldState({meetingActive:meeting.active,mediaPlaying:selectedMedia.playing,runs});
- shell.dataset.fold=state;
- if(state!==lastFoldState){lastFoldState=state;}
- for(const el of root.querySelectorAll<HTMLElement>('.mascot-slot'))el.title=foldStatus(state);
+let lastGuardianState='idle';
+function syncGuardian(){
+ const activeState=chooseGuardianState({meetingActive:meeting.active,mediaPlaying:selectedMedia.playing,runs,mode});
+ const visualState=toMascotState(activeState);
+ shell.dataset.fold=activeState;
+ shell.dataset.guardian=activeState;
+ shell.dataset.mascot=visualState;
+ if(activeState!==lastGuardianState){lastGuardianState=activeState;}
+ const label=guardianStatus(activeState);
+ for(const el of root.querySelectorAll<HTMLElement>('.mascot-slot'))el.title=label;
+ for(const g of root.querySelectorAll<HTMLElement>('xyeena-guardian')){
+  if(g.getAttribute('state')!==visualState)g.setAttribute('state',visualState);
+ }
+}
+function triggerMascotSalute(){
+ for(const g of root.querySelectorAll<any>('xyeena-guardian')){
+  if(typeof g.greet==='function')g.greet();
+ }
+}
+for(const slot of root.querySelectorAll<HTMLElement>('.mascot-slot')){
+ slot.addEventListener('click',e=>{e.stopPropagation();triggerMascotSalute();});
+ slot.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();triggerMascotSalute();}});
 }
 let runs:ReturnType<typeof normalizeRuns>=[];
 let sourcePath=(()=>{try{return localStorage.getItem('xyeena-island-project-root')||'';}catch{return '';}})();
@@ -189,6 +213,7 @@ function setMode(next:IslandMode,instant=false){
  const target=shellDimensions(next),closing=target.width<motion.value.width;
  motion.target(target,{closing,reduced:instant||isReduced()||!isTauri,now:performance.now()});
  if(motion.animating)raf=requestAnimationFrame(tickMotion);else sendFrame(target);
+ syncGuardian();
 }
 function apply(event:IslandEvent){setMode(transition(mode,event));}
 function setPanel(next:Panel){
@@ -237,7 +262,7 @@ function updateCompact(){
   :(selectedMedia.available&&selectedMedia.playing?(selectedMedia.title||'Playing'):'Ready');
  q<HTMLElement>('#header-status').textContent=meeting.active?'Meeting mode':selectedMedia.playing?'Media playing':'On device';
  shell.dataset.playing=String(selectedMedia.playing);
- syncFold();
+ syncGuardian();
 }
 function renderMedia(){
  const media=selectedMedia;
@@ -400,7 +425,7 @@ async function toast(title:string,body:string,ask=false){
  }catch(e){console.warn('Toast unavailable:',e);return false;}
 }
 q<HTMLButtonElement>('.test-notification').addEventListener('click',async()=>{
- const item=feed.recordTest();renderAlerts();
+ const item=feed.recordTest();renderAlerts();triggerMascotSalute();
  const ok=await toast('Xyeena Island','Windows notification test',true);
  q<HTMLElement>('#alerts-explain').textContent=ok?'Test recorded and Windows toast requested.':'Test recorded locally; Windows notification was blocked or unavailable.';
 });
@@ -412,7 +437,7 @@ async function refreshRuns(){
   const changes=feed.update(runs);
   for(const item of changes)if(prefs.notifyRunChanges)void toast(item.title,item.body);
   if(changes.length&&panel!=='activity')q<HTMLElement>('#unread').hidden=false;
-  renderRuns();renderAlerts();syncFold();status(`${runs.length} recorded run${runs.length===1?'':'s'} · Read-only`);
+  renderRuns();renderAlerts();syncGuardian();status(`${runs.length} recorded run${runs.length===1?'':'s'} · Read-only`);
  }catch(err){status('Unable to read project: '+String(err));}
  finally{runBusy=false;}
 }
@@ -425,7 +450,7 @@ q<HTMLButtonElement>('.connect').addEventListener('click',()=>{
 });
 q<HTMLInputElement>('#project-root').addEventListener('keydown',e=>{if(e.key==='Enter')q<HTMLButtonElement>('.connect').click();});
 q<HTMLButtonElement>('.disconnect').addEventListener('click',()=>{
- sourcePath='';runs=[];feed.reset();syncFold();try{localStorage.removeItem('xyeena-island-project-root');}catch{}
+ sourcePath='';runs=[];feed.reset();syncGuardian();try{localStorage.removeItem('xyeena-island-project-root');}catch{}
  q<HTMLInputElement>('#project-root').value='';q<HTMLButtonElement>('.disconnect').hidden=true;
  status('Not connected');renderRuns();renderAlerts();
 });
