@@ -13,21 +13,24 @@ use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, Web
 enum Mode {
     Hidden,
     Compact,
+    Glance,
     Expanded,
 }
 impl Mode {
     fn parse(value: &str) -> Result<Self, String> {
         match value {
-            "hidden" => Ok(Self::Hidden),
+            "hidden" | "dormant" => Ok(Self::Hidden),
             "compact" => Ok(Self::Compact),
-            "expanded" | "pinned" => Ok(Self::Expanded),
+            "glance" => Ok(Self::Glance),
+            "expanded" | "focused" | "pinned" => Ok(Self::Expanded),
             _ => Err("Invalid island mode".into()),
         }
     }
     fn dimensions(self) -> (f64, f64) {
         match self {
             Self::Hidden => (184.0, 8.0),
-            Self::Compact => (352.0, 52.0),
+            Self::Compact => (400.0, 92.0),
+            Self::Glance => (480.0, 144.0),
             Self::Expanded => (620.0, 396.0),
         }
     }
@@ -295,7 +298,7 @@ mod tests {
     use super::{bounded_text, Mode};
     #[test]
     fn geometry_is_bounded() {
-        for mode in [Mode::Hidden, Mode::Compact, Mode::Expanded] {
+        for mode in [Mode::Hidden, Mode::Compact, Mode::Glance, Mode::Expanded] {
             let (w, h) = mode.dimensions();
             assert!((184.0..=640.0).contains(&w) && (7.0..=420.0).contains(&h));
         }

@@ -18,3 +18,20 @@ test('clipboard bounds, deduplicates, and skips common credentials',()=>{
  assert.equal(h.items.length,25);
  assert.equal(looksSensitive('api_key: abc'),true);
 });
+
+test('clipboard history preserves items during background polling and only clears on explicit clear', () => {
+ const h = new ClipboardHistory();
+ h.enable();
+ h.accept('baseline prior text');
+ h.accept('copied item 1');
+ h.accept('copied item 2');
+ assert.equal(h.items.length, 2);
+
+ // Re-polling same content does not duplicate or clear
+ assert.equal(h.accept('copied item 2'), false);
+ assert.equal(h.items.length, 2);
+
+ // Explicit clear wipes memory
+ h.clear();
+ assert.equal(h.items.length, 0);
+});

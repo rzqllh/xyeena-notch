@@ -43,21 +43,26 @@ root.innerHTML=`
 <div class="island" data-mode="compact" data-panel="now" role="region" aria-label="Xyeena Island">
  <button class="wake" type="button" aria-label="Show Xyeena Island"><span></span></button>
  <div class="compact">
-   <span class="mascot-slot mascot-compact" id="compact-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Watching over your workspace">
-     <xyeena-guardian id="compact-guardian" size="26" interactive animated></xyeena-guardian>
+   <span class="mascot-slot mascot-compact" id="compact-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
+     <xyeena-guardian id="compact-guardian" size="84" interactive animated></xyeena-guardian>
    </span>
-   <span class="compact-copy"><strong>Xyeena</strong><small id="compact-context">Ready</small></span>
-   <span class="compact-dot" aria-hidden="true"></span>
-   <button class="icon-btn compact-expand" type="button" aria-label="Expand Island">${icon('chevron',19)}</button>
+   <div class="compact-copy">
+     <div class="compact-meta"><strong class="brand-title">XYEENA</strong><span class="compact-dot" aria-hidden="true"></span><span class="compact-tag" id="compact-status-tag">Ready</span></div>
+     <small id="compact-context">Desktop Companion</small>
+   </div>
+   <div class="compact-actions">
+     <button class="icon-btn compact-play" id="compact-play" type="button" aria-label="Play or pause" title="Play or pause">${icon('play',16)}</button>
+     <button class="icon-btn compact-expand" type="button" aria-label="Expand Island" title="Expand Island">${icon('chevron',18)}</button>
+   </div>
  </div>
  <div class="expanded">
   <header class="header">
-    <span class="mascot-slot mascot-header" id="header-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Watching over your workspace">
-      <xyeena-guardian id="header-guardian" size="30" interactive animated></xyeena-guardian>
+    <span class="mascot-slot mascot-header" id="header-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
+      <xyeena-guardian id="header-guardian" size="56" interactive animated></xyeena-guardian>
     </span>
-    <strong>Xyeena</strong><span class="header-status" id="header-status">Ready</span>
-    <button class="icon-btn pin" type="button" aria-label="Pin Island" aria-pressed="false" title="Keep expanded">${icon('pin',16)}</button>
+    <div class="header-titles"><strong>Xyeena Island</strong><span class="header-status" id="header-status">On device</span></div>
     <button class="icon-btn guardian-toggle" type="button" title="Send Guardian to desktop" aria-label="Send Guardian to desktop" aria-pressed="false">🦁</button>
+    <button class="icon-btn pin" type="button" aria-label="Pin Island" aria-pressed="false" title="Keep expanded">${icon('pin',16)}</button>
     <button class="icon-btn collapse" type="button" aria-label="Collapse Island" title="Collapse">${icon('chevron',18)}</button>
   </header>
   <nav class="navigation" role="tablist" aria-label="Island sections">
@@ -270,12 +275,28 @@ q<HTMLSelectElement>('#guardian-mode').addEventListener('change',async e=>{
  catch(err){console.error('Guardian mode:',err);}
 });
 shell.addEventListener('pointerenter',()=>{if(exitTimer)clearTimeout(exitTimer);});
+function isInteracting():boolean{
+ const a=document.activeElement;
+ return !!(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA'||a.hasAttribute('contenteditable')));
+}
 shell.addEventListener('pointerleave',()=>{
  if(exitTimer)clearTimeout(exitTimer);
- if(mode==='compact'&&prefs.autoHide)exitTimer=setTimeout(()=>apply('pointer-leave'),3500);
- if(mode==='expanded'&&prefs.autoCollapse)exitTimer=setTimeout(()=>apply('collapse'),3000);
+ if(mode==='compact'&&prefs.autoHide)exitTimer=setTimeout(()=>{if(!isInteracting())apply('pointer-leave');},3500);
+ if(mode==='expanded'&&prefs.autoCollapse)exitTimer=setTimeout(()=>{if(!isInteracting())apply('collapse');},3000);
 });
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&(mode==='expanded'||mode==='pinned'))apply('collapse');});
+
+function updateMascotGaze(e:PointerEvent|MouseEvent){
+ for(const g of root.querySelectorAll<any>('xyeena-guardian')){
+  if(typeof g.setGazeFromClient==='function')g.setGazeFromClient(e.clientX,e.clientY);
+ }
+}
+window.addEventListener('pointermove',updateMascotGaze,{passive:true});
+window.addEventListener('pointerleave',()=>{
+ for(const g of root.querySelectorAll<any>('xyeena-guardian')){
+  if(typeof g.setGaze==='function')g.setGaze(0,0);
+ }
+});
 
 function renderMeeting(){
  const label=meeting.active?'Meeting mode on':'Not tracking a meeting';
@@ -291,12 +312,38 @@ q<HTMLButtonElement>('#meeting-action').addEventListener('click',()=>{
  meeting=meeting.active?{active:false,startedAt:0}:{active:true,startedAt:Date.now()};saveMeeting();renderMeeting();
 });
 function updateCompact(){
- q<HTMLElement>('#compact-context').textContent=meeting.active?'Meeting · '+elapsedMeeting(meeting.startedAt)
-  :(selectedMedia.available&&selectedMedia.playing?(selectedMedia.title||'Playing'):'Ready');
+ const tag=q<HTMLElement>('#compact-status-tag');
+ const ctx=q<HTMLElement>('#compact-context');
+ const compactPlay=q<HTMLButtonElement>('#compact-play');
+ if(meeting.active){
+  tag.textContent='Meeting';
+  ctx.textContent=elapsedMeeting(meeting.startedAt);
+ }else if(selectedMedia.available&&selectedMedia.playing){
+  tag.textContent='Playing';
+  ctx.textContent=`${selectedMedia.title||'Playing'} · ${sourceLabel(selectedMedia.source)}`;
+ }else if(selectedMedia.available){
+  tag.textContent='Paused';
+  ctx.textContent=selectedMedia.title||'Media paused';
+ }else{
+  tag.textContent='Ready';
+  ctx.textContent='Desktop Companion';
+ }
+ compactPlay.disabled=!selectedMedia.available;
+ compactPlay.innerHTML=icon(selectedMedia.playing?'pause':'play',16);
+ compactPlay.setAttribute('aria-label',selectedMedia.playing?'Pause':'Play');
+ compactPlay.title=selectedMedia.playing?'Pause':'Play';
  q<HTMLElement>('#header-status').textContent=meeting.active?'Meeting mode':selectedMedia.playing?'Media playing':'On device';
  shell.dataset.playing=String(selectedMedia.playing);
  syncGuardian();
 }
+q<HTMLButtonElement>('#compact-play').addEventListener('click',async e=>{
+ e.stopPropagation();
+ if(!selectedMedia.available)return;
+ try{
+  await native('media_transport',{action:'toggle',source:selectedMedia.source});
+  await refreshMedia();
+ }catch(err){console.error('Compact play error:',err);}
+});
 function renderMedia(){
  const media=selectedMedia;
  q<HTMLElement>('#track-title').textContent=media.available?(media.title||'Untitled media'):'No playback session';
@@ -332,6 +379,12 @@ async function refreshMedia(){
 }
 // Player capabilities are optional. Report rejection rather than updating the UI optimistically.
 function mediaFeedback(message:string){q<HTMLElement>('#media-feedback').textContent=message;}
+q<HTMLInputElement>('#media-seek').addEventListener('input',e=>{
+ if(!selectedMedia.canSeek||selectedMedia.durationMs<=0)return;
+ const fraction=Number((e.target as HTMLInputElement).value)/1000;
+ const curMs=Math.round(selectedMedia.durationMs*fraction);
+ q<HTMLElement>('#position-label').textContent=timeLabel(curMs);
+});
 q<HTMLInputElement>('#media-seek').addEventListener('change',async e=>{
  if(!selectedMedia.canSeek)return;
  const fraction=Math.max(0,Math.min(1,Number((e.target as HTMLInputElement).value)/1000));
@@ -366,6 +419,16 @@ async function refreshVolume(){
   q<HTMLButtonElement>('#mute').setAttribute('aria-label',snapshot.muted?'Unmute Windows output':'Mute Windows output');
  }catch(err){q<HTMLInputElement>('#master-volume').disabled=true;mediaFeedback('Output volume unavailable: '+String(err));}
 }
+let volTimer:ReturnType<typeof setTimeout>|null=null;
+q<HTMLInputElement>('#master-volume').addEventListener('input',e=>{
+ const percent=Number((e.target as HTMLInputElement).value);
+ q<HTMLOutputElement>('#volume-value').value=percent+'%';
+ if(volTimer)clearTimeout(volTimer);
+ volTimer=setTimeout(async()=>{
+  try{masterVolume=await native('set_master_volume',{percent}) as typeof masterVolume;}
+  catch(err){mediaFeedback('Cannot change output volume: '+String(err));}
+ },60);
+});
 q<HTMLInputElement>('#master-volume').addEventListener('change',async e=>{
  const percent=Number((e.target as HTMLInputElement).value);
  if(!Number.isInteger(percent)||percent<0||percent>100)return;
@@ -407,13 +470,15 @@ function renderClipboard(){
 async function observeClipboard(){
  if(clipBusy||!clipboard.enabled||!isTauri)return;
  clipBusy=true;
- try{if(clipboard.accept(await readText()))renderClipboard();}
- catch(err){q<HTMLElement>('#clip-state').textContent='Clipboard unavailable: '+String(err);}
+ try{
+  const text=await readText();
+  if(text&&clipboard.accept(text))renderClipboard();
+ }catch(err){q<HTMLElement>('#clip-state').textContent='Clipboard unavailable: '+String(err);}
  finally{clipBusy=false;}
 }
 q<HTMLButtonElement>('#clip-toggle').addEventListener('click',async()=>{
  if(clipboard.enabled){clipboard.disable();if(clipTimer)clearInterval(clipTimer);clipTimer=null;}
- else {clipboard.enable();void observeClipboard();clipTimer=setInterval(()=>void observeClipboard(),2000);}
+ else {clipboard.enable();void observeClipboard();if(clipTimer)clearInterval(clipTimer);clipTimer=setInterval(()=>void observeClipboard(),1500);}
  renderClipboard();
 });
 q<HTMLButtonElement>('#clip-read').addEventListener('click',async()=>{
@@ -428,7 +493,7 @@ q<HTMLButtonElement>('#clip-read').addEventListener('click',async()=>{
  }catch(err){q<HTMLElement>('#clip-state').textContent='Read failed: '+String(err);}
 });
 q<HTMLButtonElement>('#clip-clear').addEventListener('click',()=>{clipboard.clear();renderClipboard();});
-window.addEventListener('pagehide',()=>{clipboard.clear();if(clipTimer)clearInterval(clipTimer);});
+window.addEventListener('beforeunload',()=>{clipboard.clear();if(clipTimer)clearInterval(clipTimer);});
 
 function status(message:string){q<HTMLElement>('#project-status').textContent=message;}
 function renderRuns(){

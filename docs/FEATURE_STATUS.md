@@ -4,13 +4,13 @@ This table is the user-facing source of truth. **Implemented** means source exis
 
 | Capability | Status | Required gate |
 |---|---|---|
-| Top-edge Island / tray / topmost | Implemented, Windows acceptance pending | Native build, DPI/fullscreen/focus/restart QA |
+| Top-edge Island / tray / topmost | Implemented (adaptive dormant 184x8, compact 400x92, glance 480x144, focused 620x396; interaction-safe auto-collapse), Windows acceptance pending | Native build, DPI/fullscreen/focus/restart QA |
 | Coucou-style spring geometry | Implemented; performance unverified | 60/120Hz frame capture and pointer hit testing |
-| Xyeena Guardian (original lion companion) | Implemented via @xyeena/mascot in Island compact/expanded views; Fold compatibility retained | Visual, interaction, and accessibility review |
-| Windows media playback + transport | Implemented, acceptance pending | Browser/Spotify supported-session tests |
+| Xyeena Guardian (Living Lion companion) | Implemented via @xyeena/mascot (84px compact, 56px expanded Canvas 2D rig; cursor gaze tracking, independent head lag, anchored body, manual-only detached mode) | Visual, interaction, and accessibility review |
+| Windows media playback + transport | Implemented; input debouncing and real-time volume feedback added, acceptance pending | Browser/Spotify supported-session tests |
 | Seek, shuffle and repeat | Implemented, player-dependent | Player capability tests; accurate status labels |
-| Windows default-output volume/mute | Implemented, acceptance pending | Windows Core Audio device tests |
-| Clipboard text-only history | Implemented, opt-in | Opt-out, clear, secret heuristics, restart privacy tests |
+| Windows default-output volume/mute | Implemented with debounced input feedback, acceptance pending | Windows Core Audio device tests |
+| Clipboard text-only history | Implemented, opt-in; lifecycle bug repaired (persists across collapse/hide, clears only on exit/explicit clear) | Opt-out, clear, secret heuristics, restart privacy tests |
 | User-opt-in OS notifications | Implemented | Packaged install/OS permission test |
 | Xyeena read-only run summaries | Implemented | Real CLI project with snapshots and malformed paths |
 | Meeting timer | Implemented manually | Timeout/refresh/restore acceptance |

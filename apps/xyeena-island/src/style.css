@@ -23,23 +23,25 @@ h1,h2,p{margin:0}
 .wake,.compact,.expanded{display:none;border:1px solid var(--line);border-top:0;background:var(--base);color:var(--text)}
 .wake{width:100%;height:100%;border-radius:0 0 5px 5px;position:relative;padding:0}
 .wake span{position:absolute;top:3px;left:50%;width:42px;height:2px;background:var(--accent);transform:translateX(-50%)}
-.island[data-mode="hidden"] .wake{display:block}
-.compact,.expanded{width:100%;height:100%;border-radius:0 0 15px 15px;overflow:hidden}
-.compact{align-items:center;gap:10px;padding:0 12px}
-.island[data-mode="compact"] .compact{display:flex}
-.island[data-mode="expanded"] .expanded,.island[data-mode="pinned"] .expanded{display:flex;flex-direction:column}
-.mark{display:grid;place-items:center;flex-shrink:0;width:26px;height:26px;color:var(--accent)}
-.compact-copy{display:flex;flex:1;flex-direction:column;gap:3px;min-width:0}
-.compact-copy strong{font-size:12px;font-weight:650;letter-spacing:.01em}
-.compact-copy small{color:var(--sub);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.compact-dot{width:5px;height:5px;border-radius:50%;background:var(--good);flex-shrink:0}
+.island[data-mode="hidden"] .wake,.island[data-mode="dormant"] .wake{display:block}
+.compact,.expanded{width:100%;height:100%;border-radius:0 0 18px 18px;overflow:hidden}
+.compact{align-items:center;gap:12px;padding:4px 14px 4px 8px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.island[data-mode="compact"] .compact,.island[data-mode="glance"] .compact{display:flex}
+.island[data-mode="expanded"] .expanded,.island[data-mode="focused"] .expanded,.island[data-mode="pinned"] .expanded{display:flex;flex-direction:column}
+.compact-copy{display:flex;flex:1;flex-direction:column;gap:3px;min-width:0;justify-content:center}
+.compact-meta{display:flex;align-items:center;gap:6px}
+.brand-title{font-size:12px;font-weight:750;letter-spacing:.08em;color:var(--accent)}
+.compact-tag{font-size:9px;font-weight:600;padding:1px 6px;border-radius:4px;background:var(--panel);color:var(--sub);text-transform:uppercase;letter-spacing:.03em;border:1px solid var(--line)}
+.compact-copy small{color:var(--text);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.compact-dot{width:6px;height:6px;border-radius:50%;background:var(--good);flex-shrink:0}
+.compact-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}
 .icon-btn{border:0;border-radius:7px;background:transparent;display:grid;place-items:center;flex:none;width:30px;height:30px;color:var(--sub)}
 .icon-btn:hover,.minor-btn:hover,.nav-tab:hover{background:var(--hover);color:var(--text)}
 .compact-expand{transform:rotate(180deg);background:var(--panel)}
-.header{height:46px;min-height:46px;display:flex;align-items:center;gap:8px;padding:0 15px;border-bottom:1px solid var(--line)}
-.header>strong{font-weight:650;font-size:13px}
-.header .mark{width:22px;height:22px}
-.header-status{color:var(--muted);font-size:10px;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.header{height:58px;min-height:58px;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line)}
+.header-titles{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.header-titles strong{font-size:13px;font-weight:700}
+.header-status{color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .header .pin{margin-left:6px}
 .pin[aria-pressed="true"]{color:var(--accent);background:var(--focus)}
 .navigation{height:38px;min-height:38px;display:flex;align-items:center;gap:6px;padding:0 15px;border-bottom:1px solid var(--line)}
@@ -123,12 +125,12 @@ h2{font-size:14px;letter-spacing:-.015em;font-weight:630;line-height:1.2}
 
 /* Xyeena Guardian mascot integration from canonical @xyeena/mascot.
    Renders the companion in compact and expanded header views with responsive sizing. */
-.mascot-slot{display:inline-grid;place-items:center;flex:none;position:relative;isolation:isolate;cursor:pointer;border-radius:6px;color:var(--accent);transition:transform .15s ease,filter .15s ease}
-.mascot-slot:hover{filter:drop-shadow(0 0 6px var(--focus))}
+.mascot-slot{display:inline-grid;place-items:center;flex:none;position:relative;isolation:isolate;cursor:pointer;border-radius:10px;color:var(--accent);transition:transform .15s ease,filter .15s ease}
+.mascot-slot:hover{filter:drop-shadow(0 0 8px var(--focus))}
 .mascot-slot:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.mascot-compact{width:28px;height:28px;margin-left:-2px}
-.mascot-header{width:32px;height:32px}
-.mascot-slot xyeena-guardian{display:block;width:100%;height:auto;pointer-events:auto}
+.mascot-compact{width:84px;height:84px;min-width:84px;margin-left:0}
+.mascot-header{width:56px;height:56px;min-width:56px}
+.mascot-slot xyeena-guardian{display:block;width:100%;height:100%;pointer-events:auto}
 .fold-art{display:block;width:100%;height:100%}
 
 /* Compact productivity controls, responsive audio toolbar and scroll containment. */

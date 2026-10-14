@@ -5,8 +5,8 @@
 **Target OS:** Windows 10 / 11 (x64)<br>
 **Binary Type:** Unsigned NSIS Installer (`currentUser` scope)<br>
 **Binary Location:** `apps/xyeena-island/src-tauri/target/release/bundle/nsis/Xyeena Island_1.0.0-alpha.1_x64-setup.exe`<br>
-**Binary Size:** 2,370,262 bytes (~2.26 MB)<br>
-**SHA256 Checksum:** `4A34EF0CE09468C94A7FEDC30CEAE4C188FDC8B281CC7B3DD4B8A5E8F810F45C`<br>
+**Binary Size:** 2,378,623 bytes (~2.27 MB)<br>
+**SHA256 Checksum:** `7AAFADD499E59E5FF68C399BD8DDCA31EA1AA37E8C576FC4FDB71D747DFBEA54`<br>
 **Execution Date:** 2026-10-14
 
 ---
@@ -15,7 +15,7 @@
 
 Automated gates executed and verified prior to manual test distribution:
 
-- [x] Node.js workspace unit tests: 60 tests passed (Island: 49, Mascot: 8, Playground: 3)
+- [x] Node.js workspace unit tests: 64 tests passed (Island: 51, Mascot: 10, Playground: 3)
 - [x] Native Rust tests: 5 tests passed (`cargo test --locked`)
 - [x] Rust Clippy: 0 warnings (`cargo clippy --locked --all-targets -- -D warnings`)
 - [x] Rust formatting: Checked and verified (`cargo fmt --all -- --check`)
@@ -62,25 +62,28 @@ Instructions: Perform each test on a physical or dedicated virtual Windows machi
 
 - **Procedure:**
   1. Click the compact Island bar or press Enter while focused.
-  2. Observe expansion animation down to full panel (`440x480px`).
-  3. Click outside the panel or press Escape. Verify collapse back to compact (`200x36px`).
+  2. Observe expansion animation down to full panel (`620x396px`).
+  3. Click outside the panel or press Escape. Verify collapse back to compact (`400x92px`).
   4. Toggle the Pin button in the Island header.
   5. Click outside the panel while pinned.
-  6. Click the Minimize/Hide button.
+  6. Click the Minimize/Hide button. Verify collapse to dormant wake strip (`184x8px`).
 - **Expected Result:** Transitions animate smoothly with spring physics; unpinned panel collapses on blur; pinned panel remains expanded; hide state collapses window cleanly without leaving artifacts.
 - **Status:** `[ ] PENDING MANUAL SMOKE` (PASS / FAIL / BLOCKED)
 - **Observations:**
 
 ---
 
-### Scenario 4: Guardian Mascot States and Motion
+### Scenario 4: Living Lion Guardian Mascot States and Motion
 
 - **Procedure:**
-  1. Inspect `<xyeena-guardian>` rendered in the compact Island bar and expanded header.
-  2. Verify idle breathing/blinking animation.
-  3. Click the Guardian avatar or press Enter to trigger a salute/greeting interaction.
-  4. Trigger various app states: active media playback (listening/playing), manual meeting mode (working), notification toast (attention), and sleeping.
-- **Expected Result:** Guardian renders cleanly at both sizes (26px compact, 32px expanded). State priority transitions immediately to higher priority (error > attention > working > listening > idle). Reduced motion setting disables animated transforms.
+  1. Inspect `<xyeena-guardian>` rendered in the compact Island notch (84px Canvas 2D/2.5D rig) and expanded header (56px).
+  2. Move cursor globally across the Island window and observe lion gaze: eyes track pointer smoothly, followed by subtle head tilt/rotation (head lag).
+  3. Move cursor directly over the lion's face and verify the dead-zone (eyes rest naturally centered rather than jittering).
+  4. Verify the body remains stably anchored in place (no walking, no cursor chasing across the desktop).
+  5. Verify natural breathing, ear twitching, mane motion, and spontaneous blinking.
+  6. Click the Guardian avatar or press Enter to trigger a salute/greeting interaction.
+  7. Trigger various app states: active media playback (listening/playing), manual meeting mode (working), notification toast (attention), and sleeping.
+- **Expected Result:** Guardian renders with strong character presence at 84px compact / 56px expanded. Eyes smoothly track cursor with subtle head lag while body stays anchored. State priority transitions immediately to higher priority (error > attention > working > listening > idle). Reduced motion setting disables animated transforms.
 - **Status:** `[ ] PENDING MANUAL SMOKE` (PASS / FAIL / BLOCKED)
 - **Observations:**
 
@@ -141,13 +144,14 @@ Instructions: Perform each test on a physical or dedicated virtual Windows machi
 - **Procedure:**
   1. Navigate to the Clipboard tab in expanded Island.
   2. Verify clipboard monitoring defaults to disabled (OFF).
-  3. Toggle clipboard monitoring ON. Copy 3 distinct text snippets in Notepad.
-  4. Verify all 3 appear in the in-memory history list.
-  5. Click Pause; copy another string; verify it is not captured.
-  6. Click Copy on a previously captured snippet; paste in Notepad to verify content.
-  7. Click Clear; verify history list is completely emptied.
-  8. Close Island completely and relaunch; verify previous clipboard history is not persisted on disk.
-- **Expected Result:** Strict privacy boundaries enforced: opt-in only, in-memory ring buffer, non-persisted history, pause and clear work as expected.
+  3. Toggle clipboard monitoring ON. Collapse Island to compact or switch focus to Notepad.
+  4. Copy 3 distinct text snippets in Notepad.
+  5. Expand Island again and verify all 3 snippets appear in the in-memory history list (verifying that window hiding/collapse does not clear history or terminate polling).
+  6. Click Pause; copy another string; verify it is not captured.
+  7. Click Copy on a previously captured snippet; paste in Notepad to verify content.
+  8. Click Clear; verify history list is completely emptied.
+  9. Close Island completely and relaunch; verify previous clipboard history is not persisted on disk.
+- **Expected Result:** Strict privacy boundaries enforced: opt-in only, in-memory ring buffer, non-persisted history, persistence across Island collapses, pause and clear work as expected.
 - **Status:** `[ ] PENDING MANUAL SMOKE` (PASS / FAIL / BLOCKED)
 - **Observations:**
 
