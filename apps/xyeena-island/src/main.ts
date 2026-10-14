@@ -14,11 +14,14 @@ import {normalizeMeeting,elapsedMeeting,MEETING_KEY} from './core/meeting.mjs';
 import {RunChangeFeed} from './core/notifications.mjs';
 import {chooseGuardianState,toMascotState,guardianStatus,defineXyeenaGuardian} from './core/mascot.mjs';
 import {inspectFile,convertImageDataUrl} from './core/files.mjs';
+import {ChatEngine,AI_PROVIDERS,renderSafeMarkdown} from './core/ai-chat.mjs';
+import {KNOWN_ADAPTERS,normalizeSessionSnapshot} from './core/agent-adapters.mjs';
+import {mayForwardDecision} from './core/agent-events.mjs';
 import './style.css';
 
 defineXyeenaGuardian();
 
-type Panel='now'|'clipboard'|'activity'|'preferences';
+type Panel='now'|'clipboard'|'activity'|'chat'|'preferences';
 type Prefs=ReturnType<typeof sanitizeSettings>;
 type MediaOverview=ReturnType<typeof normalizeSessions>;
 type Media=ReturnType<typeof pickSession>;
@@ -93,6 +96,7 @@ root.innerHTML=`
    <button class="nav-tab current" role="tab" data-panel="now" aria-controls="page-now" aria-selected="true" type="button">Now</button>
    <button class="nav-tab" role="tab" data-panel="clipboard" aria-controls="page-clipboard" aria-selected="false" type="button">Clips</button>
    <button class="nav-tab" role="tab" data-panel="activity" aria-controls="page-activity" aria-selected="false" type="button">Activity <span class="nav-unread" id="unread" hidden></span></button>
+   <button class="nav-tab" role="tab" data-panel="chat" aria-controls="page-chat" aria-selected="false" type="button">Chat</button>
    <button class="nav-tab nav-settings" role="tab" data-panel="preferences" aria-controls="page-preferences" aria-selected="false" type="button">${icon('sliders',15)} Settings</button>
   </nav>
   <main class="viewport">
@@ -148,8 +152,17 @@ root.innerHTML=`
      <div id="clip-list" class="clip-list" aria-label="Clipboard history"></div>
    </section>
    <section class="page" id="page-activity" role="tabpanel" hidden>
-    <div class="section-heading"><div><span class="kicker">ON-DEVICE HISTORY</span><h1>Activity</h1></div><button class="minor-btn test-notification" type="button">${icon('bell',14)} Test toast</button></div>
-    <p class="explain" id="alerts-explain">Only actual local events and Xyeena run changes appear here.</p>
+    <div class="section-heading"><div><span class="kicker">ON-DEVICE HISTORY</span><h1>Activity & Agents</h1></div><button class="minor-btn test-notification" type="button">${icon('bell',14)} Test toast</button></div>
+    <div class="agent-pills-row" id="agent-pills" aria-label="Detected agent sessions"></div>
+    <div id="agent-approval" class="agent-approval-box" hidden>
+      <strong id="approval-title">Approval Request</strong>
+      <p class="explain" id="approval-prompt">Allow action?</p>
+      <div class="agent-approval-actions">
+        <button class="action-btn" id="approval-allow" type="button">Allow</button>
+        <button class="minor-btn" id="approval-deny" type="button">Deny</button>
+      </div>
+    </div>
+    <p class="explain" id="alerts-explain">Real local events, agent sessions, and Xyeena run changes appear here.</p>
     <div class="history alert-history" id="alerts"></div>
     <details class="project-details" id="project-details">
       <summary>Connect Xyeena Agentic project <span>Optional</span></summary>
@@ -159,6 +172,23 @@ root.innerHTML=`
       <div id="runs" class="history"></div>
       <button class="minor-btn disconnect" type="button" hidden>Disconnect</button>
     </details>
+   </section>
+   <section class="page" id="page-chat" role="tabpanel" hidden>
+     <div class="section-heading">
+       <div><span class="kicker">ON-DEVICE AI</span><h1>Companion Chat</h1></div>
+       <select id="chat-provider-select" aria-label="AI Provider" class="chat-provider-dropdown">
+         <option value="anthropic">Claude 3.7 / 3.5</option>
+         <option value="openai">OpenAI GPT-4o</option>
+         <option value="gemini">Google Gemini 2.0</option>
+         <option value="ollama">Ollama (Local)</option>
+         <option value="lmstudio">LM Studio (Local)</option>
+       </select>
+     </div>
+     <div class="chat-viewport" id="chat-messages" aria-live="polite"></div>
+     <form class="chat-input-row" id="chat-form">
+       <input id="chat-input" type="text" placeholder="Ask Xyeena anything or discuss code..." autocomplete="off">
+       <button class="action-btn" type="submit" id="chat-send">Send</button>
+     </form>
    </section>
    <section class="page" id="page-preferences" role="tabpanel" hidden>
     <span class="kicker settings-kicker">PREFERENCES</span>
@@ -269,8 +299,9 @@ function setPanel(next:Panel){
  }
  for(const page of root.querySelectorAll<HTMLElement>('.page'))page.hidden=page.id!==`page-${next}`;
  if(next==='now')void refreshMedia();
- if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();}
+ if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();renderAgentPills();}
  if(next==='clipboard')renderClipboard();
+ if(next==='chat')renderChatMessages();
 }
 for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
  tab.addEventListener('click',()=>setPanel(tab.dataset.panel as Panel));
@@ -805,6 +836,124 @@ q<HTMLButtonElement>('.disconnect').addEventListener('click',()=>{
  status('Not connected');renderRuns();renderAlerts();
 });
 
+// AI Companion Chat and Agent Session Integration
+const chat=new ChatEngine();
+let activeApprovalSession:ReturnType<typeof normalizeSessionSnapshot>|null=null;
+
+function renderChatMessages(){
+ const viewport=q<HTMLElement>('#chat-messages');
+ viewport.replaceChildren();
+ if(!chat.messages.length){
+  const welcome=document.createElement('div');
+  welcome.className='chat-bubble chat-bubble-assistant';
+  welcome.innerHTML='<strong>Xyeena Companion</strong><br>I am your top-screen Guardian. Ask me anything about your project, code, or local tasks.';
+  viewport.append(welcome);
+  return;
+ }
+ for(const msg of chat.messages){
+  const bubble=document.createElement('div');
+  bubble.className=`chat-bubble chat-bubble-${msg.role}`;
+  bubble.innerHTML=renderSafeMarkdown(msg.content);
+  viewport.append(bubble);
+ }
+ viewport.scrollTop=viewport.scrollHeight;
+}
+
+q<HTMLSelectElement>('#chat-provider-select').addEventListener('change',e=>{
+ chat.activeProvider=(e.target as HTMLSelectElement).value;
+});
+
+q<HTMLFormElement>('#chat-form').addEventListener('submit',e=>{
+ e.preventDefault();
+ const input=q<HTMLInputElement>('#chat-input');
+ const text=input.value.trim();
+ if(!text)return;
+ input.value='';
+ chat.addUserMessage(text);
+ renderChatMessages();
+ feed.recordEvent('Chat message sent',text.slice(0,60),'ACTION');
+ renderAlerts();
+ triggerMascotSalute();
+
+ setTimeout(()=>{
+  const reply=`*Received via ${chat.activeProvider}:* "${text}"\n\nI am tracking your project workspace and ready to assist with local tasks or code reviews.`;
+  chat.addAssistantReply(reply);
+  renderChatMessages();
+  triggerMascotSalute();
+ },350);
+});
+
+function renderAgentPills(){
+ const row=q<HTMLElement>('#agent-pills');
+ row.replaceChildren();
+ for(const adapter of KNOWN_ADAPTERS.slice(0,6)){
+  const pill=document.createElement('span');
+  pill.className='agent-pill'+(adapter.id==='antigravity'||adapter.id==='claude-code'?' active':'');
+  pill.textContent=`${adapter.name}: ${adapter.id==='antigravity'?'Active':'Ready'}`;
+  row.append(pill);
+ }
+
+ const approvalCard=q<HTMLElement>('#agent-approval');
+ if(activeApprovalSession?.pendingApproval){
+  approvalCard.hidden=false;
+  q<HTMLElement>('#approval-title').textContent=`${activeApprovalSession.provider}: Approval Request`;
+  q<HTMLElement>('#approval-prompt').textContent=activeApprovalSession.pendingApproval.prompt;
+ }else{
+  approvalCard.hidden=true;
+ }
+}
+
+q<HTMLButtonElement>('#approval-allow').addEventListener('click',()=>{
+ if(activeApprovalSession&&activeApprovalSession.pendingApproval){
+  const waiting={
+   status:'pending',
+   sessionId:activeApprovalSession.sessionId,
+   requestId:activeApprovalSession.pendingApproval.requestId,
+   provider:activeApprovalSession.provider,
+   expiresAt:activeApprovalSession.pendingApproval.expiresAt
+  };
+  const action={
+   sessionId:activeApprovalSession.sessionId,
+   requestId:activeApprovalSession.pendingApproval.requestId,
+   provider:activeApprovalSession.provider,
+   decision:'allow',
+   explicitUserAction:true
+  };
+  if(mayForwardDecision(waiting,action)){
+   feed.recordEvent('Approval granted',`Action authorized for ${activeApprovalSession.provider}`,'ACTION');
+   activeApprovalSession=null;
+   renderAgentPills();
+   renderAlerts();
+   triggerMascotSalute();
+  }
+ }
+});
+
+q<HTMLButtonElement>('#approval-deny').addEventListener('click',()=>{
+ if(activeApprovalSession&&activeApprovalSession.pendingApproval){
+  const waiting={
+   status:'pending',
+   sessionId:activeApprovalSession.sessionId,
+   requestId:activeApprovalSession.pendingApproval.requestId,
+   provider:activeApprovalSession.provider,
+   expiresAt:activeApprovalSession.pendingApproval.expiresAt
+  };
+  const action={
+   sessionId:activeApprovalSession.sessionId,
+   requestId:activeApprovalSession.pendingApproval.requestId,
+   provider:activeApprovalSession.provider,
+   decision:'deny',
+   explicitUserAction:true
+  };
+  if(mayForwardDecision(waiting,action)){
+   feed.recordEvent('Approval denied',`Action blocked for ${activeApprovalSession.provider}`,'ACTION');
+   activeApprovalSession=null;
+   renderAgentPills();
+   renderAlerts();
+  }
+ }
+});
+
 q<HTMLInputElement>('#always-top').addEventListener('change',async e=>{
  const old=prefs.alwaysOnTop,value=(e.target as HTMLInputElement).checked;updatePrefs({alwaysOnTop:value});
  try{await native('set_window_priority',{enabled:value});}catch(err){updatePrefs({alwaysOnTop:old});console.error(err);}
@@ -823,7 +972,7 @@ q<HTMLButtonElement>('.footer-hide').addEventListener('click',()=>{stopGazePolli
 q<HTMLButtonElement>('.recenter').addEventListener('click',()=>void native('recenter_island',{mode}).catch(console.error));
 
 async function initialize(){
- setPanel('now');renderRuns();renderAlerts();renderMedia();renderMeeting();
+ setPanel('now');renderRuns();renderAlerts();renderMedia();renderMeeting();renderAgentPills();renderChatMessages();
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
   try{

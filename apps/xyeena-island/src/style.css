@@ -204,3 +204,23 @@ input[type="range"]:disabled{opacity:.35;cursor:not-allowed}
 .file-action-accent{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
 .file-action-accent:hover{filter:brightness(1.1)}
 
+/* AI Chat Viewport and Messages */
+.chat-provider-dropdown{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:6px;font-size:10px;padding:4px 8px}
+.chat-viewport{flex:1;display:flex;flex-direction:column;gap:8px;overflow-y:auto;max-height:200px;padding:4px 0 10px;scrollbar-width:thin}
+.chat-bubble{max-width:88%;padding:8px 12px;border-radius:10px;font-size:11px;line-height:1.45;user-select:text}
+.chat-bubble-user{align-self:flex-end;background:var(--focus);color:var(--accent);border:1px solid var(--accent);border-bottom-right-radius:2px}
+.chat-bubble-assistant{align-self:flex-start;background:var(--panel);border:1px solid var(--line);border-bottom-left-radius:2px}
+.chat-input-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+.chat-input-row input{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:0 10px;height:32px;font-size:11px;color:var(--text);outline:0}
+.chat-input-row input:focus{border-color:var(--accent)}
+.code-block{background:var(--base);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-family:monospace;font-size:10px;overflow-x:auto;margin:4px 0}
+.inline-code{background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;font-family:monospace}
+
+/* Agent Session Pills & Approval Box */
+.agent-pills-row{display:flex;align-items:center;gap:6px;margin:8px 0;overflow-x:auto;padding-bottom:4px}
+.agent-pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:3px 8px;border-radius:6px;background:var(--panel);border:1px solid var(--line);color:var(--sub);white-space:nowrap}
+.agent-pill.active{border-color:var(--accent);color:var(--accent);background:var(--focus)}
+.agent-approval-box{background:rgba(173,214,225,.06);border:1px solid var(--accent);border-radius:8px;padding:10px;margin:8px 0;display:flex;flex-direction:column;gap:6px}
+.agent-approval-box strong{font-size:11px;color:var(--accent)}
+.agent-approval-actions{display:flex;align-items:center;gap:8px}
+
