@@ -52,7 +52,7 @@ export function buildWeeklyRecap(events,options={}){
   if(eid&&seenEvents.has(eid))continue;
   if(eid)seenEvents.add(eid);
   accepted++;
-  const record=out.days[i],inc=(key,n=1)=>{add(record,key,n);add(out.totals,key,n);};
+  const bucket=out.days[i],inc=(key,n=1)=>{add(bucket,key,n);add(out.totals,key,n);};
   if((e.type==='session_start'||e.type==='session_finish')&&sid&&!seenSessions.has(sid)){
    seenSessions.add(sid);inc('sessions');agents.set(agent,(agents.get(agent)||0)+1);
   }
