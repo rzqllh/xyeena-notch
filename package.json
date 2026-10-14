@@ -1,0 +1,26 @@
+{
+  "name": "xyeena-notch",
+  "version": "1.0.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "description": "Xyeena desktop companion and original Guardian mascot monorepo",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspace @xyeena/island && npm run test --workspace @xyeena/mascot && node --test examples/guardian-playground/tests/*.test.mjs",
+    "build": "npm run build --workspace @xyeena/island && npm run build:guardian",
+    "build:guardian": "node examples/guardian-playground/scripts/build.mjs",
+    "preview:guardian": "node examples/guardian-playground/scripts/dev-server.mjs",
+    "doctor": "npm run doctor --workspace @xyeena/island",
+    "desktop": "npm run desktop --workspace @xyeena/island",
+    "release:audit": "npm run release:audit --workspace @xyeena/island",
+    "check": "npm run init:audit && npm test && npm run build && npm run release:audit",
+    "init:audit": "node scripts/audit-init.mjs"
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,24 @@
+# Dependency and generated artifacts
+node_modules/
+**/node_modules/
+**/dist/
+**/target/
+**/gen/schemas/
+.vite/
+coverage/
+*.log
+*.tmp
+*.bak
+*.pdb
+*.msi
+*.exe
+*.zip
+*.tgz
+.env
+.env.*
+!.env.example
+.release/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
