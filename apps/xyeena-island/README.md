@@ -4,6 +4,8 @@
 
 Xyeena Island is a separate desktop companion to [Xyeena Agentic](https://github.com/rzqllh/xyeena). The desktop application does not change or install Xyeena Agentic itself. It combines an always-on-top Island, tray controls, Xyeena local run summaries, Windows playback transport, a manual meeting timer, opt-in clipboard history, opt-in notifications, and the integrated canonical Xyeena Guardian lion mascot (`<xyeena-guardian>` from `@xyeena/mascot` with Fold compatibility retained). All mascot art and animations are original; no protected Coucou/Mochi media or artwork is distributed.
 
+**Notch-first policy:** The Lion stays inside the Island. There is no separate floating desktop mascot, Perch/Follow mode, or automatic window placement. Gaze uses ephemeral Windows cursor samples only while the Island Lion is visible.
+
 **Current integration boundaries:** Windows media transport does not detect Teams calls; meeting mode is manual. There is no agent hook relay, permission approval, AI chat, GitHub token integration, encrypted phone link, live diff or multi-agent orchestration yet. See [Feature truth table](docs/FEATURE_STATUS.md). These are release/product work, not hidden functionality.
 
 ## Local development (Windows, workspace root)
