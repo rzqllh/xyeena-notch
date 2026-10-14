@@ -57,6 +57,7 @@ root.innerHTML=`
     </span>
     <strong>Xyeena</strong><span class="header-status" id="header-status">Ready</span>
     <button class="icon-btn pin" type="button" aria-label="Pin Island" aria-pressed="false" title="Keep expanded">${icon('pin',16)}</button>
+    <button class="icon-btn guardian-toggle" type="button" title="Send Guardian to desktop" aria-label="Send Guardian to desktop" aria-pressed="false">🦁</button>
     <button class="icon-btn collapse" type="button" aria-label="Collapse Island" title="Collapse">${icon('chevron',18)}</button>
   </header>
   <nav class="navigation" role="tablist" aria-label="Island sections">
@@ -120,6 +121,7 @@ root.innerHTML=`
     <div class="setting"><span><strong>Auto-hide compact view</strong><small>Reveal using the wake strip</small></span><input type="checkbox" id="auto-hide" aria-label="Auto-hide"></div>
     <div class="setting"><span><strong>Windows run notifications</strong><small>Opt-in for connected project changes</small></span><input type="checkbox" id="run-notifications" aria-label="Run notifications"></div>
     <div class="setting"><span><strong>Appearance</strong><small>Match Windows or choose a theme</small></span><select id="theme" aria-label="Appearance"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
+    <div class="setting"><span><strong>Guardian on desktop</strong><small>Perch quietly or follow your pointer</small></span><select id="guardian-mode" aria-label="Guardian desktop behavior"><option value="perch">Perch</option><option value="follow">Follow pointer</option></select></div>
     <div class="setting"><span><strong>Reduced motion</strong><small>Disable window transitions</small></span><input type="checkbox" id="reduce-motion" aria-label="Reduced motion"></div>
     <details class="project-details" id="about-credits"><summary>About & credits <span>MIT source</span></summary>
       <p class="explain">Xyeena Island 1.0.0-alpha.1 · Local Windows companion. Xyeena Guardian mascot is original Xyeena artwork (@xyeena/mascot). Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
@@ -141,13 +143,18 @@ let mode:IslandMode='compact',panel:Panel='now';
 const motion=new GeometryMotion(shellDimensions(mode));
 const feed=new RunChangeFeed();
 let lastGuardianState='idle';
+let guardianContextSent=false;
 function syncGuardian(){
  const activeState=chooseGuardianState({meetingActive:meeting.active,mediaPlaying:selectedMedia.playing,runs,mode});
  const visualState=toMascotState(activeState);
  shell.dataset.fold=activeState;
  shell.dataset.guardian=activeState;
  shell.dataset.mascot=visualState;
- if(activeState!==lastGuardianState){lastGuardianState=activeState;}
+ if(activeState!==lastGuardianState||!guardianContextSent){
+  lastGuardianState=activeState;
+  guardianContextSent=true;
+  if(isTauri)void native('guardian_update_context',{context:activeState}).catch(err=>console.warn('Guardian state:',err));
+ }
  const label=guardianStatus(activeState);
  for(const el of root.querySelectorAll<HTMLElement>('.mascot-slot'))el.title=label;
  for(const g of root.querySelectorAll<HTMLElement>('xyeena-guardian')){
@@ -236,6 +243,32 @@ q<HTMLElement>('.compact').addEventListener('click',e=>{if(!(e.target as Element
 q<HTMLButtonElement>('.compact-expand').addEventListener('click',()=>apply('activate'));
 q<HTMLButtonElement>('.collapse').addEventListener('click',()=>apply('collapse'));
 q<HTMLButtonElement>('.pin').addEventListener('click',()=>apply('toggle-pin'));
+// Desktop Guardian is a second window in this SAME Tauri app (never a second process).
+type GuardianPresence={detached:boolean;mode:'perch'|'follow';context:string};
+let guardianDetached=false;
+function applyGuardianPresence(p:GuardianPresence){
+ guardianDetached=p.detached;
+ shell.dataset.guardianDetached=String(guardianDetached);
+ const button=q<HTMLButtonElement>('.guardian-toggle');
+ button.setAttribute('aria-pressed',String(guardianDetached));
+ button.setAttribute('aria-label',guardianDetached?'Return Guardian to Island':'Send Guardian to desktop');
+ button.title=guardianDetached?'Return Guardian to Island':'Send Guardian to desktop';
+ q<HTMLSelectElement>('#guardian-mode').value=p.mode;
+}
+q<HTMLButtonElement>('.guardian-toggle').addEventListener('click',async()=>{
+ const button=q<HTMLButtonElement>('.guardian-toggle');button.disabled=true;
+ try{
+  if(guardianDetached)await native('guardian_return');
+  else await native('guardian_detach',{mode:q<HTMLSelectElement>('#guardian-mode').value});
+  applyGuardianPresence(await invoke<GuardianPresence>('guardian_status'));
+ }catch(err){console.error('Guardian desktop:',err);button.title='Guardian unavailable: '+String(err);}
+ finally{button.disabled=false;}
+});
+q<HTMLSelectElement>('#guardian-mode').addEventListener('change',async e=>{
+ if(!guardianDetached)return;
+ try{applyGuardianPresence(await invoke<GuardianPresence>('guardian_set_mode',{mode:(e.target as HTMLSelectElement).value}));}
+ catch(err){console.error('Guardian mode:',err);}
+});
 shell.addEventListener('pointerenter',()=>{if(exitTimer)clearTimeout(exitTimer);});
 shell.addEventListener('pointerleave',()=>{
  if(exitTimer)clearTimeout(exitTimer);
@@ -477,6 +510,8 @@ async function initialize(){
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
   try{
+   await listen<GuardianPresence>('guardian:presence',event=>applyGuardianPresence(event.payload));
+   applyGuardianPresence(await invoke<GuardianPresence>('guardian_status'));
    await listen<string>('island:tray',e=>{if(e.payload==='expand'){setMode('compact',true);setMode('expanded');}if(e.payload==='compact')setMode('compact',true);});
    await native('set_window_priority',{enabled:prefs.alwaysOnTop});
   }catch(err){console.error('Island init:',err);}

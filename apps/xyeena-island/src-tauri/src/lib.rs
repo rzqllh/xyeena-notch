@@ -1,5 +1,6 @@
 //! Xyeena Island MVP: transparent top-edge companion, tray, and opt-in read-only run summaries.
 //! No hooks, agent approvals, autostart, sockets, or network endpoints.
+mod guardian_desktop;
 mod media;
 mod volume;
 use std::fs;
@@ -202,9 +203,11 @@ fn show_island(app: &tauri::AppHandle, requested: &str) {
 
 pub fn run() {
     tauri::Builder::default()
+        .manage(guardian_desktop::DesktopGuardian::default())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
+            guardian_desktop::init(app.handle());
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| std::io::Error::other("Main Island window missing"))?;
@@ -250,7 +253,11 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.hide();
+                if window.label() == "guardian" {
+                    let _ = guardian_desktop::guardian_return(window.app_handle().clone());
+                } else {
+                    let _ = window.hide();
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -269,6 +276,15 @@ pub fn run() {
             volume::get_master_volume,
             volume::set_master_volume,
             volume::set_master_mute,
+            guardian_desktop::guardian_status,
+            guardian_desktop::guardian_detach,
+            guardian_desktop::guardian_return,
+            guardian_desktop::guardian_set_mode,
+            guardian_desktop::guardian_set_menu,
+            guardian_desktop::guardian_set_dragging,
+            guardian_desktop::guardian_set_sleeping,
+            guardian_desktop::guardian_update_context,
+            guardian_desktop::guardian_save_position,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");
