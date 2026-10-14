@@ -45,6 +45,6 @@ export function sanitizeGuardianMode(value){return typeof value==='string'&&MODE
 /** @param {unknown} state */
 export function guardianContextState(state){
   /** @type {Record<string,string>} */
-  const map={playing:'dancing',meeting:'working',listening:'working',working:'working',thinking:'thinking',attention:'approval',finished:'finished',error:'error'};
+  const map={playing:'dancing',meeting:'working',listening:'working',working:'working',thinking:'thinking',attention:'surprised',finished:'finished',error:'error'};
   return typeof state==='string'&&Object.hasOwn(map,state)?map[state]:'idle';
 }
