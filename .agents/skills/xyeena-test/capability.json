@@ -1,0 +1,80 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-test",
+    "version": "0.1.0",
+    "category": "engineering",
+    "description": "Design meaningful tests and use red/green evidence where it materially improves confidence."
+  },
+  "type": [
+    "PROCESS"
+  ],
+  "activation": {
+    "class": "auto",
+    "signals": [
+      "test",
+      "tdd",
+      "regression test",
+      "coverage"
+    ],
+    "states": [
+      "PLAN",
+      "EXECUTE",
+      "DEBUG",
+      "VERIFY"
+    ]
+  },
+  "workflow": {
+    "completion": [
+      "behavior-evidence-current"
+    ]
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-verify"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "shell.run"
+      ],
+      "optional": [
+        "browser.inspect"
+      ]
+    },
+    "agents": {
+      "optional": []
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "workspace-mutate"
+  },
+  "evidence": {
+    "required": [
+      "test-output"
+    ]
+  },
+  "outputs": [
+    "test-evidence"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

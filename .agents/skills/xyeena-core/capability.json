@@ -1,0 +1,73 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-core",
+    "version": "0.1.0",
+    "category": "kernel",
+    "description": "Pragmatic evidence-first judgment, scope control and completion discipline."
+  },
+  "type": [
+    "KNOWLEDGE",
+    "GOVERNOR"
+  ],
+  "activation": {
+    "class": "auto",
+    "signals": [
+      "substantial task",
+      "implement",
+      "build",
+      "fix",
+      "review",
+      "design",
+      "research"
+    ],
+    "states": [
+      "TRIAGE",
+      "DISCOVER",
+      "DEFINE",
+      "PLAN",
+      "EXECUTE",
+      "DEBUG",
+      "VERIFY",
+      "REVIEW",
+      "RELEASE"
+    ]
+  },
+  "workflow": {},
+  "dependencies": {
+    "required": [],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [],
+      "optional": []
+    },
+    "agents": {
+      "optional": []
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "safe"
+  },
+  "evidence": {
+    "required": []
+  },
+  "outputs": [],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

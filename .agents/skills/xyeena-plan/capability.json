@@ -1,0 +1,90 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-plan",
+    "version": "0.1.0",
+    "category": "engineering",
+    "description": "Turn locked intent into executable tasks, dependencies, acceptance criteria and verification contracts."
+  },
+  "type": [
+    "PROCESS"
+  ],
+  "activation": {
+    "class": "auto",
+    "intents": [
+      "plan"
+    ],
+    "signals": [
+      "multi-step",
+      "dependencies",
+      "implementation plan"
+    ],
+    "states": [
+      "DEFINE",
+      "PLAN"
+    ]
+  },
+  "workflow": {
+    "enters": "PLAN",
+    "completion": [
+      "tasks-executable",
+      "dependencies-declared",
+      "acceptance-criteria-observable"
+    ],
+    "transitions": {
+      "success": "EXECUTE",
+      "broken": "DEFINE"
+    }
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-architecture",
+      "xyeena-test"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "repo.read"
+      ],
+      "optional": [
+        "git.read"
+      ]
+    },
+    "agents": {
+      "optional": []
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "safe"
+  },
+  "evidence": {
+    "required": [
+      "repo-context"
+    ]
+  },
+  "outputs": [
+    "task-graph",
+    "acceptance-criteria",
+    "verification-contract"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

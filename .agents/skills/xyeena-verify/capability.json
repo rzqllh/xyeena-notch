@@ -1,0 +1,81 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-verify",
+    "version": "0.1.0",
+    "category": "assurance",
+    "description": "Gate completion claims on fresh evidence that proves the exact claim."
+  },
+  "type": [
+    "GATE"
+  ],
+  "activation": {
+    "class": "auto",
+    "signals": [
+      "done",
+      "fixed",
+      "complete",
+      "passes",
+      "ready",
+      "verify"
+    ],
+    "states": [
+      "VERIFY",
+      "REVIEW",
+      "RELEASE"
+    ]
+  },
+  "workflow": {
+    "enters": "VERIFY",
+    "completion": [
+      "fresh-claim-matched-evidence"
+    ]
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "shell.run"
+      ],
+      "optional": [
+        "browser.inspect",
+        "git.read"
+      ]
+    },
+    "agents": {
+      "optional": []
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "safe"
+  },
+  "evidence": {
+    "required": [
+      "fresh-verification"
+    ]
+  },
+  "outputs": [
+    "verification-result"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-context",
+    "version": "0.1.0",
+    "category": "kernel",
+    "description": "Compile minimal role-specific context and maintain freshness boundaries."
+  },
+  "type": [
+    "GOVERNOR",
+    "TOOL"
+  ],
+  "activation": {
+    "class": "auto",
+    "signals": [
+      "long session",
+      "handoff",
+      "context",
+      "compaction",
+      "multi-agent"
+    ],
+    "states": [
+      "TRIAGE",
+      "PLAN",
+      "EXECUTE",
+      "REVIEW"
+    ]
+  },
+  "workflow": {},
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-handoff"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "repo.read"
+      ],
+      "optional": [
+        "git.read"
+      ]
+    },
+    "agents": {
+      "optional": []
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "safe"
+  },
+  "evidence": {
+    "required": [
+      "context-pack-current"
+    ]
+  },
+  "outputs": [
+    "context-pack"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

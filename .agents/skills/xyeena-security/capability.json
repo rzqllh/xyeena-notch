@@ -1,0 +1,98 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-security",
+    "version": "0.1.0",
+    "category": "security",
+    "description": "Threat-aware review of trust boundaries, auth, input, secrets, dependencies and unsafe defaults."
+  },
+  "type": [
+    "PROCESS",
+    "AGENT",
+    "GATE"
+  ],
+  "activation": {
+    "class": "auto",
+    "intents": [
+      "security"
+    ],
+    "signals": [
+      "auth",
+      "authorization",
+      "permission",
+      "secret",
+      "credential",
+      "rls",
+      "injection",
+      "webhook",
+      "upload",
+      "dependency"
+    ],
+    "states": [
+      "DEFINE",
+      "PLAN",
+      "EXECUTE",
+      "REVIEW",
+      "RELEASE"
+    ]
+  },
+  "workflow": {
+    "completion": [
+      "trust-boundaries-reviewed",
+      "blocking-findings-resolved-or-accepted"
+    ]
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-research",
+      "xyeena-verify"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "repo.read"
+      ],
+      "optional": [
+        "shell.run",
+        "dependency.audit"
+      ]
+    },
+    "agents": {
+      "optional": [
+        "security-reviewer"
+      ]
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "safe"
+  },
+  "evidence": {
+    "required": [
+      "security-findings"
+    ]
+  },
+  "outputs": [
+    "threat-notes",
+    "security-verdict"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

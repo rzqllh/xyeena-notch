@@ -1,0 +1,98 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-orchestrate",
+    "version": "0.1.0",
+    "category": "meta",
+    "description": "Manager-orchestrated DAG for dynamic specialist agents without peer-to-peer topology sprawl."
+  },
+  "type": [
+    "GOVERNOR",
+    "AGENT",
+    "PROCESS"
+  ],
+  "activation": {
+    "class": "auto",
+    "signals": [
+      "multi-agent",
+      "parallel agents",
+      "subagent",
+      "independent tasks",
+      "auditor",
+      "executor"
+    ],
+    "states": [
+      "PLAN",
+      "EXECUTE",
+      "DEBUG",
+      "REVIEW"
+    ]
+  },
+  "workflow": {
+    "completion": [
+      "task-graph-settled",
+      "join-reconciled",
+      "ledger-current"
+    ]
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-context",
+      "xyeena-review",
+      "xyeena-research"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [],
+      "optional": [
+        "agent.spawn",
+        "agent.join",
+        "workspace.create"
+      ]
+    },
+    "agents": {
+      "optional": [
+        "pm",
+        "executor",
+        "auditor",
+        "researcher"
+      ]
+    }
+  },
+  "parallelism": {
+    "mode": "conditional",
+    "safe": [
+      "independent-read-only-work",
+      "isolated-worktrees"
+    ],
+    "unsafe": [
+      "peer-spawn",
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "workspace-mutate"
+  },
+  "evidence": {
+    "required": [
+      "task-results"
+    ]
+  },
+  "outputs": [
+    "task-graph",
+    "reconciled-results"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

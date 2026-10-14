@@ -1,0 +1,91 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-release",
+    "version": "0.1.0",
+    "category": "operations",
+    "description": "Verify closure and prepare integration while keeping external actions behind explicit consent."
+  },
+  "type": [
+    "PROCESS",
+    "GATE"
+  ],
+  "activation": {
+    "class": "hybrid",
+    "intents": [
+      "release"
+    ],
+    "signals": [
+      "release",
+      "publish",
+      "deploy",
+      "merge",
+      "push",
+      "ship"
+    ],
+    "states": [
+      "REVIEW",
+      "RELEASE"
+    ]
+  },
+  "workflow": {
+    "enters": "RELEASE",
+    "completion": [
+      "fresh-verification",
+      "integration-choice-owned-by-user"
+    ],
+    "transitions": {
+      "local-close": "CLOSE",
+      "authorized": "CLOSE"
+    }
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-verify"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "git.read"
+      ],
+      "optional": [
+        "shell.run"
+      ]
+    },
+    "agents": {
+      "optional": []
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "external"
+  },
+  "evidence": {
+    "required": [
+      "fresh-verification",
+      "git-state"
+    ]
+  },
+  "outputs": [
+    "release-readiness"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

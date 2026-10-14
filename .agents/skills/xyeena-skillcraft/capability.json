@@ -1,0 +1,87 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-skillcraft",
+    "version": "0.1.0",
+    "category": "meta",
+    "description": "Author and evaluate agent skills with progressive disclosure, trigger tests and executable support where useful."
+  },
+  "type": [
+    "PROCESS",
+    "TOOL"
+  ],
+  "activation": {
+    "class": "auto",
+    "intents": [
+      "skill-authoring"
+    ],
+    "signals": [
+      "skill.md",
+      "agent skill",
+      "plugin skill",
+      "capability.json"
+    ],
+    "states": [
+      "DEFINE",
+      "PLAN",
+      "EXECUTE",
+      "VERIFY"
+    ]
+  },
+  "workflow": {
+    "completion": [
+      "trigger-evals",
+      "non-trigger-evals",
+      "structure-valid"
+    ]
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-test",
+      "xyeena-verify"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "repo.read",
+        "shell.run"
+      ],
+      "optional": []
+    },
+    "agents": {
+      "optional": []
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "workspace-mutate"
+  },
+  "evidence": {
+    "required": [
+      "skill-validation",
+      "eval-results"
+    ]
+  },
+  "outputs": [
+    "skill-package"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

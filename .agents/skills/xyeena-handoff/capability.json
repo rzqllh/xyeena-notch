@@ -1,0 +1,80 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-handoff",
+    "version": "0.1.0",
+    "category": "knowledge",
+    "description": "Create compact continuation state from the persisted ledger and current repository facts."
+  },
+  "type": [
+    "PROCESS"
+  ],
+  "activation": {
+    "class": "hybrid",
+    "signals": [
+      "handoff",
+      "continue later",
+      "new session",
+      "context limit"
+    ],
+    "states": [
+      "TRIAGE",
+      "PLAN",
+      "EXECUTE",
+      "DEBUG",
+      "REVIEW"
+    ]
+  },
+  "workflow": {
+    "completion": [
+      "current-state-captured"
+    ]
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "repo.read"
+      ],
+      "optional": [
+        "git.read"
+      ]
+    },
+    "agents": {
+      "optional": []
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "safe"
+  },
+  "evidence": {
+    "required": [
+      "current-ledger",
+      "git-state"
+    ]
+  },
+  "outputs": [
+    "handoff"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

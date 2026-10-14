@@ -1,0 +1,107 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-execute",
+    "version": "0.1.0",
+    "category": "engineering",
+    "description": "Execute a locked task or approved plan with scope discipline, incremental checks and evidence-aware handoff."
+  },
+  "type": [
+    "PROCESS",
+    "TOOL"
+  ],
+  "activation": {
+    "class": "auto",
+    "intents": [
+      "execute"
+    ],
+    "signals": [
+      "implement this plan",
+      "execute the plan",
+      "start implementation",
+      "build this task",
+      "code this"
+    ],
+    "states": [
+      "PLAN",
+      "EXECUTE"
+    ],
+    "explicitTriggers": [
+      "implement this plan",
+      "execute the plan",
+      "start implementation"
+    ]
+  },
+  "workflow": {
+    "enters": "EXECUTE",
+    "completion": [
+      "scope-respected",
+      "implementation-created",
+      "local-checks-recorded",
+      "handoff-to-verification"
+    ],
+    "transitions": {
+      "success": "VERIFY",
+      "failure": "DEBUG",
+      "scope-conflict": "DEFINE"
+    }
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-test",
+      "xyeena-verify",
+      "xyeena-review"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "repo.read"
+      ],
+      "optional": [
+        "repo.write",
+        "shell.run"
+      ]
+    },
+    "agents": {
+      "optional": [
+        "executor"
+      ]
+    }
+  },
+  "parallelism": {
+    "mode": "conditional",
+    "safe": [
+      "independent-worktrees"
+    ],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "workspace-mutate"
+  },
+  "evidence": {
+    "required": [
+      "changed-surface",
+      "local-check-results"
+    ]
+  },
+  "outputs": [
+    "implementation",
+    "changed-files",
+    "verification-handoff"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

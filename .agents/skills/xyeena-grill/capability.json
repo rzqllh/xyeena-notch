@@ -1,0 +1,92 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-grill",
+    "version": "0.1.0",
+    "category": "discovery",
+    "description": "Decision-tree interviewing that resolves material branches without asking users for inspectable facts."
+  },
+  "type": [
+    "PROCESS"
+  ],
+  "activation": {
+    "class": "hybrid",
+    "explicitTriggers": [
+      "grill me",
+      "grill gua",
+      "interview me",
+      "interview gua",
+      "stress test my idea",
+      "stress-test ide"
+    ],
+    "signals": [
+      "unclear requirement",
+      "ambiguous decision"
+    ],
+    "states": [
+      "DISCOVER",
+      "GRILL"
+    ]
+  },
+  "workflow": {
+    "enters": "GRILL",
+    "completion": [
+      "material-frontier-empty",
+      "locked-decisions-recorded"
+    ],
+    "transitions": {
+      "success": "DEFINE",
+      "fact-needed": "RESEARCH"
+    }
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-research",
+      "xyeena-architecture"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [],
+      "optional": [
+        "repo.read",
+        "web.search"
+      ]
+    },
+    "agents": {
+      "optional": []
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "safe"
+  },
+  "evidence": {
+    "required": [
+      "decision-frontier"
+    ]
+  },
+  "outputs": [
+    "locked-decisions",
+    "rejected-options",
+    "open-risks"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

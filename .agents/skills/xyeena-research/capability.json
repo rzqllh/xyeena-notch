@@ -1,0 +1,95 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-research",
+    "version": "0.1.0",
+    "category": "discovery",
+    "description": "Primary-source research with traceable claims and explicit unknowns."
+  },
+  "type": [
+    "PROCESS",
+    "AGENT"
+  ],
+  "activation": {
+    "class": "auto",
+    "intents": [
+      "research"
+    ],
+    "signals": [
+      "official docs",
+      "external fact",
+      "api behavior",
+      "latest"
+    ],
+    "states": [
+      "DISCOVER",
+      "RESEARCH",
+      "DEBUG"
+    ]
+  },
+  "workflow": {
+    "enters": "RESEARCH",
+    "completion": [
+      "material-claims-sourced",
+      "contradictions-reconciled",
+      "unknowns-explicit"
+    ],
+    "transitions": {
+      "success": "DEFINE",
+      "technical-unknown": "PROTOTYPE"
+    }
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-verify"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [],
+      "optional": [
+        "web.search",
+        "repo.read"
+      ]
+    },
+    "agents": {
+      "optional": [
+        "researcher"
+      ]
+    }
+  },
+  "parallelism": {
+    "mode": "conditional",
+    "safe": [
+      "independent-source-hunts"
+    ],
+    "unsafe": [
+      "duplicated-uncoordinated-synthesis"
+    ]
+  },
+  "consent": {
+    "level": "safe"
+  },
+  "evidence": {
+    "required": [
+      "source-citations"
+    ]
+  },
+  "outputs": [
+    "claims",
+    "sources",
+    "unknowns"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

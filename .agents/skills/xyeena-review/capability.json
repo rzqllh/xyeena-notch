@@ -1,0 +1,99 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-review",
+    "version": "0.1.0",
+    "category": "assurance",
+    "description": "Independent review of intent/spec, engineering quality and risk without inheriting executor rationale."
+  },
+  "type": [
+    "PROCESS",
+    "AGENT",
+    "GATE"
+  ],
+  "activation": {
+    "class": "auto",
+    "intents": [
+      "review"
+    ],
+    "signals": [
+      "diff",
+      "pull request",
+      "audit",
+      "implementation complete"
+    ],
+    "states": [
+      "VERIFY",
+      "REVIEW"
+    ]
+  },
+  "workflow": {
+    "enters": "REVIEW",
+    "completion": [
+      "independent-verdict"
+    ],
+    "transitions": {
+      "pass": "RELEASE",
+      "changes": "EXECUTE",
+      "rethink": "DEFINE"
+    }
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-security",
+      "xyeena-verify"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "repo.read"
+      ],
+      "optional": [
+        "shell.run",
+        "git.read",
+        "browser.inspect"
+      ]
+    },
+    "agents": {
+      "optional": [
+        "auditor"
+      ]
+    }
+  },
+  "parallelism": {
+    "mode": "conditional",
+    "safe": [
+      "independent-review-axes"
+    ],
+    "unsafe": [
+      "reviewers-editing-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "safe"
+  },
+  "evidence": {
+    "required": [
+      "diff",
+      "acceptance-criteria",
+      "verification-evidence"
+    ]
+  },
+  "outputs": [
+    "verdict",
+    "findings"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

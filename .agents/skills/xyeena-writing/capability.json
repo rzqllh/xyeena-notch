@@ -1,0 +1,29 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-writing",
+    "version": "0.1.0",
+    "category": "craft",
+    "description": "Write or edit product copy, technical prose and code comments without generic AI filler or invented proof."
+  },
+  "type": ["KNOWLEDGE", "PROCESS"],
+  "activation": {
+    "class": "auto",
+    "intents": ["writing"],
+    "signals": ["rewrite", "copywriting", "headline", "cta", "documentation", "readme", "code comment", "comments"],
+    "paths": ["**/*.md"],
+    "states": ["TRIAGE", "DEFINE", "EXECUTE", "VERIFY"]
+  },
+  "workflow": {
+    "completion": ["audience-fit", "specific-language", "claims-grounded", "no-obvious-comment-narration"]
+  },
+  "dependencies": {"required": ["xyeena-core"], "optional": []},
+  "chain": {"allowed": ["xyeena-verify"], "maxDepth": 1},
+  "requirements": {"tools": {"required": [], "optional": ["repo.read", "repo.write"]}, "agents": {"optional": []}},
+  "parallelism": {"mode": "none", "safe": [], "unsafe": ["multiple-writers-same-copy"]},
+  "consent": {"level": "workspace-mutate"},
+  "evidence": {"required": []},
+  "outputs": ["copy", "documentation", "comments"],
+  "budget": {"default": "cheap", "maxSupportingCapabilities": 1}
+}

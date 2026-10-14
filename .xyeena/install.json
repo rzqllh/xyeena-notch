@@ -1,0 +1,61 @@
+{
+  "version": "0.2.0",
+  "components": [
+    "skills",
+    "harness"
+  ],
+  "runtimes": [
+    "antigravity"
+  ],
+  "skills": [
+    "xyeena-architecture",
+    "xyeena-context",
+    "xyeena-core",
+    "xyeena-debug",
+    "xyeena-execute",
+    "xyeena-grill",
+    "xyeena-handoff",
+    "xyeena-interface",
+    "xyeena-orchestrate",
+    "xyeena-plan",
+    "xyeena-prototype",
+    "xyeena-release",
+    "xyeena-research",
+    "xyeena-review",
+    "xyeena-security",
+    "xyeena-skillcraft",
+    "xyeena-test",
+    "xyeena-verify",
+    "xyeena-writing"
+  ],
+  "guards": [
+    "00-core",
+    "10-profile",
+    "20-product",
+    "30-design",
+    "40-engineering",
+    "50-quality",
+    "60-security",
+    "70-performance",
+    "80-operations",
+    "90-hygiene",
+    "95-agent-safety"
+  ],
+  "installed_at": "2026-10-14T08:51:29.474Z",
+  "skill_targets": [
+    {
+      "path": ".agents\\skills",
+      "runtimes": [
+        "antigravity"
+      ]
+    }
+  ],
+  "agent_targets": [
+    {
+      "path": ".agents/agents",
+      "runtimes": [
+        "antigravity"
+      ]
+    }
+  ]
+}

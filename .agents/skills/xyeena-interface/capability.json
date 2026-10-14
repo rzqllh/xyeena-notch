@@ -1,0 +1,112 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-interface",
+    "version": "0.1.0",
+    "category": "interface",
+    "description": "Shape, build and verify distinctive production UI without generic AI template output."
+  },
+  "type": [
+    "PROCESS",
+    "TOOL",
+    "AGENT"
+  ],
+  "activation": {
+    "class": "auto",
+    "intents": [
+      "build-interface"
+    ],
+    "signals": [
+      "ui",
+      "ux",
+      "frontend",
+      "landing page",
+      "dashboard",
+      "redesign",
+      "responsive",
+      "design system"
+    ],
+    "paths": [
+      "**/*.tsx",
+      "**/*.jsx",
+      "**/*.vue",
+      "**/*.svelte",
+      "**/*.css"
+    ],
+    "states": [
+      "TRIAGE",
+      "DEFINE",
+      "PLAN",
+      "EXECUTE",
+      "VERIFY"
+    ]
+  },
+  "workflow": {
+    "completion": [
+      "direction-established",
+      "functional-ui",
+      "browser-evidence",
+      "responsive-evidence",
+      "critical-human-states-checked"
+    ]
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-research",
+      "xyeena-verify",
+      "xyeena-review"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "repo.read"
+      ],
+      "optional": [
+        "browser.inspect",
+        "browser.screenshot",
+        "shell.run"
+      ]
+    },
+    "agents": {
+      "optional": [
+        "designer"
+      ]
+    }
+  },
+  "parallelism": {
+    "mode": "conditional",
+    "safe": [
+      "independent-visual-reference-research",
+      "independent-review"
+    ],
+    "unsafe": [
+      "parallel-writes-same-components"
+    ]
+  },
+  "consent": {
+    "level": "workspace-mutate"
+  },
+  "evidence": {
+    "required": [
+      "rendered-ui",
+      "critical-interactions"
+    ]
+  },
+  "outputs": [
+    "ui-change",
+    "browser-evidence"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

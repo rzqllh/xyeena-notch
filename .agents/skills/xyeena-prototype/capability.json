@@ -1,0 +1,36 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-prototype",
+    "version": "0.1.0",
+    "category": "discovery",
+    "description": "Build the smallest disposable experiment needed to answer a technical unknown before committing to a design."
+  },
+  "type": ["PROCESS", "TOOL"],
+  "activation": {
+    "class": "auto",
+    "intents": ["prototype"],
+    "signals": ["prototype", "spike", "experiment", "technical unknown", "prove this", "test the idea"],
+    "states": ["DISCOVER", "RESEARCH", "PROTOTYPE", "DEBUG"]
+  },
+  "workflow": {
+    "enters": "PROTOTYPE",
+    "completion": ["question-stated", "experiment-executed", "result-observed", "production-commitment-separated"],
+    "transitions": {
+      "question-answered": "DEFINE",
+      "failed": "DEBUG"
+    }
+  },
+  "dependencies": {"required": ["xyeena-core"], "optional": []},
+  "chain": {"allowed": ["xyeena-verify"], "maxDepth": 1},
+  "requirements": {
+    "tools": {"required": ["repo.read"], "optional": ["shell.run", "browser.inspect"]},
+    "agents": {"optional": []}
+  },
+  "parallelism": {"mode": "conditional", "safe": ["independent-design-spikes"], "unsafe": ["parallel-writes-shared-production-files"]},
+  "consent": {"level": "workspace-mutate"},
+  "evidence": {"required": ["experiment-output"]},
+  "outputs": ["answer", "evidence", "discard-or-promote-recommendation"],
+  "budget": {"default": "standard", "maxSupportingCapabilities": 1}
+}

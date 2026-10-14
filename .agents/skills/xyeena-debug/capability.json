@@ -1,0 +1,105 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-debug",
+    "version": "0.1.0",
+    "category": "engineering",
+    "description": "Reproduce, localize and verify bugs or regressions before claiming a fix."
+  },
+  "type": [
+    "PROCESS",
+    "TOOL"
+  ],
+  "activation": {
+    "class": "auto",
+    "intents": [
+      "debug"
+    ],
+    "signals": [
+      "bug",
+      "error",
+      "crash",
+      "regression",
+      "failing test",
+      "broken",
+      "unexpected"
+    ],
+    "states": [
+      "TRIAGE",
+      "EXECUTE",
+      "DEBUG",
+      "VERIFY"
+    ]
+  },
+  "workflow": {
+    "enters": "DEBUG",
+    "completion": [
+      "symptom-reproduced-or-bounded",
+      "root-cause-supported",
+      "original-symptom-verified"
+    ],
+    "transitions": {
+      "success": "VERIFY",
+      "missing-fact": "RESEARCH",
+      "invalid-assumption": "DISCOVER"
+    }
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-research",
+      "xyeena-test",
+      "xyeena-verify"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "repo.read",
+        "shell.run"
+      ],
+      "optional": [
+        "browser.inspect",
+        "logs.read"
+      ]
+    },
+    "agents": {
+      "optional": [
+        "debugger"
+      ]
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "workspace-mutate"
+  },
+  "evidence": {
+    "required": [
+      "reproduction",
+      "root-cause",
+      "post-fix-verification"
+    ]
+  },
+  "outputs": [
+    "diagnosis",
+    "fix",
+    "regression-evidence"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}

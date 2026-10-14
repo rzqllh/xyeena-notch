@@ -1,0 +1,81 @@
+{
+  "apiVersion": "xyeena.dev/v1alpha1",
+  "kind": "Capability",
+  "metadata": {
+    "name": "xyeena-architecture",
+    "version": "0.1.0",
+    "category": "engineering",
+    "description": "Design maintainable seams and deep modules without speculative abstraction."
+  },
+  "type": [
+    "KNOWLEDGE",
+    "PROCESS"
+  ],
+  "activation": {
+    "class": "auto",
+    "signals": [
+      "architecture",
+      "module",
+      "interface",
+      "seam",
+      "refactor design",
+      "system design"
+    ],
+    "states": [
+      "DISCOVER",
+      "DEFINE",
+      "PLAN"
+    ]
+  },
+  "workflow": {
+    "completion": [
+      "tradeoff-explicit",
+      "smallest-adequate-design"
+    ]
+  },
+  "dependencies": {
+    "required": [
+      "xyeena-core"
+    ],
+    "optional": []
+  },
+  "chain": {
+    "allowed": [
+      "xyeena-research"
+    ],
+    "maxDepth": 2
+  },
+  "requirements": {
+    "tools": {
+      "required": [
+        "repo.read"
+      ],
+      "optional": []
+    },
+    "agents": {
+      "optional": []
+    }
+  },
+  "parallelism": {
+    "mode": "none",
+    "safe": [],
+    "unsafe": [
+      "concurrent-writes-same-worktree"
+    ]
+  },
+  "consent": {
+    "level": "safe"
+  },
+  "evidence": {
+    "required": [
+      "current-code-shape"
+    ]
+  },
+  "outputs": [
+    "architecture-decision"
+  ],
+  "budget": {
+    "default": "standard",
+    "maxSupportingCapabilities": 2
+  }
+}
