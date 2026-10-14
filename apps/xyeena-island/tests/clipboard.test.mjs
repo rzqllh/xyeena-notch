@@ -35,3 +35,61 @@ test('clipboard history preserves items during background polling and only clear
  h.clear();
  assert.equal(h.items.length, 0);
 });
+
+test('clipboard history handles structured image items, thumbnails, and file lists', () => {
+ const h = new ClipboardHistory();
+ h.enable();
+ h.accept({ type: 'text', text: 'initial baseline', hash: 'text:init' });
+
+ // Add image item
+ const imgAccepted = h.accept({
+  type: 'image',
+  text: 'Image (1.2 MB)',
+  dataUrl: 'data:image/bmp;base64,Qk0...',
+  hash: 'img:abcd1234',
+  sizeBytes: 1200000,
+ });
+ assert.equal(imgAccepted, true);
+ assert.equal(h.items[0].type, 'image');
+ assert.equal(h.items[0].dataUrl, 'data:image/bmp;base64,Qk0...');
+
+ // Add file list item
+ const filesAccepted = h.accept({
+  type: 'files',
+  text: 'C:\\docs\\report.pdf\nC:\\docs\\notes.txt',
+  filePaths: ['C:\\docs\\report.pdf', 'C:\\docs\\notes.txt'],
+  hash: 'files:xyz987',
+  sizeBytes: 2,
+ });
+ assert.equal(filesAccepted, true);
+ assert.equal(h.items[0].type, 'files');
+ assert.deepEqual(h.items[0].filePaths, ['C:\\docs\\report.pdf', 'C:\\docs\\notes.txt']);
+ assert.equal(h.items.length, 2);
+});
+
+test('clipboard pin, delete, search filtering, and clear-unpinned', () => {
+ const h = new ClipboardHistory();
+ h.enable();
+ h.accept('baseline item');
+ h.accept('pinned item alpha');
+ h.accept('regular item beta');
+
+ // Search
+ assert.equal(h.filter('alpha').length, 1);
+ assert.equal(h.filter('item').length, 2);
+ assert.equal(h.filter('nonexistent').length, 0);
+
+ // Pin
+ const alphaId = h.items.find(i => i.text.includes('alpha')).id;
+ assert.equal(h.togglePin(alphaId), true);
+ assert.equal(h.items.find(i => i.id === alphaId).pinned, true);
+
+ // Clear unpinned only
+ h.clear(true);
+ assert.equal(h.items.length, 1);
+ assert.equal(h.items[0].id, alphaId);
+
+ // Delete single item
+ assert.equal(h.deleteItem(alphaId), true);
+ assert.equal(h.items.length, 0);
+});

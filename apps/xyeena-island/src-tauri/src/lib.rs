@@ -1,5 +1,6 @@
 //! Xyeena Island MVP: transparent top-edge companion, tray, and opt-in read-only run summaries.
 //! No hooks, agent approvals, autostart, sockets, or network endpoints.
+mod clipboard;
 mod media;
 mod volume;
 use std::fs;
@@ -137,6 +138,38 @@ fn hide_island_window(window: WebviewWindow) -> Result<(), String> {
 #[tauri::command]
 fn recenter_island(window: WebviewWindow, mode: String) -> Result<(), String> {
     set_mode(&window, Mode::parse(&mode)?)
+}
+
+#[tauri::command]
+fn read_native_clipboard() -> Result<Option<clipboard::NativeClipboardItem>, String> {
+    clipboard::read_native_clipboard_item()
+}
+
+#[tauri::command]
+fn write_native_image(data_url: String) -> Result<(), String> {
+    clipboard::write_native_image_to_clipboard(&data_url)
+}
+
+#[tauri::command]
+fn save_file_to_downloads(filename: String, content: String, is_base64: bool) -> Result<String, String> {
+    let base_dir = std::env::var_os("USERPROFILE")
+        .map(|p| std::path::PathBuf::from(p).join("Downloads"))
+        .filter(|p| p.exists())
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let path = base_dir.join(&filename);
+    if is_base64 {
+        let b64 = if let Some(idx) = content.find(',') {
+            &content[idx + 1..]
+        } else {
+            &content
+        };
+        let bytes = clipboard::base64_decode(b64).ok_or("Invalid base64 payload")?;
+        std::fs::write(&path, bytes).map_err(|e| format!("Cannot save file: {e}"))?;
+    } else {
+        std::fs::write(&path, content.as_bytes()).map_err(|e| format!("Cannot save file: {e}"))?;
+    }
+    Ok(path.to_string_lossy().to_string())
 }
 
 #[derive(serde::Serialize)]
@@ -315,6 +348,9 @@ pub fn run() {
             volume::set_master_volume,
             volume::set_master_mute,
             read_island_cursor,
+            read_native_clipboard,
+            write_native_image,
+            save_file_to_downloads,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");

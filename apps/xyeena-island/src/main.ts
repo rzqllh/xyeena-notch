@@ -123,10 +123,11 @@ root.innerHTML=`
     <p class="explain" id="meeting-explain">Manual timer. Teams call detection requires a separate Microsoft 365 connection; playback sessions do not report calls.</p>
    </section>
    <section class="page" id="page-clipboard" role="tabpanel" hidden>
-     <div class="section-heading"><div><span class="kicker">PRIVATE / THIS SESSION</span><h1>Clipboard</h1></div><button id="clip-clear" class="minor-btn" type="button">Clear</button></div>
-     <p class="explain clip-warning">Text-only history lives in memory and is cleared on exit. Clipboard contents may contain secrets; the filter cannot detect every sensitive value.</p>
-     <div class="clip-controls"><button id="clip-toggle" class="meeting-button" aria-pressed="false" type="button">Enable capture</button><button id="clip-read" class="minor-btn" type="button">Read clipboard once</button><span id="clip-state" role="status">Capture off</span></div>
-     <div id="clip-list" class="clip-list" aria-label="Clipboard text history"></div>
+     <div class="section-heading"><div><span class="kicker">ON-DEVICE CLIPBOARD</span><h1>Clipboard History</h1></div><div class="clip-actions"><button id="clip-clear-unpinned" class="minor-btn" type="button">Clear unpinned</button><button id="clip-clear" class="minor-btn" type="button">Clear all</button></div></div>
+     <p class="explain clip-warning">In-memory history for text, images, and file lists. Sensitive tokens are best-effort filtered.</p>
+     <div class="clip-controls"><button id="clip-toggle" class="meeting-button" aria-pressed="false" type="button">Enable capture</button><button id="clip-read" class="minor-btn" type="button">Read once</button><span id="clip-state" role="status">Capture off</span></div>
+     <div class="clip-search-bar">${icon('logo',13)}<input id="clip-search" type="search" placeholder="Search clipboard history..." aria-label="Search clips"></div>
+     <div id="clip-list" class="clip-list" aria-label="Clipboard history"></div>
    </section>
    <section class="page" id="page-activity" role="tabpanel" hidden>
     <div class="section-heading"><div><span class="kicker">ON-DEVICE HISTORY</span><h1>Activity</h1></div><button class="minor-btn test-notification" type="button">${icon('bell',14)} Test toast</button></div>
@@ -507,42 +508,116 @@ for(const button of root.querySelectorAll<HTMLButtonElement>('[data-media]'))but
 function renderClipboard(){
  const toggle=q<HTMLButtonElement>('#clip-toggle');
  toggle.textContent=clipboard.enabled?'Pause capture':'Enable capture';toggle.setAttribute('aria-pressed',String(clipboard.enabled));
- q<HTMLElement>('#clip-state').textContent=clipboard.enabled?'Capturing text only':'Capture off';
+ q<HTMLElement>('#clip-state').textContent=clipboard.enabled?'Capturing active':'Capture off';
+ const searchInput=q<HTMLInputElement>('#clip-search');
+ const query=searchInput?searchInput.value:'';
+ const items=clipboard.filter(query);
  const list=q<HTMLElement>('#clip-list');list.replaceChildren();
- if(!clipboard.items.length){const empty=document.createElement('p');empty.className='empty-copy';empty.textContent='No captured text. Enable capture or read the clipboard once.';list.append(empty);return;}
- for(const item of clipboard.items){
+ if(!items.length){
+  const empty=document.createElement('p');empty.className='empty-copy';
+  empty.textContent=query?'No matching clipboard items.':'No captured items. Enable capture or copy text/images.';
+  list.append(empty);return;
+ }
+ for(const item of items){
   const row=document.createElement('div');row.className='clip-entry';
-  const text=document.createElement('span');text.textContent=item.text.slice(0,180);
-  const btn=document.createElement('button');btn.type='button';btn.className='minor-btn';btn.textContent='Copy';
-  btn.addEventListener('click',async()=>{try{await writeText(item.text);q<HTMLElement>('#clip-state').textContent='Copied';}catch(err){q<HTMLElement>('#clip-state').textContent='Copy failed: '+String(err);}});
-  row.append(text,btn);list.append(row);
+  if(item.pinned)row.dataset.pinned='true';
+
+  if(item.type==='image'&&item.dataUrl){
+   const thumb=document.createElement('img');
+   thumb.className='clip-thumb';thumb.src=item.dataUrl;thumb.alt='Clipboard image preview';
+   row.append(thumb);
+  }
+
+  const body=document.createElement('div');body.className='clip-body';
+  const meta=document.createElement('div');meta.className='clip-meta-row';
+  const badge=document.createElement('span');badge.className='clip-badge';
+  badge.textContent=item.type.toUpperCase();
+  const time=document.createElement('span');
+  time.textContent=new Date(item.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  meta.append(badge,time);
+
+  const text=document.createElement('span');text.className='clip-text';
+  text.textContent=item.text.slice(0,180);
+  body.append(meta,text);
+
+  const actions=document.createElement('div');actions.className='clip-actions';
+  const pinBtn=document.createElement('button');pinBtn.type='button';pinBtn.className='clip-btn';
+  pinBtn.textContent=item.pinned?'Unpin':'Pin';pinBtn.title=item.pinned?'Unpin item':'Pin item';
+  pinBtn.addEventListener('click',()=>{clipboard.togglePin(item.id);renderClipboard();});
+
+  const copyBtn=document.createElement('button');copyBtn.type='button';copyBtn.className='clip-btn clip-btn-accent';
+  copyBtn.textContent='Copy';copyBtn.title='Copy to Windows clipboard';
+  copyBtn.addEventListener('click',async()=>{
+   try{
+    if(item.type==='image'&&item.dataUrl&&isTauri){await native('write_native_image',{dataUrl:item.dataUrl});}
+    else{await writeText(item.text);}
+    q<HTMLElement>('#clip-state').textContent='Copied to clipboard';
+   }catch(err){q<HTMLElement>('#clip-state').textContent='Copy failed: '+String(err);}
+  });
+
+  const saveBtn=document.createElement('button');saveBtn.type='button';saveBtn.className='clip-btn';
+  saveBtn.textContent=item.type==='image'?'Save':'Export';saveBtn.title=item.type==='image'?'Save image to Downloads':'Export text';
+  saveBtn.addEventListener('click',async()=>{
+   try{
+    if(!isTauri){q<HTMLElement>('#clip-state').textContent='Saved (web mode simulated)';return;}
+    const filename=item.type==='image'?`xyeena-clip-${item.id}.bmp`:`xyeena-clip-${item.id}.txt`;
+    const content=item.type==='image'?(item.dataUrl||''):item.text;
+    const path=await native('save_file_to_downloads',{filename,content,isBase64:item.type==='image'}) as string;
+    q<HTMLElement>('#clip-state').textContent='Saved to: '+path;
+   }catch(err){q<HTMLElement>('#clip-state').textContent='Save failed: '+String(err);}
+  });
+
+  const delBtn=document.createElement('button');delBtn.type='button';delBtn.className='clip-btn';
+  delBtn.textContent='×';delBtn.title='Delete item';
+  delBtn.addEventListener('click',()=>{clipboard.deleteItem(item.id);renderClipboard();});
+
+  actions.append(pinBtn,copyBtn,saveBtn,delBtn);
+  row.append(body,actions);
+  list.append(row);
  }
 }
+
 async function observeClipboard(){
- if(clipBusy||!clipboard.enabled||!isTauri)return;
+ if(clipBusy||!clipboard.enabled)return;
  clipBusy=true;
  try{
+  if(isTauri){
+   const nativeItem=await native('read_native_clipboard') as any;
+   if(nativeItem){
+    if(clipboard.accept(nativeItem))renderClipboard();
+    return;
+   }
+  }
   const text=await readText();
   if(text&&clipboard.accept(text))renderClipboard();
  }catch(err){q<HTMLElement>('#clip-state').textContent='Clipboard unavailable: '+String(err);}
  finally{clipBusy=false;}
 }
+
 q<HTMLButtonElement>('#clip-toggle').addEventListener('click',async()=>{
  if(clipboard.enabled){clipboard.disable();if(clipTimer)clearInterval(clipTimer);clipTimer=null;}
  else {clipboard.enable();void observeClipboard();if(clipTimer)clearInterval(clipTimer);clipTimer=setInterval(()=>void observeClipboard(),1500);}
  renderClipboard();
 });
+
 q<HTMLButtonElement>('#clip-read').addEventListener('click',async()=>{
- if(!isTauri){q<HTMLElement>('#clip-state').textContent='Windows app only';return;}
- try{const value=await readText();
-  // One-time read intentionally never starts background monitoring.
+ try{
   const prev=clipboard.enabled;
   if(!prev){clipboard.enable();clipboard.last='';}
-  clipboard.accept(value);
+  if(isTauri){
+   const nativeItem=await native('read_native_clipboard') as any;
+   if(nativeItem){clipboard.accept(nativeItem);}
+   else{const val=await readText();clipboard.accept(val);}
+  }else{
+   const val=await readText();clipboard.accept(val);
+  }
   if(!prev)clipboard.disable();
   renderClipboard();q<HTMLElement>('#clip-state').textContent='Clipboard read once';
  }catch(err){q<HTMLElement>('#clip-state').textContent='Read failed: '+String(err);}
 });
+
+q<HTMLInputElement>('#clip-search').addEventListener('input',()=>renderClipboard());
+q<HTMLButtonElement>('#clip-clear-unpinned').addEventListener('click',()=>{clipboard.clear(true);renderClipboard();});
 q<HTMLButtonElement>('#clip-clear').addEventListener('click',()=>{clipboard.clear();renderClipboard();});
 window.addEventListener('beforeunload',()=>{clipboard.clear();if(clipTimer)clearInterval(clipTimer);});
 
