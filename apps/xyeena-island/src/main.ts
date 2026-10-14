@@ -277,7 +277,8 @@ function syncGazePolling(){
   try{
    const cursor=await invoke<NativeCursor|null>('read_island_cursor');
    if(generation!==gazeGeneration)return;
-   if(cursor&&Number.isFinite(cursor.x)&&Number.isFinite(cursor.y))setLionGaze(cursor.x,cursor.y);
+   if(cursor===null){stopGazePolling();return;}
+   if(Number.isFinite(cursor.x)&&Number.isFinite(cursor.y))setLionGaze(cursor.x,cursor.y);
    else delay=250;
   }catch(err){
    console.warn('Native cursor unavailable:',err);
