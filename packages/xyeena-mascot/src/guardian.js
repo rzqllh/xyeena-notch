@@ -7,16 +7,20 @@ const tag='xyeena-guardian';
 const raf=typeof requestAnimationFrame==='function'?requestAnimationFrame.bind(globalThis):()=>0;
 const caf=typeof cancelAnimationFrame==='function'?cancelAnimationFrame.bind(globalThis):()=>{};
 
-export class XyeenaGuardian extends HTMLElement {
+const BaseElement = typeof HTMLElement !== 'undefined' ? HTMLElement : class {};
+
+export class XyeenaGuardian extends BaseElement {
   static get observedAttributes(){return ['state','variant','size','animated'];}
   constructor(){
     super();this._id=`xyg-${++sequence}`;this._raf=0;this._token=0;this._progress=0;this._sound=null;
-    this.attachShadow({mode:'open'});
-    this.shadowRoot.innerHTML=`<style>${guardianStyles}</style>${mascotArt(this._id)}`;
-    this._eyes=this.shadowRoot.querySelector('[data-eyes]');
-    this._badge=this.shadowRoot.querySelector('[data-badge]');
-    this._accessory=this.shadowRoot.querySelector('[data-accessory]');
-    this._svg=this.shadowRoot.querySelector('svg');
+    if(typeof this.attachShadow === 'function'){
+      this.attachShadow({mode:'open'});
+      this.shadowRoot.innerHTML=`<style>${guardianStyles}</style>${mascotArt(this._id)}`;
+      this._eyes=this.shadowRoot.querySelector('[data-eyes]');
+      this._badge=this.shadowRoot.querySelector('[data-badge]');
+      this._accessory=this.shadowRoot.querySelector('[data-accessory]');
+      this._svg=this.shadowRoot.querySelector('svg');
+    }
     this._reduce=typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
     this._onPointer=e=>{
       if(this._reduce||!this.hasAttribute('interactive'))return;
@@ -141,6 +145,7 @@ export class XyeenaGuardian extends HTMLElement {
   cancelUpload(){this._cancelTimeline();if(this.state==='upload')this.setState('idle');}
 }
 export function defineXyeenaGuardian(){
+  if(typeof customElements === 'undefined') return null;
   if(!customElements.get(tag))customElements.define(tag,XyeenaGuardian);
   return customElements.get(tag);
 }
