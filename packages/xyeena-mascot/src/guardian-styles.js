@@ -1,6 +1,8 @@
 export const guardianStyles = `
-:host{--accent:#7c9fff;display:inline-block;contain:layout style;position:relative;width:var(--mascot-size,260px);height:auto;aspect-ratio:360/320;vertical-align:middle;isolation:isolate;color-scheme:light dark}
+:host{--accent:#7c9fff;display:inline-block;contain:layout style;position:relative;width:var(--mascot-size,260px);height:auto;aspect-ratio:1/1;vertical-align:middle;isolation:isolate;color-scheme:light dark}
 *,*::before,*::after{box-sizing:border-box}
+.guardian-canvas{width:100%;height:100%;display:block;position:absolute;top:0;left:0;pointer-events:none}
+:host([data-canvas="true"]) .guardian-svg{opacity:0;pointer-events:none;position:absolute;top:0;left:0;width:100%;height:100%}
 .guardian-svg{width:100%;height:100%;display:block;overflow:visible}
 .float-rig{transform-origin:180px 172px;animation:xyeena-float 3.5s ease-in-out infinite;will-change:transform}
 .gaze-rig{transform:translate(var(--look-x,0px),var(--look-y,0px));transition:transform .24s ease-out}
