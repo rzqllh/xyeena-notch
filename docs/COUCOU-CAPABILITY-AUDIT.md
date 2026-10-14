@@ -27,7 +27,7 @@ Status legend: **implemented** = source exists, **candidate** = source exists bu
 | GitHub CI / review | `github.rs` | Planned | Fine-grained read-only token; status refresh/backoff. |
 | Vercel, Resend, Notion, Stripe, Cal.com, n8n and other services | `integrations.rs` | Planned | Add independently, with least-privilege tokens; no empty decorative cards. |
 | Phone link, encrypted pairing, relays | `phone_link/` | Planned | Separate security review, explicit opt-in, pairing/revocation, no default listener. |
-| Desktop-floating mascot, wardrobe | `desktop.rs`, `mochi/wardrobe` | New Xyeena concept planned | No upstream asset reuse; inspect separate window focus/cursor behavior. |
+| Desktop-floating mascot, wardrobe | `desktop.rs`, `mochi/wardrobe` | Desktop placement OUT OF SCOPE by user decision | Xyeena Lion remains in top-screen Island; global gaze only; wardrobe may be revisited separately. |
 | Internationalization and accessible UI | `i18n.rs`, README Languages | Planned | English/Indonesian first, keyboard/focus and reduced motion. |
 | Installer/updates, signatures | `pack.mjs`, Tauri bundle | Unsigned NSIS packaging configured; signing/update planned | Signed executable or candid SmartScreen warning; reversible updates. |
 | Linux | `platform/`, README Linux | Planned after stable Windows | Linux Tauri constraints and Wayland-specific positioning. |

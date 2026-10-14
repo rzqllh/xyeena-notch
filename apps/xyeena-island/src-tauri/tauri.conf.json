@@ -32,23 +32,6 @@
         "visible": true,
         "center": false,
         "dragDropEnabled": false
-      },
-      {
-        "label": "guardian",
-        "title": "Xyeena Guardian",
-        "url": "guardian.html",
-        "width": 180,
-        "height": 180,
-        "resizable": false,
-        "decorations": false,
-        "transparent": true,
-        "shadow": false,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "focus": false,
-        "visible": false,
-        "center": false,
-        "dragDropEnabled": false
       }
     ]
   },

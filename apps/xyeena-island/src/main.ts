@@ -61,7 +61,6 @@ root.innerHTML=`
       <xyeena-guardian id="header-guardian" size="56" interactive animated></xyeena-guardian>
     </span>
     <div class="header-titles"><strong>Xyeena Island</strong><span class="header-status" id="header-status">On device</span></div>
-    <button class="icon-btn guardian-toggle" type="button" title="Send Guardian to desktop" aria-label="Send Guardian to desktop" aria-pressed="false">🦁</button>
     <button class="icon-btn pin" type="button" aria-label="Pin Island" aria-pressed="false" title="Keep expanded">${icon('pin',16)}</button>
     <button class="icon-btn collapse" type="button" aria-label="Collapse Island" title="Collapse">${icon('chevron',18)}</button>
   </header>
@@ -126,7 +125,6 @@ root.innerHTML=`
     <div class="setting"><span><strong>Auto-hide compact view</strong><small>Reveal using the wake strip</small></span><input type="checkbox" id="auto-hide" aria-label="Auto-hide"></div>
     <div class="setting"><span><strong>Windows run notifications</strong><small>Opt-in for connected project changes</small></span><input type="checkbox" id="run-notifications" aria-label="Run notifications"></div>
     <div class="setting"><span><strong>Appearance</strong><small>Match Windows or choose a theme</small></span><select id="theme" aria-label="Appearance"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
-    <div class="setting"><span><strong>Guardian on desktop</strong><small>Perch quietly or follow your pointer</small></span><select id="guardian-mode" aria-label="Guardian desktop behavior"><option value="perch">Perch</option><option value="follow">Follow pointer</option></select></div>
     <div class="setting"><span><strong>Reduced motion</strong><small>Disable window transitions</small></span><input type="checkbox" id="reduce-motion" aria-label="Reduced motion"></div>
     <details class="project-details" id="about-credits"><summary>About & credits <span>MIT source</span></summary>
       <p class="explain">Xyeena Island 1.0.0-alpha.1 · Local Windows companion. Xyeena Guardian mascot is original Xyeena artwork (@xyeena/mascot). Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
@@ -147,19 +145,12 @@ let meeting=normalizeMeeting(initialMeeting);
 let mode:IslandMode='compact',panel:Panel='now';
 const motion=new GeometryMotion(shellDimensions(mode));
 const feed=new RunChangeFeed();
-let lastGuardianState='idle';
-let guardianContextSent=false;
 function syncGuardian(){
  const activeState=chooseGuardianState({meetingActive:meeting.active,mediaPlaying:selectedMedia.playing,runs,mode});
  const visualState=toMascotState(activeState);
  shell.dataset.fold=activeState;
  shell.dataset.guardian=activeState;
  shell.dataset.mascot=visualState;
- if(activeState!==lastGuardianState||!guardianContextSent){
-  lastGuardianState=activeState;
-  guardianContextSent=true;
-  if(isTauri)void native('guardian_update_context',{context:activeState}).catch(err=>console.warn('Guardian state:',err));
- }
  const label=guardianStatus(activeState);
  for(const el of root.querySelectorAll<HTMLElement>('.mascot-slot'))el.title=label;
  for(const g of root.querySelectorAll<HTMLElement>('xyeena-guardian')){
@@ -226,6 +217,7 @@ function setMode(next:IslandMode,instant=false){
  motion.target(target,{closing,reduced:instant||isReduced()||!isTauri,now:performance.now()});
  if(motion.animating)raf=requestAnimationFrame(tickMotion);else sendFrame(target);
  syncGuardian();
+ syncGazePolling();
 }
 function apply(event:IslandEvent){setMode(transition(mode,event));}
 function setPanel(next:Panel){
@@ -248,32 +240,6 @@ q<HTMLElement>('.compact').addEventListener('click',e=>{if(!(e.target as Element
 q<HTMLButtonElement>('.compact-expand').addEventListener('click',()=>apply('activate'));
 q<HTMLButtonElement>('.collapse').addEventListener('click',()=>apply('collapse'));
 q<HTMLButtonElement>('.pin').addEventListener('click',()=>apply('toggle-pin'));
-// Desktop Guardian is a second window in this SAME Tauri app (never a second process).
-type GuardianPresence={detached:boolean;mode:'perch'|'follow';context:string};
-let guardianDetached=false;
-function applyGuardianPresence(p:GuardianPresence){
- guardianDetached=p.detached;
- shell.dataset.guardianDetached=String(guardianDetached);
- const button=q<HTMLButtonElement>('.guardian-toggle');
- button.setAttribute('aria-pressed',String(guardianDetached));
- button.setAttribute('aria-label',guardianDetached?'Return Guardian to Island':'Send Guardian to desktop');
- button.title=guardianDetached?'Return Guardian to Island':'Send Guardian to desktop';
- q<HTMLSelectElement>('#guardian-mode').value=p.mode;
-}
-q<HTMLButtonElement>('.guardian-toggle').addEventListener('click',async()=>{
- const button=q<HTMLButtonElement>('.guardian-toggle');button.disabled=true;
- try{
-  if(guardianDetached)await native('guardian_return');
-  else await native('guardian_detach',{mode:q<HTMLSelectElement>('#guardian-mode').value});
-  applyGuardianPresence(await invoke<GuardianPresence>('guardian_status'));
- }catch(err){console.error('Guardian desktop:',err);button.title='Guardian unavailable: '+String(err);}
- finally{button.disabled=false;}
-});
-q<HTMLSelectElement>('#guardian-mode').addEventListener('change',async e=>{
- if(!guardianDetached)return;
- try{applyGuardianPresence(await invoke<GuardianPresence>('guardian_set_mode',{mode:(e.target as HTMLSelectElement).value}));}
- catch(err){console.error('Guardian mode:',err);}
-});
 shell.addEventListener('pointerenter',()=>{if(exitTimer)clearTimeout(exitTimer);});
 function isInteracting():boolean{
  const a=document.activeElement;
@@ -286,17 +252,46 @@ shell.addEventListener('pointerleave',()=>{
 });
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&(mode==='expanded'||mode==='pinned'))apply('collapse');});
 
-function updateMascotGaze(e:PointerEvent|MouseEvent){
- for(const g of root.querySelectorAll<any>('xyeena-guardian')){
-  if(typeof g.setGazeFromClient==='function')g.setGazeFromClient(e.clientX,e.clientY);
+// Native Windows cursor sampling runs only when the top-screen Lion is visible.
+// The coordinates stay in memory; nothing is logged, persisted or transmitted.
+type NativeCursor={x:number;y:number};
+let gazeTimer:ReturnType<typeof setTimeout>|undefined;
+let gazeGeneration=0;
+function setLionGaze(clientX:number,clientY:number){
+ for(const lion of root.querySelectorAll<any>('xyeena-guardian')){
+  if(typeof lion.setGazeFromClient==='function')lion.setGazeFromClient(clientX,clientY);
  }
 }
-window.addEventListener('pointermove',updateMascotGaze,{passive:true});
-window.addEventListener('pointerleave',()=>{
- for(const g of root.querySelectorAll<any>('xyeena-guardian')){
-  if(typeof g.setGaze==='function')g.setGaze(0,0);
- }
-});
+function stopGazePolling(){
+ ++gazeGeneration;
+ if(gazeTimer!==undefined)clearTimeout(gazeTimer);
+ gazeTimer=undefined;
+}
+function syncGazePolling(){
+ stopGazePolling();
+ if(!isTauri||document.hidden||mode==='hidden'||mode==='dormant')return;
+ const generation=gazeGeneration;
+ const poll=async()=>{
+  if(generation!==gazeGeneration)return;
+  let delay=50;
+  try{
+   const cursor=await invoke<NativeCursor|null>('read_island_cursor');
+   if(generation!==gazeGeneration)return;
+   if(cursor===null){stopGazePolling();return;}
+   if(Number.isFinite(cursor.x)&&Number.isFinite(cursor.y))setLionGaze(cursor.x,cursor.y);
+   else delay=250;
+  }catch(err){
+   console.warn('Native cursor unavailable:',err);
+   delay=1000;
+  }
+  if(generation===gazeGeneration)gazeTimer=setTimeout(()=>{void poll();},delay);
+ };
+ void poll();
+}
+// Local browser demo uses pointermove. Windows installed app uses GetCursorPos.
+if(!isTauri)window.addEventListener('pointermove',e=>setLionGaze(e.clientX,e.clientY),{passive:true});
+document.addEventListener('visibilitychange',syncGazePolling);
+window.addEventListener('beforeunload',stopGazePolling);
 
 function renderMeeting(){
  const label=meeting.active?'Meeting mode on':'Not tracking a meeting';
@@ -567,7 +562,7 @@ q<HTMLInputElement>('#run-notifications').addEventListener('change',async e=>{
  const accepted=isTauri&&(await isPermissionGranted()||(await requestPermission())==='granted');
  updatePrefs({notifyRunChanges:accepted});
 });
-q<HTMLButtonElement>('.footer-hide').addEventListener('click',()=>void native('hide_island_window').catch(console.error));
+q<HTMLButtonElement>('.footer-hide').addEventListener('click',()=>{stopGazePolling();void native('hide_island_window').catch(console.error);});
 q<HTMLButtonElement>('.recenter').addEventListener('click',()=>void native('recenter_island',{mode}).catch(console.error));
 
 async function initialize(){
@@ -575,9 +570,8 @@ async function initialize(){
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
   try{
-   await listen<GuardianPresence>('guardian:presence',event=>applyGuardianPresence(event.payload));
-   applyGuardianPresence(await invoke<GuardianPresence>('guardian_status'));
-   await listen<string>('island:tray',e=>{if(e.payload==='expand'){setMode('compact',true);setMode('expanded');}if(e.payload==='compact')setMode('compact',true);});
+   await listen<string>('island:tray',e=>{if(e.payload==='expand'){setMode('compact',true);setMode('expanded');}if(e.payload==='compact')setMode('compact',true);syncGazePolling();});
+   await listen<string>('island:visibility',e=>{if(e.payload==='hidden')stopGazePolling();else syncGazePolling();});
    await native('set_window_priority',{enabled:prefs.alwaysOnTop});
   }catch(err){console.error('Island init:',err);}
  }

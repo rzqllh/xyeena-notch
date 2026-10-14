@@ -1,6 +1,6 @@
 # Xyeena Notch
 
-A Windows-first Xyeena desktop companion and its **original Lion Guardian mascot**, kept separate from the `xyeena-agent` CLI/harness package. This is a **Windows smoke-test-ready alpha for `1.0.0-alpha.1`**, not an enterprise certification or a published GitHub release.
+A Windows-first Xyeena desktop companion and its **original Lion Guardian mascot**, kept separate from the `xyeena-agent` CLI/harness package. This is a **Windows smoke-test candidate for `1.0.0-alpha.1`**; changes to native gaze and window lifecycle are unverified on a physical Windows machine. It is not a stable release.
 
 ## Canonical layout
 

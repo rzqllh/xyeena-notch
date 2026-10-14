@@ -248,31 +248,15 @@ Instructions: Perform each test on a physical or dedicated virtual Windows machi
 
 ---
 
-### Scenario 17: Detached Desktop Guardian (Perch, Follow, Drag, Return, and Click-Through)
+### Scenario 17: Notch-only Lion gaze across the Windows desktop
 
-- **Procedure:**
-  1. In expanded Island header, click the Lion button (`🦁`).
-  2. Confirm Guardian detaches: Island mascot slot hides cleanly and transparent Guardian window appears on desktop.
-  3. Inspect Windows Taskbar and Alt+Tab: confirm no separate taskbar button or Alt+Tab entry is created (`skipTaskbar: true`, `WS_EX_TOOLWINDOW`).
-  4. In Perch mode, drag the Guardian across desktop; verify smooth repositioning without focus-stealing from underlying windows.
-  5. Click through the transparent corners outside the Lion's body; verify clicks hit underlying desktop/browser without obstruction.
-  6. Right-click Guardian to open the context menu (`Return home`, `Switch mode`, `Sleep`).
-  7. Switch to Follow mode: verify Guardian follows cursor with offset and full click-through to apps below.
-  8. Switch back to Perch mode; double-click Guardian or click `🦁` in Island header to return home.
-  9. Confirm Guardian window hides and Island companion reappears.
-- **Expected Result:** Shared presence across Island and desktop; smooth non-activating secondary window; reliable click-through; Perch position persisted in `guardian-desktop.json`.
-- **Status:** `[ ] PENDING MANUAL SMOKE` (PASS / FAIL / BLOCKED)
-- **Observations:**
-
----
-
-## Smoke Test Sign-Off Summary
-
-| Field | Detail |
-|---|---|
-| **Evaluator Name** | |
-| **Windows Version** | Windows 10 / 11 Build: |
-| **Display Resolution / Scale** | e.g., 2560x1440 @ 125% |
-| **Overall Assessment** | [ ] PASS — READY FOR ALPHA TESTING <br> [ ] BLOCKED — DEFECTS FOUND |
-| **Blocking Issues (if any)** | |
-| **Sign-Off Date** | |
+- **Status:** NOT RUN — physical Windows acceptance required.
+- **Steps:**
+  1. Launch the Island and verify only the main notch window exists. No desktop placement, Perch, Follow, or detach action.
+  2. Move the pointer inside the Island: Lion eyes move first, head follows subtly, body stays anchored.
+  3. Move the pointer OUTSIDE the Island over Notepad, browser and VS Code. Lion still looks toward it; input focus stays in the active app.
+  4. Test pointer left/right/above/below the Island, across monitors, including negative screen coordinates.
+  5. Verify gaze stays bounded and reduced-motion behavior is respected at 100%, 125%, 150% scale.
+  6. Hide to tray or collapse into dormant mode: sampling stops. Show Island again: tracking resumes.
+  7. Verify no cursor coordinates are logged, saved, sent to a provider or used to trigger OS clicks.
+- **Expected Result:** Original Xyeena Lion stays inside the notch, independently follows desktop cursor with eyes/head only, and no desktop pet window is present.

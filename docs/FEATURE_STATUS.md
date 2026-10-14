@@ -6,7 +6,7 @@ This table is the user-facing source of truth. **Implemented** means source exis
 |---|---|---|
 | Top-edge Island / tray / topmost | Implemented (adaptive dormant 184x8, compact 400x92, glance 480x144, focused 620x396; interaction-safe auto-collapse), Windows acceptance pending | Native build, DPI/fullscreen/focus/restart QA |
 | Coucou-style spring geometry | Implemented; performance unverified | 60/120Hz frame capture and pointer hit testing |
-| Xyeena Guardian (Living Lion companion) | Implemented via @xyeena/mascot (84px compact, 56px expanded Canvas 2D rig; cursor gaze tracking, independent head lag, anchored body, manual-only detached mode) | Visual, interaction, and accessibility review |
+| Xyeena Guardian (notch-first lion) | Canvas 2D eye/head rig in Island; native Windows cursor-sampling candidate, no desktop placement | Visual identity and global gaze outside Island still need Windows QA |
 | Windows media playback + transport | Implemented; input debouncing and real-time volume feedback added, acceptance pending | Browser/Spotify supported-session tests |
 | Seek, shuffle and repeat | Implemented, player-dependent | Player capability tests; accurate status labels |
 | Windows default-output volume/mute | Implemented with debounced input feedback, acceptance pending | Windows Core Audio device tests |
@@ -22,7 +22,7 @@ This table is the user-facing source of truth. **Implemented** means source exis
 | GitHub/Vercel/other services | NOT implemented | OAuth scopes, credentials, API integration |
 | File drop / code diff | NOT implemented | Windows WebView2 drop path + explicit consent |
 | Weekly recap / analytics | NOT implemented | Verified aggregate source, local retention controls |
-| Detached desktop Guardian | Implemented candidate (perch, follow, drag, click-through, shared presence) | Physical Windows acceptance pending (see docs/SMOKE-TEST-WINDOWS.md) |
+| Desktop placement | Removed per product decision; no secondary window or Perch/Follow toggle | Verify no desktop window or obsolete IPC in Windows installation |
 | Autostart / signed updater | NOT implemented | Opt-in autostart, signing keys and rollback |
 | Phone pairing / Linux | NOT implemented | Separate architecture and security review |
 

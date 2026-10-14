@@ -24,13 +24,8 @@ test('third party source attribution and native branding are present',()=>{
   assert.equal(fs.existsSync(path.join(root,item)),true,item);
  }
 });
-test('detached Guardian is a hidden same-process window with its own HTML entry',()=>{
- const guardian=conf.app.windows.find(w=>w.label==='guardian');
- assert.ok(guardian);
- assert.equal(guardian.visible,false);
- assert.equal(guardian.focus,false);
- assert.equal(guardian.skipTaskbar,true);
- assert.equal(guardian.transparent,true);
- assert.equal(guardian.url,'guardian.html');
- assert.equal(fs.existsSync(path.join(root,'guardian.html')),true);
+test('notch-first release has exactly one Island window',()=>{
+ assert.deepEqual(conf.app.windows.map(w=>w.label),['main']);
+ assert.equal(fs.existsSync(path.join(root,'guardian.html')),false);
+ assert.equal(fs.existsSync(path.join(root,'src-tauri/capabilities/guardian.json')),false);
 });
