@@ -19,15 +19,32 @@ button:disabled{opacity:.36;cursor:not-allowed}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 [hidden]{display:none!important}
 h1,h2,p{margin:0}
-.island{width:100%;height:100%;position:relative;overflow:hidden;contain:layout paint}
-.wake,.compact,.expanded{display:none;border:1px solid var(--line);border-top:0;background:var(--base);color:var(--text)}
-.wake{width:100%;height:100%;border-radius:0 0 5px 5px;position:relative;padding:0}
+.island{width:100%;height:100%;position:relative;overflow:hidden;border-radius:0 0 20px 20px;background:transparent;contain:layout paint}
+.island[data-mode="hidden"],.island[data-mode="dormant"]{border-radius:0 0 6px 6px}
+.wake,.compact,.glance,.expanded{display:none;width:100%;height:100%;border:1px solid var(--line);border-top:0;background:rgba(18,21,26,0.94);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);color:var(--text);box-sizing:border-box}
+:root[data-theme="light"] .wake,:root[data-theme="light"] .compact,:root[data-theme="light"] .glance,:root[data-theme="light"] .expanded{background:rgba(246,248,250,0.94)}
+.wake{border-radius:0 0 6px 6px;position:relative;padding:0}
 .wake span{position:absolute;top:3px;left:50%;width:42px;height:2px;background:var(--accent);transform:translateX(-50%)}
 .island[data-mode="hidden"] .wake,.island[data-mode="dormant"] .wake{display:block}
-.compact,.expanded{width:100%;height:100%;border-radius:0 0 18px 18px;overflow:hidden}
-.compact{align-items:center;gap:12px;padding:4px 14px 4px 8px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
-.island[data-mode="compact"] .compact,.island[data-mode="glance"] .compact{display:flex}
+.compact,.glance,.expanded{border-radius:0 0 20px 20px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),inset 0 0 0 1px rgba(255,255,255,0.03)}
+.compact{align-items:center;gap:12px;padding:4px 14px 4px 8px}
+.island[data-mode="compact"] .compact{display:flex}
+.island[data-mode="glance"] .glance{display:flex}
 .island[data-mode="expanded"] .expanded,.island[data-mode="focused"] .expanded,.island[data-mode="pinned"] .expanded{display:flex;flex-direction:column}
+
+/* Glance Asymmetric Split-Bento */
+.glance{display:none;padding:10px 14px;gap:12px;align-items:stretch}
+.glance-primary{flex:1.2;display:flex;align-items:center;gap:10px;min-width:0;background:rgba(255,255,255,0.02);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.glance-secondary{flex:0.8;display:flex;flex-direction:column;justify-content:space-between;gap:6px;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.glance-meta{display:flex;flex-direction:column;gap:3px;min-width:0;overflow:hidden}
+.glance-title{font-size:11px;font-weight:750;letter-spacing:0.06em;color:var(--accent)}
+.glance-headline{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.glance-sub{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.glance-card{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.glance-card-title{font-size:10px;font-weight:600;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.glance-actions{display:flex;align-items:center;gap:6px}
+.glance-pill{font-size:9px;font-weight:600;padding:2px 7px;border-radius:5px;background:var(--focus);color:var(--accent);border:1px solid var(--accent);cursor:pointer}
+.glance-pill:hover{filter:brightness(1.15)}
 .compact-copy{display:flex;flex:1;flex-direction:column;gap:3px;min-width:0;justify-content:center}
 .compact-meta{display:flex;align-items:center;gap:6px}
 .brand-title{font-size:12px;font-weight:750;letter-spacing:.08em;color:var(--accent)}
@@ -129,6 +146,7 @@ h2{font-size:14px;letter-spacing:-.015em;font-weight:630;line-height:1.2}
 .mascot-slot:hover{filter:drop-shadow(0 0 8px var(--focus))}
 .mascot-slot:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .mascot-compact{width:84px;height:84px;min-width:84px;margin-left:0}
+.mascot-glance{width:96px;height:96px;min-width:96px;margin-left:0}
 .mascot-header{width:56px;height:56px;min-width:56px}
 .mascot-slot xyeena-guardian{display:block;width:100%;height:100%;pointer-events:auto}
 .fold-art{display:block;width:100%;height:100%}

@@ -55,6 +55,29 @@ root.innerHTML=`
      <button class="icon-btn compact-expand" type="button" aria-label="Expand Island" title="Expand Island">${icon('chevron',18)}</button>
    </div>
  </div>
+ <div class="glance">
+   <div class="glance-primary">
+     <span class="mascot-slot mascot-glance" id="glance-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
+       <xyeena-guardian id="glance-guardian" size="96" interactive animated></xyeena-guardian>
+     </span>
+     <div class="glance-meta">
+       <span class="glance-title">XYEENA NOTCH</span>
+       <strong class="glance-headline" id="glance-headline">Desktop Companion</strong>
+       <span class="glance-sub" id="glance-sub">Stationary Guardian active</span>
+     </div>
+   </div>
+   <div class="glance-secondary">
+     <div class="glance-card">
+       <span class="glance-card-title" id="glance-card-title">Media</span>
+       <button class="icon-btn" id="glance-play" type="button" aria-label="Play or pause" title="Play or pause">${icon('play',14)}</button>
+     </div>
+     <div class="glance-actions">
+       <button class="glance-pill" id="glance-now-btn" type="button">Now</button>
+       <button class="glance-pill" id="glance-clips-btn" type="button">Clips</button>
+       <button class="glance-pill" id="glance-expand-btn" type="button">Expand</button>
+     </div>
+   </div>
+ </div>
  <div class="expanded">
   <header class="header">
     <span class="mascot-slot mascot-header" id="header-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
@@ -237,6 +260,16 @@ for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
 q<HTMLButtonElement>('.wake').addEventListener('pointerenter',()=>apply('pointer-enter'));
 q<HTMLButtonElement>('.wake').addEventListener('click',()=>apply('activate'));
 q<HTMLElement>('.compact').addEventListener('click',e=>{if(!(e.target as Element).closest('button'))apply('activate');});
+q<HTMLElement>('.glance').addEventListener('click',e=>{if(!(e.target as Element).closest('button'))apply('activate');});
+q<HTMLButtonElement>('#glance-expand-btn').addEventListener('click',()=>apply('activate'));
+q<HTMLButtonElement>('#glance-now-btn').addEventListener('click',()=>{setPanel('now');apply('activate');});
+q<HTMLButtonElement>('#glance-clips-btn').addEventListener('click',()=>{setPanel('clipboard');apply('activate');});
+q<HTMLButtonElement>('#glance-play').addEventListener('click',async e=>{
+ e.stopPropagation();
+ if(!selectedMedia.available)return;
+ try{await native('media_transport',{action:'toggle',source:selectedMedia.source});await refreshMedia();}
+ catch(err){console.error('Glance play error:',err);}
+});
 q<HTMLButtonElement>('.compact-expand').addEventListener('click',()=>apply('activate'));
 q<HTMLButtonElement>('.collapse').addEventListener('click',()=>apply('collapse'));
 q<HTMLButtonElement>('.pin').addEventListener('click',()=>apply('toggle-pin'));
@@ -310,18 +343,41 @@ function updateCompact(){
  const tag=q<HTMLElement>('#compact-status-tag');
  const ctx=q<HTMLElement>('#compact-context');
  const compactPlay=q<HTMLButtonElement>('#compact-play');
+ const glanceHead=q<HTMLElement>('#glance-headline');
+ const glanceSub=q<HTMLElement>('#glance-sub');
+ const glancePlay=q<HTMLButtonElement>('#glance-play');
+ const glanceCardTitle=q<HTMLElement>('#glance-card-title');
  if(meeting.active){
   tag.textContent='Meeting';
   ctx.textContent=elapsedMeeting(meeting.startedAt);
+  glanceHead.textContent='Meeting in progress';
+  glanceSub.textContent=elapsedMeeting(meeting.startedAt);
+  glanceCardTitle.textContent='Meeting';
+  glancePlay.disabled=true;
  }else if(selectedMedia.available&&selectedMedia.playing){
   tag.textContent='Playing';
   ctx.textContent=`${selectedMedia.title||'Playing'} · ${sourceLabel(selectedMedia.source)}`;
+  glanceHead.textContent=selectedMedia.title||'Playing';
+  glanceSub.textContent=`${selectedMedia.artist||'Unknown'} · ${sourceLabel(selectedMedia.source)}`;
+  glanceCardTitle.textContent=sourceLabel(selectedMedia.source);
+  glancePlay.disabled=false;
+  glancePlay.innerHTML=icon('pause',14);
  }else if(selectedMedia.available){
   tag.textContent='Paused';
   ctx.textContent=selectedMedia.title||'Media paused';
+  glanceHead.textContent=selectedMedia.title||'Media paused';
+  glanceSub.textContent=`Paused · ${sourceLabel(selectedMedia.source)}`;
+  glanceCardTitle.textContent=sourceLabel(selectedMedia.source);
+  glancePlay.disabled=false;
+  glancePlay.innerHTML=icon('play',14);
  }else{
   tag.textContent='Ready';
   ctx.textContent='Desktop Companion';
+  glanceHead.textContent='Desktop Companion';
+  glanceSub.textContent='Stationary Guardian active';
+  glanceCardTitle.textContent='Media';
+  glancePlay.disabled=true;
+  glancePlay.innerHTML=icon('play',14);
  }
  compactPlay.disabled=!selectedMedia.available;
  compactPlay.innerHTML=icon(selectedMedia.playing?'pause':'play',16);
