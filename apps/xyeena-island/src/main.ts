@@ -27,8 +27,8 @@ type Prefs=ReturnType<typeof sanitizeSettings>;
 type MediaOverview=ReturnType<typeof normalizeSessions>;
 type Media=ReturnType<typeof pickSession>;
 const root=document.querySelector<HTMLElement>('#app')!;
-if(!root)throw new Error('Island container is missing');
 const isTauri='__TAURI_INTERNALS__' in window;
+document.body.dataset.tauri=String(isTauri);
 function icon(name:string,size=18){
  const glyphs:Record<string,string>={
   logo:'M12 2L4 6v6c0 5.5 3.8 10.7 8 12 4.2-1.3 8-6.5 8-12V6l-8-4z',
@@ -463,7 +463,12 @@ async function native(command:string,payload:Record<string,unknown>={}){
  return invoke(command,payload);
 }
 function sendFrame(frame:{width:number,height:number}){
- if(!isTauri||!validFrame(frame))return;
+ if(!validFrame(frame))return;
+ if(!isTauri){
+  root.style.width=`${frame.width}px`;
+  root.style.height=`${frame.height}px`;
+  return;
+ }
  nextFrame=frame;if(resizeInFlight)return;
  resizeInFlight=true;
  void(async()=>{try{while(nextFrame){const latest=nextFrame;nextFrame=null;await native('set_island_frame',{width:latest.width,height:latest.height});}}

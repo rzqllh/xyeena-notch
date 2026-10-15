@@ -16,6 +16,8 @@
 }
 *{box-sizing:border-box}
 html,body,#app{margin:0;width:100%;height:100%;background:transparent;overflow:hidden}
+body[data-tauri="false"]{background:radial-gradient(ellipse at 50% 0%, #1c2432 0%, #080a0e 100%);min-height:100vh;display:flex;flex-direction:column;align-items:center}
+body[data-tauri="false"] #app{width:400px;height:92px;margin:0 auto;position:relative}
 body{font-synthesis:none;color:var(--text);-webkit-font-smoothing:antialiased;user-select:none}
 button,input,select{font:inherit;color:inherit}
 button{cursor:pointer}
@@ -288,7 +290,7 @@ input[type="range"]:disabled{opacity:.35;cursor:not-allowed}
 .chat-bubble-assistant ul,.chat-bubble-assistant ol{margin:4px 0 6px 16px;padding:0}
 .chat-bubble-assistant li{margin-bottom:3px}
 .chat-input-row{display:flex;gap:8px;align-items:flex-end;margin-top:8px}
-.chat-input-row textarea{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md, 6px);padding:7px 10px;height:34px;min-height:34px;max-height:84px;font-size:11px;color:var(--text);outline:0;resize:none;line-height:1.4;font-family:inherit}
+.chat-input-row textarea{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md, 6px);padding:8px 10px;height:34px;min-height:34px;max-height:84px;font-size:11px;color:var(--text);outline:0;resize:none;line-height:1.35;font-family:inherit;overflow-y:hidden}
 .chat-input-row textarea:focus{border-color:var(--accent)}
 .chat-setup-box{background:rgba(255,200,80,.07);border:1px solid rgba(255,200,80,.3);border-radius:var(--r-md, 6px);padding:10px 12px;display:flex;flex-direction:column;gap:6px;margin:6px 0}
 .chat-setup-box strong{font-size:11px;color:#f0c050}
