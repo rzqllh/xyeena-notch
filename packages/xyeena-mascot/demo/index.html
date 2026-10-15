@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="color-scheme" content="dark"/>
+  <title>Xyeena Guardian — Living Mascot Lab</title>
+  <link rel="preload" href="../assets/lion-reference.png" as="image"/>
+  <style>
+    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#e7eafa;background:#0c101b;font-synthesis:none;}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse 75% 27% at 50% -5%,#23284c90,transparent 95%),#0c101b;min-height:100vh}
+    main{width:min(100% - 40px,1100px);margin:0 auto;padding:54px 0 100px}
+    header{text-align:center;margin-bottom:34px}header h1{font-size:clamp(26px,3.5vw,43px);font-weight:650;letter-spacing:-.055em;margin:0}
+    header h1 span{background:linear-gradient(105deg,#a6b2ff,#8a8aff);background-clip:text;color:transparent}header p{color:#8994b0;font-size:14px;margin:11px 0 0}
+    .layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(275px,1fr);gap:20px;align-items:start}
+    .panel{background:linear-gradient(155deg,#151b2a,#111620);border:1px solid #ffffff16;border-radius:22px;box-shadow:0 14px 55px #02050c44}
+    .stage{position:relative;min-height:500px;display:flex;justify-content:center;align-items:center;overflow:hidden}
+    .stage::after{content:"";pointer-events:none;position:absolute;inset:30px 10%;border:1px dashed #56637e32;border-radius:50%;transform:scale(.8)}
+    .stage::before{content:"";pointer-events:none;position:absolute;inset:15%;background:radial-gradient(ellipse,#5554d41d,transparent 68%)}
+    .hero-lion{z-index:1;filter:drop-shadow(0 20px 33px #080a1466)}
+    .stage-tag{z-index:2;position:absolute;left:24px;top:25px;letter-spacing:.13em;text-transform:uppercase;font-size:10px;color:#8997bf}
+    .stage-state{position:absolute;bottom:25px;left:24px;z-index:2;display:flex;align-items:center;gap:8px;color:#e9ecfd;font-size:13px}
+    .state-dot{height:7px;width:7px;border-radius:50%;background:#83b3ff;box-shadow:0 0 10px #83b3ff}
+    .settings{padding:22px}.settings h2{margin:0 0 4px;font-size:15px;font-weight:600;letter-spacing:-.02em}
+    .settings p{margin:0;color:#8390ab;line-height:1.55;font-size:12px}
+    .separator{border-top:1px solid #ffffff14;margin:22px 0}
+    .row{display:flex;gap:10px;align-items:center;justify-content:space-between;margin:16px 0 0}
+    label{color:#adb7cc;font-size:12px}
+    button{appearance:none;border:1px solid #ffffff18;border-radius:10px;padding:9px 12px;background:#252e42;color:#e4eafa;font-size:12px;cursor:pointer;transition:background .2s,border-color .2s,transform .2s}
+    button:hover{background:#333f59;border-color:#849bdf55}button:active{transform:translateY(1px)}button[aria-pressed="true"]{border-color:#8797ed;background:#29355e}
+    .buttons{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 0}input[type=range]{accent-color:#8d9bff;max-width:160px;width:54%}
+    .bottom{grid-column:1/-1}.section-head{display:flex;justify-content:space-between;align-items:baseline;margin:14px 0 14px}
+    .section-head h2{margin:0;font-size:15px;font-weight:600}.section-head span{color:#76849d;font-size:12px}
+    .tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+    .tile{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;padding:14px 8px 15px;background:#131927;border:1px solid #ffffff15;border-radius:17px;cursor:pointer;color:#aeb9d4;transition:transform .22s,border-color .22s,background .22s}
+    .tile:hover{transform:translateY(-2px);background:#1a2233}.tile[aria-pressed="true"]{background:#1c2540;border-color:#738efb}
+    .tile xyeena-guardian{pointer-events:none}.tile span{font-size:11px;line-height:1.2}
+    .footnote{font-size:12px;color:#697690;text-align:center;margin-top:32px;line-height:1.7}
+    @media(max-width:820px){.layout{grid-template-columns:1fr}.stage{min-height:390px}.tiles{grid-template-columns:repeat(3,1fr)}main{width:min(100% - 28px,700px);padding-top:38px}}
+    @media(max-width:420px){.tiles{grid-template-columns:repeat(2,1fr)}.stage{min-height:320px}.stage-tag{top:15px;left:18px}.stage-state{bottom:18px;left:18px}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+  </style>
+</head>
+<body>
+  <main>
+    <header><h1>Xyeena <span>Guardian</span></h1><p>A living lion. Original character · Agent-aware · Canvas motion</p></header>
+    <div class="layout">
+      <section class="panel stage" aria-label="Interactive Xyeena lion stage">
+        <span class="stage-tag">Living mascot / v0.2</span>
+        <xyeena-guardian id="hero" class="hero-lion" size="360" state="idle" variant="standard" animated="true" interactive></xyeena-guardian>
+        <div class="stage-state"><span class="state-dot" id="dot"></span><span id="state-text">Idle · Watching over your workspace</span></div>
+      </section>
+      <aside class="panel settings">
+        <h2>Motion playground</h2><p>The eyes follow your pointer; the body stays anchored. Try a state or outfit to see smooth transitions.</p>
+        <div class="separator"></div>
+        <h2>Interactions</h2><div class="buttons"><button id="greet">Play greeting</button><button id="upload">Simulate upload</button><button id="look">Look center</button></div>
+        <div class="separator"></div>
+        <h2>Preview options</h2>
+        <div class="row"><label for="size">Lion size</label><input type="range" id="size" min="120" max="420" value="360"/></div>
+        <div class="row"><label for="motion">Motion</label><button id="motion" aria-pressed="true">Enabled</button></div>
+        <div class="row"><label for="progress">Upload progress</label><input type="range" id="progress" min="0" max="100" value="0"/></div>
+        <div class="separator"></div>
+        <p>Use real agent events through <code>connectAgentEvents</code>. These preview buttons simulate a state; they are not connected to any agent provider.</p>
+      </aside>
+      <section class="bottom" aria-label="Agent states">
+        <div class="section-head"><h2>Agent states</h2><span>Live expressions</span></div>
+        <div class="tiles" id="states"></div>
+      </section>
+      <section class="bottom" aria-label="Wardrobe">
+        <div class="section-head"><h2>Wardrobe</h2><span>Same lion, different personalities</span></div>
+        <div class="tiles" id="wardrobe"></div>
+      </section>
+    </div>
+    <p class="footnote">Canvas texture derived from the reference image supplied for this project. 2.5D artwork animation, not a 3D mesh or Coucou character.</p>
+  </main>
+  <script type="module">
+    import {defineXyeenaGuardian, STATES} from '../src/index.js';
+    defineXyeenaGuardian();
+    const hero=document.querySelector('#hero');
+    const stateText=document.querySelector('#state-text');
+    const dot=document.querySelector('#dot');
+    const stateNames=['idle','working','thinking','question','finished','searching','approval','upload','error','sleeping'];
+    const outfitNames=['standard','visor','crown','headset','shield','glasses','sunglasses','beanie','scarf','bow'];
+    const makeTiles=(container,names,kind)=>{
+      names.forEach(name=>{
+        const btn=document.createElement('button');btn.className='tile';btn.type='button';btn.setAttribute('aria-pressed',String(name===(kind==='state'?'idle':'standard')));
+        const icon=document.createElement('xyeena-guardian');icon.setAttribute('size','125');icon.setAttribute('animated','false');icon.setAttribute('state',kind==='state'?name:'idle');icon.setAttribute('variant',kind==='variant'?name:'standard');
+        const caption=document.createElement('span');caption.textContent=name.replace('_',' ');btn.append(icon,caption);
+        btn.addEventListener('click',()=>{
+          if(kind==='state')hero.setState(name);else hero.setVariant(name);
+          for(const other of container.children)other.setAttribute('aria-pressed',String(other===btn));
+        });container.append(btn);
+      });
+    };
+    makeTiles(document.querySelector('#states'),stateNames,'state');
+    makeTiles(document.querySelector('#wardrobe'),outfitNames,'variant');
+    hero.addEventListener('xyeena-state-change',e=>{
+      const {to}=e.detail;stateText.textContent=`${STATES[to].label} · ${STATES[to].message}`;
+      dot.style.backgroundColor=STATES[to].color;dot.style.boxShadow=`0 0 10px ${STATES[to].color}`;
+      for(const btn of document.querySelector('#states').children)btn.setAttribute('aria-pressed',String(btn.textContent.replace(' ','_')===to));
+    });
+    document.querySelector('#greet').addEventListener('click',()=>hero.greet());
+    document.querySelector('#upload').addEventListener('click',()=>{hero.beginUpload();document.querySelector('#progress').value=0;});
+    document.querySelector('#look').addEventListener('click',()=>hero.setGaze(0,0));
+    document.querySelector('#progress').addEventListener('input',e=>hero.setUploadProgress(Number(e.target.value)/100));
+    document.querySelector('#size').addEventListener('input',e=>hero.setSize(Number(e.target.value)));
+    document.querySelector('#motion').addEventListener('click',e=>{
+      const enabled=e.currentTarget.getAttribute('aria-pressed')!=='true';hero.animated=enabled;
+      e.currentTarget.setAttribute('aria-pressed',String(enabled));e.currentTarget.textContent=enabled?'Enabled':'Disabled';
+    });
+    // Visual inspection and automated smoke tests can access the custom element.
+    window.xyeena=hero;
+  </script>
+</body>
+</html>

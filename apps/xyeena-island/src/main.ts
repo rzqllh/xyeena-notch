@@ -52,6 +52,18 @@ function icon(name:string,size=18){
 
 root.innerHTML=`
 <div class="island" data-mode="compact" data-panel="now" role="region" aria-label="Xyeena Island">
+ <div class="notch-shoulder notch-shoulder-left" aria-hidden="true">
+   <svg width="17" height="16" viewBox="0 0 17 16" fill="none">
+     <path class="shoulder-fill" d="M 0 0 C 8.8 0, 16 7.2, 16 16 L 17 16 L 17 0 L 16 0 Z"/>
+     <path class="shoulder-rim" d="M 0 0 C 8.8 0, 16 7.2, 16 16"/>
+   </svg>
+ </div>
+ <div class="notch-shoulder notch-shoulder-right" aria-hidden="true">
+   <svg width="17" height="16" viewBox="0 0 17 16" fill="none">
+     <path class="shoulder-fill" d="M 0 0 L 0 16 L 1 16 C 1 7.2, 8.2 0, 17 0 Z"/>
+     <path class="shoulder-rim" d="M 1 16 C 1 7.2, 8.2 0, 17 0"/>
+   </svg>
+ </div>
  <button class="wake" type="button" aria-label="Show Xyeena Island"><span></span></button>
  <div class="drop-overlay" id="drop-overlay"><span class="drop-icon">${icon('folder',32)}</span><strong>Drop file to inspect or convert</strong><small>Images, code, documents</small></div>
  <div class="compact">

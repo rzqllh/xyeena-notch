@@ -56,3 +56,6 @@ export declare class GuardianController {
   tick():void;
   reset():void;
 }
+
+/** Visual rig based on user-provided layered-reference illustration. */
+export declare class ReferenceLionRig extends LivingLionRig { readonly imageReady:boolean; readonly imageFailed:boolean; }

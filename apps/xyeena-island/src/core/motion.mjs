@@ -4,8 +4,8 @@
 // actual presentation rate depends on WebView2, system load, and native resizing.
 export const MOTION_MS = 320; // legacy compatibility; closing uses CLOSE_MS.
 export const CLOSE_MS = 340;
-export const RESPONSE = 0.5;
-export const DAMPING = 0.72;
+export const RESPONSE = 0.44;
+export const DAMPING = 0.78;
 /** @param {number} v @param {number} lo @param {number} hi */
 export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 /** @param {number} t */
