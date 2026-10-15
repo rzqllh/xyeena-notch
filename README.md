@@ -4,8 +4,8 @@ A Windows-first Xyeena desktop companion and its original mascot **Xyn — the L
 
 ## Canonical layout
 
-- `apps/xyeena-island/`: the production Tauri 2 Island alpha application (top-center Island, system tray, Windows GSMTC media, master volume, in-memory clipboard, opt-in notifications, and integrated Xyeena Guardian mascot).
-- `packages/xyeena-mascot/`: the canonical Lion Guardian custom element (`<xyeena-guardian>`), motion controller, and state mapping package consumed via npm workspaces.
+- `apps/xyeena-island/`: the production Tauri 2 Island alpha application (top-center Island, system tray, Windows GSMTC media, master volume, in-memory clipboard, opt-in notifications, and integrated Xyn (formerly Golden Lion / Xyeena Guardian) mascot).
+- `packages/xyeena-mascot/`: the canonical Xyn Lion Guardian custom element (`<xyeena-guardian>`), motion controller, and state mapping package consumed via npm workspaces.
 - `examples/guardian-playground/`: browser-only development harness for testing Guardian states, accessories, and emotes. Approvals and agent cards in this harness are simulated.
 - `docs/`: architecture specifications, feature status truth table, release gates, and manual smoke test procedures.
 

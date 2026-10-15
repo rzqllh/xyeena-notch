@@ -1,4 +1,4 @@
-// Original Xyeena Guardian companion semantics consuming canonical @xyeena/mascot.
+// Xyn is the existing Xyeena Guardian lion; preserve the canonical @xyeena/mascot contracts.
 // Pure input-to-state mapping; no process, microphone, camera, or network inspection.
 import {
   STATES,

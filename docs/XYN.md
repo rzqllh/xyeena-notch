@@ -1,29 +1,29 @@
 # Xyn — The Lion Guardian
 
-**Xyn** is the original golden-lion mascot of Xyeena and the companion presented inside **Xyeena Notch / Island**. Xyn's repository source is in `packages/xyeena-mascot/`, consumed by `apps/xyeena-island/`. This is not a separate desktop executable or npm publication.
+**Xyn is the new name for the Golden Lion / Xyeena Guardian already implemented in Xyeena Notch.** It is a **rebrand of the same character**, not a newly designed mascot, alternative rendering engine, standalone app or second package.
 
-## Canonical implementation
+## Identity and existing source
 
-- **Renderer:** `packages/xyeena-mascot/src/lion-canvas.js` exports `LivingLionRig`. `XynLionRig` is only a **naming alias** for that same constructor, not a separate implementation.
-- **UI host:** `packages/xyeena-mascot/src/guardian.js` supplies the `<xyeena-guardian>` custom element, which creates its single Canvas rig instance.
-- **Application:** `apps/xyeena-island/src/main.ts` mounts `<xyeena-guardian>` in the top-screen Island. The Island is the **only** legitimate desktop host. Existing package/import/custom-element names remain backward compatible.
-- **Character:** rounded golden layered mane; ivory face; black oval eyes; warm pink inner ears; central shield. Eye gaze leads subtle head motion; body is anchored, not a follower pet.
-- **Motion and accessibility:** natural blink/breath/emotes, bounded gaze and reduced-motion behavior already exist in the canonical rig. Visual acceptance, performance and actual physical Windows behavior are **not certified** by source tests.
+- **Character:** the existing warm golden Lion with ivory face, black oval eyes, pink inner ears, layered mane and central shield. Its artwork, body and behavior remain the same; only its human-facing name changes to **Xyn**.
+- **Canonical renderer:** `packages/xyeena-mascot/src/lion-canvas.js` exports the existing `LivingLionRig`. There is **no `XynLionRig` class or alias** and no second Canvas renderer.
+- **Custom element:** `packages/xyeena-mascot/src/guardian.js` defines the existing `<xyeena-guardian>`; accessible copy identifies the same character as Xyn.
+- **Package:** `@xyeena/mascot` remains private, with the same exports, types, variants, states and event names. `XyeenaGuardian`, `GuardianController`, `LivingLionRig` and `defineXyeenaGuardian` remain stable API names.
+- **Application host:** `apps/xyeena-island/` remains the only authoritative native host. The Island already mounts the existing `<xyeena-guardian>` in compact/expanded presentations.
 
-## Native cursor integration
+A rename must not reset user preferences, create any new background service, duplicate animation loops, change the Lion silhouette, or introduce an additional window. **Xyn belongs inside the top-screen Island**, never as a detached desktop pet or Perch/Follow mode.
 
-This PR intentionally does **not** introduce another Canvas renderer or replace Island's existing `LivingLionRig`. Global cursor sampling is independently implemented as a candidate on [PR #5](https://github.com/rzqllh/xyeena-notch/pull/5), based on the Antigravity recovery branch. It uses read-only Win32 `GetCursorPos` via Tauri with coordinate normalization. It is **not on `main`** simply because the code exists in an open PR; do not claim that Xyn already tracks the cursor over other apps in a shipped installer.
+## Global cursor integration is separate
 
-Integration order: reconcile PR #5 with the current branch/main **without reviving desktop placement or creating a second mascot**. Route cursor samples to the existing `xyeena-guardian.setGazeFromClient` API, and stop sampling when invisible, dormant, in tray, or destroyed. Do not store cursor coordinates, log samples, create background hooks, or request extra permissions.
+The present `main` branch contains the original on-Island Lion renderer, but an installed Windows-wide cursor-gaze experience is **not accepted**. [PR #5](https://github.com/rzqllh/xyeena-notch/pull/5) contains candidate Win32 `GetCursorPos` integration on the separate Antigravity-recovery line, not a verified feature merged to main.
 
-## Acceptance before merging native work
+Preserve the existing `xyeena-guardian.setGazeFromClient` and `LivingLionRig` implementations. Integrate global cursor samples through that interface **only once**, and stop sampling on dormancy/tray hide/dispose. Do not log/store pointer history or collect without a relevant visible Lion. Test DPI scaling, negative-coordinate monitors and focus safety physically on Windows.
 
-1. **Source verification:** `npm ci`, `npm test`, `npm run build`, `npm run release:audit` plus native Rust/Windows CI.
-2. **Identity:** visually compare Xyn to the owner-approved original concept at compact and expanded sizes. Unverified visual fidelity is a blocker, not a PASS.
-3. **Windows global gaze:** test cursor inside and outside the Island, over third-party apps, across monitors including negative coordinates, DPI 100/125/150%, and with focus remaining in the other app.
-4. **Lifecycle and privacy:** stop sampling on tray hide/dormancy/reduced activity; verify no detached Guardian window, Perch/Follow action, network transmission, or cursor logs/history.
-5. **UX:** eye/head lag, bounded motion, reduced-motion behavior, screen sleep/wake, 60/120 Hz responsiveness and resource use should be recorded on a physical Windows machine.
+**Parallel work:** Antigravity's locally reported `feat/production-recovery-and-ux` commit is not a validated remote input to this PR. Its AI, clipboard, file-drop, layout and provider features are distinct work; do not cherry-pick, overwrite or certify them as part of mascot naming.
 
-PR #4's earlier standalone `IdentityLionRig` was an exploratory **alternate renderer**; its commit history remains available for reference, but the reconciled PR intentionally excludes it to avoid duplicate active rig implementations. The isolated experiment is not a finished or separately shipped Xyn source.
+## Release and acceptance
 
-See [Windows smoke tests](SMOKE-TEST-WINDOWS.md) and [release gates](RELEASE_GATES.md). No release/version bump is authorized by this mascot naming/contract PR.
+Brand-only approval requires one unchanged renderer and the existing package/custom-element contract, passing source/CI tests, plus a visual check that Xyn is the same approved Lion. Native Windows cursor and application-wide functionality retain their separate gates: installed-app testing, mixed DPI/multi-monitor gaze, startup/tray lifecycle, reduced motion, no desktop pet, and accurate feature truth tables.
+
+An older PR #4 experiment introduced an independent `IdentityLionRig` as a study. It remains in historical commits only, and is **not part of the reconciled PR's file tree**. Do not revive it.
+
+See [Windows smoke tests](SMOKE-TEST-WINDOWS.md) and [release gates](RELEASE_GATES.md). This rename must not alter Notch's `1.0.0-alpha.1` version or create a release.

@@ -4,4 +4,4 @@ export {pickMascotState,connectAgentEvents} from './events.js';
 export {superellipse} from './geometry.js';
 export {XyeenaGuardian,defineXyeenaGuardian} from './guardian.js';
 export {GuardianController} from './controller.js';
-export {LivingLionRig,LivingLionRig as XynLionRig} from './lion-canvas.js';
+export {LivingLionRig} from './lion-canvas.js';

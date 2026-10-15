@@ -1,4 +1,4 @@
-/** Original state palette and facial language for the Xyeena guardian lion. */
+/** Xyn: original Xyeena Lion Guardian state palette and facial language. */
 const configure = (label, color, eyes='dot', badge='none', motion='float', message='') => Object.freeze({label,color,eyes,badge,motion,message});
 export const STATES = Object.freeze({
   idle: configure('Idle','#7c9fff','dot','none','float','Watching over your workspace'),

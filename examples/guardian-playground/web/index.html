@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b0d12" />
-    <meta name="description" content="Xyeena Notch: a tiny guardian for your workspace" />
-    <title>Xyeena Notch — Island & Guardian</title>
+    <meta name="description" content="Xyeena Notch: Xyn, the original Lion Guardian for your workspace" />
+    <title>Xyeena Notch — Xyn the Lion Guardian</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="./app.js" type="module"></script>
   </head>
@@ -16,16 +16,16 @@
         <div class="topbar-right"><span class="system-dot"></span><span>Local workspace demo</span><span class="version">PREVIEW 0.1</span></div>
       </header>
       <main>
-        <div class="heading"><div><span class="eyebrow">DESKTOP EXPERIENCE</span><h1>Guardian Island</h1><p>One intelligent character. Continuous presence across your workspace.</p></div><span class="tag">Lion / Shield / Xyeena</span></div>
+        <div class="heading"><div><span class="eyebrow">DESKTOP EXPERIENCE</span><h1>Meet Xyn</h1><p>One intelligent character. Continuous presence across your workspace.</p></div><span class="tag">Xyn / Lion / Guardian</span></div>
         <section class="layout">
           <div class="preview" aria-label="Live island preview">
             <div class="preview-top"><span>LIVE ISLAND</span><span class="kbd">LOCAL DEMO</span></div>
             <div class="island-pad"><div class="notch-anchor"></div>
               <div class="island" id="island" data-mode="expanded">
-                <div class="island-head"><div><span class="status-light"></span>XYEENA GUARDIAN</div><div class="island-tools"><button type="button" class="ghost selected" id="expanded-btn" aria-pressed="true">Expanded</button><button type="button" class="ghost" id="compact-btn" aria-pressed="false">Compact</button></div></div>
-                <div class="island-body"><xyeena-guardian id="guardian" state="idle" variant="standard" size="170" interactive aria-label="Xyeena lion guardian"></xyeena-guardian><div class="island-copy"><div class="overline" id="activity-type">ALL SYSTEMS NORMAL</div><h2 id="activity-title">Standing guard</h2><p id="activity-description">Watching your workspace. No tasks need attention.</p><div class="activity-meta"><span id="activity-agent">Local preview</span><span id="activity-timestamp">Ready</span></div></div></div>
+                <div class="island-head"><div><span class="status-light"></span>XYN · LION GUARDIAN</div><div class="island-tools"><button type="button" class="ghost selected" id="expanded-btn" aria-pressed="true">Expanded</button><button type="button" class="ghost" id="compact-btn" aria-pressed="false">Compact</button></div></div>
+                <div class="island-body"><xyeena-guardian id="guardian" state="idle" variant="standard" size="170" interactive aria-label="Xyn, the Xyeena Lion Guardian"></xyeena-guardian><div class="island-copy"><div class="overline" id="activity-type">ALL SYSTEMS NORMAL</div><h2 id="activity-title">Standing guard</h2><p id="activity-description">Watching your workspace. No tasks need attention.</p><div class="activity-meta"><span id="activity-agent">Local preview</span><span id="activity-timestamp">Ready</span></div></div></div>
                 <div class="approval-bar" id="approval-bar" hidden><span>A task requires your decision.</span><div><button type="button" id="deny-approval">Deny</button><button type="button" id="allow-approval">Allow once</button></div></div>
-                <div class="island-bottom"><div class="pulse-line"></div><span>Guardian engine active</span><span id="mode-label">EXPANDED</span></div>
+                <div class="island-bottom"><div class="pulse-line"></div><span>Xyn mascot preview</span><span id="mode-label">EXPANDED</span></div>
               </div>
               <div class="stage-caption">Transparent desktop shell concept. Native anchoring is a separate platform integration.</div>
             </div>
@@ -33,7 +33,7 @@
             <div class="transfer" id="transfer" hidden><div class="transfer-heading"><span>Guardian transfer · simulated</span><span id="transfer-percent">0%</span></div><div class="transfer-track"><span id="transfer-fill"></span></div></div>
             <div class="drop-hint" id="drop-hint">Drop a local file here to preview the shield-transfer animation. No file is uploaded.</div>
           </div>
-          <aside class="side"><section class="panel"><div class="panel-heading"><span class="eyebrow">ENGINE</span><h3>Change expression</h3></div><div class="states" id="states" role="group" aria-label="Mascot expressions"></div><div class="panel-heading lower"><span class="eyebrow">WARDROBE</span><h3>Guardian equipment</h3></div><label class="selection"><span>Active outfit</span><select id="variant" aria-label="Choose lion accessory"></select></label><div class="accessibility-note">Animations respect your reduced-motion preference.</div></section></aside>
+          <aside class="side"><section class="panel"><div class="panel-heading"><span class="eyebrow">ENGINE</span><h3>Change expression</h3></div><div class="states" id="states" role="group" aria-label="Mascot expressions"></div><div class="panel-heading lower"><span class="eyebrow">WARDROBE</span><h3>Xyn accessories</h3></div><label class="selection"><span>Active outfit</span><select id="variant" aria-label="Choose lion accessory"></select></label><div class="accessibility-note">Animations respect your reduced-motion preference.</div></section></aside>
         </section>
         <section class="agents"><div class="agents-title"><div><span class="eyebrow">EVENT ADAPTER</span><h3>Agent activity</h3></div><span class="note">Sample events. Not linked to your accounts.</span></div><div class="agents-grid" id="agents-grid"></div><div class="agents-footer"><button type="button" id="reset-btn">Reset sample tasks</button><span id="event-output" aria-live="polite">Waiting for local events</span></div></section>
         <footer>XYEENA NOTCH <span>Original mascot geometry · Local-first demo · External action approval remains with the host application</span></footer>

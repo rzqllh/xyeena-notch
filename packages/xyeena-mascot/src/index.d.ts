@@ -45,9 +45,6 @@ export declare class LivingLionRig {
   render():void;
 }
 
-/** Product-name alias for the same canonical renderer; no second rig instance/type. */
-export { LivingLionRig as XynLionRig };
-
 export declare class GuardianController {
   constructor(options?:{clock?:()=>number});
   readonly state:XyeenaState;
