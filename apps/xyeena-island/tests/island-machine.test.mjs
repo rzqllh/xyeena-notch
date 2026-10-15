@@ -39,3 +39,16 @@ test('invalid state or event fails visibly',()=>{
   assert.throws(()=>transition('other','activate'),/Unknown Island state/);
   assert.throws(()=>transition('compact','approve'),/Unknown Island event/);
 });
+
+test('adaptive modes dormant, glance, and focused satisfy bounded dimensions and transitions', () => {
+  assert.deepEqual(shellDimensions('dormant'), { width: 184, height: 8 });
+  assert.deepEqual(shellDimensions('compact'), { width: 400, height: 92 });
+  assert.deepEqual(shellDimensions('glance'), { width: 480, height: 144 });
+  assert.deepEqual(shellDimensions('focused'), { width: 620, height: 396 });
+
+  // Transition aliases
+  assert.equal(transition('dormant', 'pointer-enter'), 'compact');
+  assert.equal(transition('glance', 'activate'), 'expanded');
+  assert.equal(transition('focused', 'collapse'), 'compact');
+  assert.equal(transition('dormant', 'activate'), 'expanded');
+});

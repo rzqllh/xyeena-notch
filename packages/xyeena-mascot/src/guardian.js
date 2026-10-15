@@ -2,21 +2,32 @@ import { STATES, isState, isVariant } from './states.js';
 import { mascotArt, eyeMarkup, badgeMarkup, accessoryMarkup } from './art.js';
 import { greetingFrame, uploadFrame, clamp01 } from './motion.js';
 import { guardianStyles } from './guardian-styles.js';
+import { LivingLionRig } from './lion-canvas.js';
 let sequence=0;
 const tag='xyeena-guardian';
 const raf=typeof requestAnimationFrame==='function'?requestAnimationFrame.bind(globalThis):()=>0;
 const caf=typeof cancelAnimationFrame==='function'?cancelAnimationFrame.bind(globalThis):()=>{};
 
-export class XyeenaGuardian extends HTMLElement {
+const BaseElement = typeof HTMLElement !== 'undefined' ? HTMLElement : class {};
+
+export class XyeenaGuardian extends BaseElement {
   static get observedAttributes(){return ['state','variant','size','animated'];}
   constructor(){
     super();this._id=`xyg-${++sequence}`;this._raf=0;this._token=0;this._progress=0;this._sound=null;
-    this.attachShadow({mode:'open'});
-    this.shadowRoot.innerHTML=`<style>${guardianStyles}</style>${mascotArt(this._id)}`;
-    this._eyes=this.shadowRoot.querySelector('[data-eyes]');
-    this._badge=this.shadowRoot.querySelector('[data-badge]');
-    this._accessory=this.shadowRoot.querySelector('[data-accessory]');
-    this._svg=this.shadowRoot.querySelector('svg');
+    this._canvas=null;this._rig=null;
+    if(typeof this.attachShadow === 'function'){
+      this.attachShadow({mode:'open'});
+      this.shadowRoot.innerHTML=`<style>${guardianStyles}</style><canvas class="guardian-canvas" width="200" height="200" aria-hidden="true"></canvas>${mascotArt(this._id)}`;
+      this._canvas=this.shadowRoot.querySelector('canvas');
+      this._eyes=this.shadowRoot.querySelector('[data-eyes]');
+      this._badge=this.shadowRoot.querySelector('[data-badge]');
+      this._accessory=this.shadowRoot.querySelector('[data-accessory]');
+      this._svg=this.shadowRoot.querySelector('svg');
+      if(this._canvas&&typeof this._canvas.getContext==='function'){
+        this._rig=new LivingLionRig(this._canvas,{size:this._getSize(),state:'idle',reducedMotion:this._reduce});
+        this.dataset.canvas='true';
+      }
+    }
     this._reduce=typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
     this._onPointer=e=>{
       if(this._reduce||!this.hasAttribute('interactive'))return;
@@ -24,27 +35,50 @@ export class XyeenaGuardian extends HTMLElement {
       const dy=((e.clientY-r.top)/Math.max(1,r.height)-.5)*3;
       this.style.setProperty('--look-x',`${dx.toFixed(1)}px`);
       this.style.setProperty('--look-y',`${dy.toFixed(1)}px`);
+      this._rig?.setGazeFromClient(e.clientX,e.clientY);
     };
-    this._onLeave=()=>{this.style.setProperty('--look-x','0px');this.style.setProperty('--look-y','0px');};
+    this._onLeave=()=>{
+      this.style.setProperty('--look-x','0px');this.style.setProperty('--look-y','0px');
+      this._rig?.setGaze(0,0);
+    };
   }
+  _getSize(){const n=Number(this.getAttribute('size'));return Number.isFinite(n)&&n>=24&&n<=1200?n:96;}
   connectedCallback(){
     if(!this.hasAttribute('state'))this.setAttribute('state','idle');
     if(!this.hasAttribute('variant'))this.setAttribute('variant','standard');
     this._paint();this._onSize();
     this.addEventListener('pointermove',this._onPointer,{passive:true});
     this.addEventListener('pointerleave',this._onLeave,{passive:true});
+    if(typeof window!=='undefined'){
+      this._onWinPointer=e=>{
+        if(this._reduce||!this.hasAttribute('interactive'))return;
+        this._rig?.setGazeFromClient(e.clientX,e.clientY);
+      };
+      window.addEventListener('pointermove',this._onWinPointer,{passive:true});
+    }
+    this._rig?.start();
   }
-  disconnectedCallback(){this._cancelTimeline();this.removeEventListener('pointermove',this._onPointer);this.removeEventListener('pointerleave',this._onLeave);}
+  disconnectedCallback(){
+    this._cancelTimeline();
+    this.removeEventListener('pointermove',this._onPointer);
+    this.removeEventListener('pointerleave',this._onLeave);
+    if(typeof window!=='undefined'&&this._onWinPointer){
+      window.removeEventListener('pointermove',this._onWinPointer);
+    }
+    this._rig?.stop();
+  }
   attributeChangedCallback(name,oldValue,newValue){
     if(oldValue===newValue)return;
     if(name==='size'){this._onSize();return;}
     if(name==='animated'){
       this.shadowRoot.querySelector('style').textContent=guardianStyles+(!this.animated?' .float-rig,.eye-pair,.gaze-rig{animation:none!important}':'');
+      this._rig?.setReducedMotion(!this.animated||this._reduce);
       return;
     }
     if(name==='state'&&isState(newValue)){
       if(this.dataset.greeting==='true'&&newValue!=='greeting')this._cancelTimeline();
       if(this.dataset.uploading==='true'&&newValue!=='upload')this._cancelTimeline();
+      this._rig?.setState(newValue);
     }
     this._paint();
   }
@@ -64,7 +98,9 @@ export class XyeenaGuardian extends HTMLElement {
   }
   setVariant(value){if(!isVariant(value))throw new RangeError(`Unknown Xyeena variant: ${String(value)}`);this.setAttribute('variant',value);}
   setSize(size){if(!Number.isFinite(size)||size<24||size>1200)throw new RangeError('size must be between 24 and 1200');this.setAttribute('size',String(size));}
-  _onSize(){const n=Number(this.getAttribute('size'));this.style.setProperty('--mascot-size',`${Number.isFinite(n)&&n>=24&&n<=1200?n:260}px`);}
+  _onSize(){const n=this._getSize();this.style.setProperty('--mascot-size',`${n}px`);this._rig?.resize(n);}
+  setGaze(x,y){this._rig?.setGaze(x,y);}
+  setGazeFromClient(clientX,clientY){this._rig?.setGazeFromClient(clientX,clientY);}
   _paint(){
     const name=isState(this.state)?this.state:'idle',cfg=STATES[name];
     this.style.setProperty('--accent',cfg.color);
@@ -87,7 +123,7 @@ export class XyeenaGuardian extends HTMLElement {
     this._badge.setAttribute('aria-hidden','true');
     const variant=isVariant(this.variant)?this.variant:'standard';
     this._accessory.innerHTML=accessoryMarkup(variant,this._id);
-    this._svg.querySelector('title').textContent=`Xyeena lion guardian: ${cfg.label}. ${cfg.message}`;
+    this._svg.querySelector('title').textContent=`Xyn — Xyeena Lion Guardian: ${cfg.label}. ${cfg.message}`;
   }
   _cancelTimeline(){this._token++;caf(this._raf);this._raf=0;this.dataset.greeting='false';this.dataset.uploading='false';
     for(const prop of ['--intro-rise','--intro-tilt','--paw','--crest','--ring','--gateway','--document','--charge'])this.style.removeProperty(prop);
@@ -107,6 +143,7 @@ export class XyeenaGuardian extends HTMLElement {
   /** Original short guardian salute. Can be interrupted by a real task event. */
   greet(){
     this._cancelTimeline();const oldState=this.state;this.setState('greeting');
+    this._rig?.salute();
     const token=++this._token;this.dataset.greeting='true';const start=performance.now();
     const step=now=>{
       if(token!==this._token||!this.isConnected)return;
@@ -141,6 +178,7 @@ export class XyeenaGuardian extends HTMLElement {
   cancelUpload(){this._cancelTimeline();if(this.state==='upload')this.setState('idle');}
 }
 export function defineXyeenaGuardian(){
+  if(typeof customElements === 'undefined') return null;
   if(!customElements.get(tag))customElements.define(tag,XyeenaGuardian);
   return customElements.get(tag);
 }

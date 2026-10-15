@@ -20,12 +20,33 @@ export declare class XyeenaGuardian extends HTMLElement {
   setState(value:XyeenaState):void;
   setVariant(value:XyeenaVariant):void;
   setSize(value:number):void;
+  setGaze(x:number,y:number):void;
+  setGazeFromClient(clientX:number,clientY:number):void;
   greet():void;
   beginUpload():void;
   setUploadProgress(value:number):void;
   cancelUpload():void;
 }
 export declare function defineXyeenaGuardian():CustomElementConstructor;
+
+export declare class LivingLionRig {
+  constructor(canvas:HTMLCanvasElement,options?:{size?:number,state?:string,reducedMotion?:boolean});
+  size:number;
+  state:string;
+  reducedMotion:boolean;
+  resize(size:number):void;
+  setState(state:string):void;
+  setReducedMotion(reduced:boolean):void;
+  setGaze(x:number,y:number):void;
+  setGazeFromClient(clientX:number,clientY:number):void;
+  salute(duration?:number):void;
+  start():void;
+  stop():void;
+  render():void;
+}
+
+/** Product-name alias for the same canonical renderer; no second rig instance/type. */
+export { LivingLionRig as XynLionRig };
 
 export declare class GuardianController {
   constructor(options?:{clock?:()=>number});

@@ -2,7 +2,9 @@
 
 **1.0.0-alpha.1 candidate · Windows · Local-first · Not a stable or enterprise-certified release**
 
-Xyeena Island is a separate desktop companion to [Xyeena Agentic](https://github.com/rzqllh/xyeena). The desktop application does not change or install Xyeena Agentic itself. It combines an always-on-top Island, tray controls, Xyeena local run summaries, Windows playback transport, a manual meeting timer, opt-in clipboard history and opt-in notifications. Xyeena Fold is an original vector mascot; no protected Coucou/Mochi media or artwork is distributed.
+Xyeena Island is a separate desktop companion to [Xyeena Agentic](https://github.com/rzqllh/xyeena). The desktop application does not change or install Xyeena Agentic itself. It combines an always-on-top Island, tray controls, Xyeena local run summaries, Windows playback transport, a manual meeting timer, opt-in clipboard history, opt-in notifications, and the integrated canonical Xyeena Guardian lion mascot (`<xyeena-guardian>` from `@xyeena/mascot` with Fold compatibility retained). All mascot art and animations are original; no protected Coucou/Mochi media or artwork is distributed.
+
+**Notch-first policy:** The Lion stays inside the Island. There is no separate floating desktop mascot, Perch/Follow mode, or automatic window placement. Gaze uses ephemeral Windows cursor samples only while the Island Lion is visible.
 
 **Current integration boundaries:** Windows media transport does not detect Teams calls; meeting mode is manual. There is no agent hook relay, permission approval, AI chat, GitHub token integration, encrypted phone link, live diff or multi-agent orchestration yet. See [Feature truth table](docs/FEATURE_STATUS.md). These are release/product work, not hidden functionality.
 
@@ -11,14 +13,14 @@ Xyeena Island is a separate desktop companion to [Xyeena Agentic](https://github
 Prerequisites: Node.js 22.14+, Rust stable MSVC, Visual Studio Build Tools with **Desktop development with C++** (x64/x86), Windows SDK, WebView2.
 
 ```powershell
-npm install
+npm ci
 npm test
 npm run build
 npm run doctor
 npm run desktop
 ```
 
-Use `npm ci` from the **monorepo root** once the **real generated** root `package-lock.json` is committed. The release audit refuses final packaging without a lockfile; it must come from `npm install` on a machine with npm registry access. Do not handcraft a lockfile.
+Use `npm ci` from the **monorepo root**. Dependencies are locked via workspace `package-lock.json` and `src-tauri/Cargo.lock`. Do not handcraft lockfiles.
 
 ## Safety and capabilities
 

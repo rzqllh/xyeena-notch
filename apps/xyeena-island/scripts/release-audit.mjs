@@ -15,7 +15,13 @@ gate(conf.version===expected,'Tauri version differs from npm version');
 gate(new RegExp('^version\\s*=\\s*"'+expected.replace(/\./g,'\\.')+'"','m').test(native),'Cargo version differs');
 gate(pkg.private===true,'Island must remain private in npm (GitHub artifact only)');
 gate(conf.bundle?.active===true&&conf.bundle?.targets?.includes('nsis'),'Windows NSIS bundling is not enabled');
-gate(Array.isArray(conf.app?.windows)&&conf.app.windows.length===1&&conf.app.windows[0].label==='main'&&conf.app.windows[0].skipTaskbar&&conf.app.windows[0].transparent&&conf.app.windows[0].alwaysOnTop,'Island window config regression');
+gate(Array.isArray(conf.app?.windows)&&conf.app.windows.length===1&&
+ conf.app.windows[0].label==='main'&&conf.app.windows[0].skipTaskbar&&
+ conf.app.windows[0].transparent&&conf.app.windows[0].alwaysOnTop,
+ 'Only the main Island window should be configured');
+gate(!fs.existsSync(path.join(root,'src-tauri/capabilities/guardian.json'))&&
+ !fs.existsSync(path.join(root,'guardian.html')),
+ 'Desktop Guardian artifacts must not be bundled');
 for(const needed of ['LICENSE','THIRD_PARTY_NOTICES.md','licenses/COUCOU-CODE-MIT.txt','src-tauri/icons/icon.ico','src-tauri/icons/tray.png','docs/RELEASE_GATES.md']) gate(fs.existsSync(path.join(root,needed)),`Missing ${needed}`);
 gate(fs.existsSync(path.join(workspaceRoot,'SECURITY.md')),'Missing root SECURITY.md');
 gate(fs.existsSync(path.join(workspaceRoot,'package-lock.json')),'Missing genuine workspace package-lock.json');
@@ -23,4 +29,4 @@ gate(fs.existsSync(path.join(root,'src-tauri/Cargo.lock')),'Missing genuine src-
 if(fs.existsSync(path.join(workspaceRoot,'package-lock.json'))){try{const lock=JSON.parse(fs.readFileSync(path.join(workspaceRoot,'package-lock.json'),'utf8'));gate(lock.packages?.['apps/xyeena-island']?.version===expected,'npm workspace Island lockfile version mismatch');gate(lock.packages?.['packages/xyeena-mascot']?.name==='@xyeena/mascot','npm mascot package missing from workspace lock')}catch{gate(false,'Invalid workspace npm lockfile')}}
 if(fs.existsSync(path.join(root,'src-tauri/Cargo.lock'))){const lock=read('src-tauri/Cargo.lock');gate(lock.includes('name = "xyeena-island"')&&lock.includes(`version = "${expected}"`),'Cargo.lock does not contain Xyeena alpha package')}
 for(const illegal of ['node_modules','.env','src-tauri/target','dist','.git','coverage'])if(fs.existsSync(path.join(root,illegal)))console.log(`INFO local ignored directory or file exists: ${illegal} (do not commit it)`);
-if(errors.length){console.error('BLOCKED release audit:\n'+errors.map(x=>'- '+x).join('\n'));process.exitCode=1}else console.log(`PASS release audit: ${expected} manifests, licenses, two lockfiles and packaging intent`);
+if(errors.length){console.error('BLOCKED release audit:\n'+errors.map(x=>'- '+x).join('\n'));process.exitCode=1}else console.log(`PASS release audit: ${expected} manifests, licenses, two lockfiles and notch-only packaging intent`);

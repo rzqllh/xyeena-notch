@@ -6,7 +6,7 @@ This table is the user-facing source of truth. **Implemented** means source exis
 |---|---|---|
 | Top-edge Island / tray / topmost | Implemented, Windows acceptance pending | Native build, DPI/fullscreen/focus/restart QA |
 | Coucou-style spring geometry | Implemented; performance unverified | 60/120Hz frame capture and pointer hit testing |
-| Xyeena Fold | Original static-vector/animated states | Visual and accessibility review |
+| Xyeena Guardian (notch-first lion) | Canvas 2D eye/head rig in Island; native Windows cursor-sampling candidate, no desktop placement | Visual identity and global gaze outside Island still need Windows QA |
 | Windows media playback + transport | Implemented, acceptance pending | Browser/Spotify supported-session tests |
 | Seek, shuffle and repeat | Implemented, player-dependent | Player capability tests; accurate status labels |
 | Windows default-output volume/mute | Implemented, acceptance pending | Windows Core Audio device tests |
@@ -22,7 +22,7 @@ This table is the user-facing source of truth. **Implemented** means source exis
 | GitHub/Vercel/other services | NOT implemented | OAuth scopes, credentials, API integration |
 | File drop / code diff | NOT implemented | Windows WebView2 drop path + explicit consent |
 | Weekly recap / analytics | NOT implemented | Verified aggregate source, local retention controls |
-| Desktop-floating mascot / wardrobes | NOT implemented | Owned rig and assets, window safety |
+| Desktop placement | Removed per product decision; no secondary window or Perch/Follow toggle | Verify no desktop window or obsolete IPC in Windows installation |
 | Autostart / signed updater | NOT implemented | Opt-in autostart, signing keys and rollback |
 | Phone pairing / Linux | NOT implemented | Separate architecture and security review |
 

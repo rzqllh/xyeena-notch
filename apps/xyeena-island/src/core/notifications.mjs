@@ -11,7 +11,17 @@ export class RunChangeFeed{
  /** Local visible activity confirmation; not a simulated run-state change. */
  recordTest(){
   const item={id:`test:${Date.now()}`,title:'Notification test',body:'Windows toast requested by you.',runId:'',state:'TEST'};
-  this.items.unshift(item);this.items=this.items.slice(0,12);return item;
+  this.items.unshift(item);this.items=this.items.slice(0,25);return item;
+ }
+ /**
+  * Record real local events (media, clipboard, file drop, toasts)
+  * @param {string} title
+  * @param {string} body
+  * @param {string} [category]
+  */
+ recordEvent(title,body,category='EVENT'){
+  const item={id:`${category.toLowerCase()}:${Date.now()}`,title:safe(title,80),body:safe(body,140),runId:'',state:category};
+  this.items.unshift(item);this.items=this.items.slice(0,25);return item;
  }
  /** @param {Array<{runId:string,state:string,goal:string}>} runs */
  update(runs){

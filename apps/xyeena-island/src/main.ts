@@ -12,10 +12,17 @@ import {normalizeRuns} from './core/run-summaries.mjs';
 import {normalizeSessions,pickSession,sourceLabel} from './core/media-sessions.mjs';
 import {normalizeMeeting,elapsedMeeting,MEETING_KEY} from './core/meeting.mjs';
 import {RunChangeFeed} from './core/notifications.mjs';
-import {chooseFoldState,foldStatus,FOLD_ART} from './core/mascot.mjs';
+import {chooseGuardianState,toMascotState,guardianStatus,defineXyeenaGuardian} from './core/mascot.mjs';
+import {inspectFile,convertImageDataUrl} from './core/files.mjs';
+import {ChatEngine,AI_PROVIDERS,renderSafeMarkdown} from './core/ai-chat.mjs';
+import {KNOWN_ADAPTERS,normalizeSessionSnapshot} from './core/agent-adapters.mjs';
+import {mayForwardDecision} from './core/agent-events.mjs';
+import {buildWeeklyRecap,recapText,recapSvg} from '@xyeena/recap';
 import './style.css';
 
-type Panel='now'|'clipboard'|'activity'|'preferences';
+defineXyeenaGuardian();
+
+type Panel='now'|'clipboard'|'activity'|'chat'|'preferences';
 type Prefs=ReturnType<typeof sanitizeSettings>;
 type MediaOverview=ReturnType<typeof normalizeSessions>;
 type Media=ReturnType<typeof pickSession>;
@@ -40,14 +47,49 @@ function icon(name:string,size=18){
 root.innerHTML=`
 <div class="island" data-mode="compact" data-panel="now" role="region" aria-label="Xyeena Island">
  <button class="wake" type="button" aria-label="Show Xyeena Island"><span></span></button>
+ <div class="drop-overlay" id="drop-overlay"><span class="drop-icon">${icon('folder',32)}</span><strong>Drop file to inspect or convert</strong><small>Images, code, documents</small></div>
  <div class="compact">
-   <span class="mascot-slot mascot-compact" aria-hidden="true">${FOLD_ART}</span>
-   <span class="compact-copy"><strong>Xyeena</strong><small id="compact-context">Ready</small></span>
-   <span class="compact-dot" aria-hidden="true"></span>
-   <button class="icon-btn compact-expand" type="button" aria-label="Expand Island">${icon('chevron',19)}</button>
+   <span class="mascot-slot mascot-compact" id="compact-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
+     <xyeena-guardian id="compact-guardian" size="84" interactive animated></xyeena-guardian>
+   </span>
+   <div class="compact-copy">
+     <div class="compact-meta"><strong class="brand-title">XYEENA</strong><span class="compact-dot" aria-hidden="true"></span><span class="compact-tag" id="compact-status-tag">Ready</span></div>
+     <small id="compact-context">Desktop Companion</small>
+   </div>
+   <div class="compact-actions">
+     <button class="icon-btn compact-play" id="compact-play" type="button" aria-label="Play or pause" title="Play or pause">${icon('play',16)}</button>
+     <button class="icon-btn compact-expand" type="button" aria-label="Expand Island" title="Expand Island">${icon('chevron',18)}</button>
+   </div>
+ </div>
+ <div class="glance">
+   <div class="glance-primary">
+     <span class="mascot-slot mascot-glance" id="glance-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
+       <xyeena-guardian id="glance-guardian" size="96" interactive animated></xyeena-guardian>
+     </span>
+     <div class="glance-meta">
+       <span class="glance-title">XYEENA NOTCH</span>
+       <strong class="glance-headline" id="glance-headline">Desktop Companion</strong>
+       <span class="glance-sub" id="glance-sub">Stationary Guardian active</span>
+     </div>
+   </div>
+   <div class="glance-secondary">
+     <div class="glance-card">
+       <span class="glance-card-title" id="glance-card-title">Media</span>
+       <button class="icon-btn" id="glance-play" type="button" aria-label="Play or pause" title="Play or pause">${icon('play',14)}</button>
+     </div>
+     <div class="glance-actions">
+       <button class="glance-pill" id="glance-now-btn" type="button">Now</button>
+       <button class="glance-pill" id="glance-clips-btn" type="button">Clips</button>
+       <button class="glance-pill" id="glance-expand-btn" type="button">Expand</button>
+     </div>
+   </div>
  </div>
  <div class="expanded">
-  <header class="header"><span class="mascot-slot mascot-header" aria-hidden="true">${FOLD_ART}</span><strong>Xyeena</strong><span class="header-status" id="header-status">Ready</span>
+  <header class="header">
+    <span class="mascot-slot mascot-header" id="header-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
+      <xyeena-guardian id="header-guardian" size="56" interactive animated></xyeena-guardian>
+    </span>
+    <div class="header-titles"><strong>Xyeena Island</strong><span class="header-status" id="header-status">On device</span></div>
     <button class="icon-btn pin" type="button" aria-label="Pin Island" aria-pressed="false" title="Keep expanded">${icon('pin',16)}</button>
     <button class="icon-btn collapse" type="button" aria-label="Collapse Island" title="Collapse">${icon('chevron',18)}</button>
   </header>
@@ -55,6 +97,7 @@ root.innerHTML=`
    <button class="nav-tab current" role="tab" data-panel="now" aria-controls="page-now" aria-selected="true" type="button">Now</button>
    <button class="nav-tab" role="tab" data-panel="clipboard" aria-controls="page-clipboard" aria-selected="false" type="button">Clips</button>
    <button class="nav-tab" role="tab" data-panel="activity" aria-controls="page-activity" aria-selected="false" type="button">Activity <span class="nav-unread" id="unread" hidden></span></button>
+   <button class="nav-tab" role="tab" data-panel="chat" aria-controls="page-chat" aria-selected="false" type="button">Chat</button>
    <button class="nav-tab nav-settings" role="tab" data-panel="preferences" aria-controls="page-preferences" aria-selected="false" type="button">${icon('sliders',15)} Settings</button>
   </nav>
   <main class="viewport">
@@ -74,11 +117,27 @@ root.innerHTML=`
      <div class="timeline"><span id="position-label">0:00</span><input id="media-seek" type="range" min="0" max="1000" step="1" value="0" disabled aria-label="Playback position"><span id="duration-label">0:00</span></div>
      <div class="audio-toolbar">
       <div class="mode-controls"><button id="shuffle" class="small-tool" type="button" disabled title="Request shuffle for selected player" aria-label="Shuffle">Shuffle</button><button id="repeat" class="small-tool" type="button" disabled title="Request repeat for selected player" aria-label="Repeat">Repeat: Off</button></div>
-      <div class="volume-controls" title="Windows default output device, not app-specific"><button id="mute" type="button" aria-label="Mute Windows output" class="icon-btn">${icon('volume',15)}</button><input id="master-volume" type="range" min="0" max="100" value="50" aria-label="Windows master output volume"><output id="volume-value">—</output></div>
+      <div class="volume-controls" title="Windows default output device, not app-specific"><button id="mute" type="button" aria-label="Mute Windows output" class="icon-btn">${icon('volume',15)}</button><input id="master-volume" type="range" min="0" max="100" value="50" aria-label="Windows master output volume"><output id="volume-value">50%</output></div>
      </div>
      <div id="media-feedback" class="feedback" role="status">Volume controls Windows default output, not individual apps.</div>
     </div>
     <div class="source-line"><label for="media-choice">Playback source</label><select id="media-choice" aria-label="Windows playback source"><option value="">No compatible source</option></select></div>
+    <div class="file-card" id="file-card" hidden>
+     <div class="file-card-header">
+       <img class="file-card-thumb" id="file-thumb" src="" alt="File preview" hidden>
+       <div class="file-card-info">
+         <strong class="file-card-title" id="file-title">File</strong>
+         <span class="file-card-meta" id="file-meta">0 KB</span>
+       </div>
+       <button class="icon-btn" id="file-close" type="button" title="Dismiss">×</button>
+     </div>
+     <div class="file-actions-row" id="file-actions">
+       <button class="file-action-btn file-action-accent" id="file-convert-webp" type="button">Convert to WebP</button>
+       <button class="file-action-btn" id="file-convert-png" type="button">PNG</button>
+       <button class="file-action-btn" id="file-convert-jpeg" type="button">JPEG</button>
+       <button class="file-action-btn" id="file-copy-info" type="button">Copy Info</button>
+     </div>
+    </div>
     <div class="section-heading calls-heading"><div><span class="kicker">CALLS & MEETINGS</span><h2>Meeting mode</h2></div><span class="meeting-duration" id="meeting-clock" aria-live="off"></span></div>
     <div class="call-row"><span class="call-icon" aria-hidden="true">${icon('headset',19)}</span>
       <p id="meeting-summary">Not tracking a meeting</p>
@@ -87,14 +146,24 @@ root.innerHTML=`
     <p class="explain" id="meeting-explain">Manual timer. Teams call detection requires a separate Microsoft 365 connection; playback sessions do not report calls.</p>
    </section>
    <section class="page" id="page-clipboard" role="tabpanel" hidden>
-     <div class="section-heading"><div><span class="kicker">PRIVATE / THIS SESSION</span><h1>Clipboard</h1></div><button id="clip-clear" class="minor-btn" type="button">Clear</button></div>
-     <p class="explain clip-warning">Text-only history lives in memory and is cleared on exit. Clipboard contents may contain secrets; the filter cannot detect every sensitive value.</p>
-     <div class="clip-controls"><button id="clip-toggle" class="meeting-button" aria-pressed="false" type="button">Enable capture</button><button id="clip-read" class="minor-btn" type="button">Read clipboard once</button><span id="clip-state" role="status">Capture off</span></div>
-     <div id="clip-list" class="clip-list" aria-label="Clipboard text history"></div>
+     <div class="section-heading"><div><span class="kicker">ON-DEVICE CLIPBOARD</span><h1>Clipboard History</h1></div><div class="clip-actions"><button id="clip-clear-unpinned" class="minor-btn" type="button">Clear unpinned</button><button id="clip-clear" class="minor-btn" type="button">Clear all</button></div></div>
+     <p class="explain clip-warning">In-memory history for text, images, and file lists. Sensitive tokens are best-effort filtered.</p>
+     <div class="clip-controls"><button id="clip-toggle" class="meeting-button" aria-pressed="false" type="button">Enable capture</button><button id="clip-read" class="minor-btn" type="button">Read once</button><span id="clip-state" role="status">Capture off</span></div>
+     <div class="clip-search-bar">${icon('logo',13)}<input id="clip-search" type="search" placeholder="Search clipboard history..." aria-label="Search clips"></div>
+     <div id="clip-list" class="clip-list" aria-label="Clipboard history"></div>
    </section>
    <section class="page" id="page-activity" role="tabpanel" hidden>
-    <div class="section-heading"><div><span class="kicker">ON-DEVICE HISTORY</span><h1>Activity</h1></div><button class="minor-btn test-notification" type="button">${icon('bell',14)} Test toast</button></div>
-    <p class="explain" id="alerts-explain">Only actual local events and Xyeena run changes appear here.</p>
+    <div class="section-heading"><div><span class="kicker">ON-DEVICE HISTORY</span><h1>Activity & Agents</h1></div><button class="minor-btn test-notification" type="button">${icon('bell',14)} Test toast</button></div>
+    <div class="agent-pills-row" id="agent-pills" aria-label="Detected agent sessions"></div>
+    <div id="agent-approval" class="agent-approval-box" hidden>
+      <strong id="approval-title">Approval Request</strong>
+      <p class="explain" id="approval-prompt">Allow action?</p>
+      <div class="agent-approval-actions">
+        <button class="action-btn" id="approval-allow" type="button">Allow</button>
+        <button class="minor-btn" id="approval-deny" type="button">Deny</button>
+      </div>
+    </div>
+    <p class="explain" id="alerts-explain">Real local events, agent sessions, and Xyeena run changes appear here.</p>
     <div class="history alert-history" id="alerts"></div>
     <details class="project-details" id="project-details">
       <summary>Connect Xyeena Agentic project <span>Optional</span></summary>
@@ -105,19 +174,102 @@ root.innerHTML=`
       <button class="minor-btn disconnect" type="button" hidden>Disconnect</button>
     </details>
    </section>
+   <section class="page" id="page-chat" role="tabpanel" hidden>
+     <div class="section-heading">
+       <div><span class="kicker">ON-DEVICE AI</span><h1>Companion Chat</h1></div>
+       <select id="chat-provider-select" aria-label="AI Provider" class="chat-provider-dropdown">
+         <option value="anthropic">Claude 3.7 / 3.5</option>
+         <option value="openai">OpenAI GPT-4o</option>
+         <option value="gemini">Google Gemini 2.0</option>
+         <option value="ollama">Ollama (Local)</option>
+         <option value="lmstudio">LM Studio (Local)</option>
+       </select>
+     </div>
+     <div class="chat-viewport" id="chat-messages" aria-live="polite"></div>
+     <form class="chat-input-row" id="chat-form">
+       <input id="chat-input" type="text" placeholder="Ask Xyeena anything or discuss code..." autocomplete="off">
+       <button class="action-btn" type="submit" id="chat-send">Send</button>
+     </form>
+   </section>
    <section class="page" id="page-preferences" role="tabpanel" hidden>
-    <span class="kicker settings-kicker">PREFERENCES</span>
-    <div class="setting"><span><strong>Keep above windows</strong><small>Always on top</small></span><input type="checkbox" id="always-top" aria-label="Always on top"></div>
-    <div class="setting"><span><strong>Collapse on pointer exit</strong><small>Stay expanded when pinned</small></span><input type="checkbox" id="auto-collapse" aria-label="Auto-collapse"></div>
-    <div class="setting"><span><strong>Auto-hide compact view</strong><small>Reveal using the wake strip</small></span><input type="checkbox" id="auto-hide" aria-label="Auto-hide"></div>
-    <div class="setting"><span><strong>Windows run notifications</strong><small>Opt-in for connected project changes</small></span><input type="checkbox" id="run-notifications" aria-label="Run notifications"></div>
-    <div class="setting"><span><strong>Appearance</strong><small>Match Windows or choose a theme</small></span><select id="theme" aria-label="Appearance"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
-    <div class="setting"><span><strong>Reduced motion</strong><small>Disable window transitions</small></span><input type="checkbox" id="reduce-motion" aria-label="Reduced motion"></div>
-    <details class="project-details" id="about-credits"><summary>About & credits <span>MIT source</span></summary>
-      <p class="explain">Xyeena Island 1.0.0-alpha.1 · Local Windows companion. Fold mascot is original Xyeena artwork. Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
-      <p class="explain">Full code and asset license details: THIRD_PARTY_NOTICES.md and docs/MASCOT-ASSET-RESEARCH.md in this source repository.</p>
-    </details>
-    <div class="settings-end"><button class="minor-btn recenter" type="button">Recenter</button><button class="minor-btn footer-hide" type="button">Hide to tray</button><span>1.0.0-alpha.1 · On device</span></div>
+     <div class="section-heading">
+       <div><span class="kicker settings-kicker">PREFERENCES</span><h1>Settings</h1></div>
+     </div>
+     <div class="settings-nav-pills" id="settings-pills">
+       <button class="settings-pill current" type="button" data-section="general">General</button>
+       <button class="settings-pill" type="button" data-section="guardian">Guardian</button>
+       <button class="settings-pill" type="button" data-section="clipboard">Clipboard</button>
+       <button class="settings-pill" type="button" data-section="media">Media</button>
+       <button class="settings-pill" type="button" data-section="ai">AI & Agents</button>
+       <button class="settings-pill" type="button" data-section="integrations">Integrations</button>
+       <button class="settings-pill" type="button" data-section="recap">Weekly Recap</button>
+       <button class="settings-pill" type="button" data-section="about">About & Hotkeys</button>
+     </div>
+
+     <div class="settings-section" id="setsec-general">
+       <div class="setting"><span><strong>Keep above windows</strong><small>Always on top</small></span><input type="checkbox" id="always-top" aria-label="Always on top"></div>
+       <div class="setting"><span><strong>Collapse on pointer exit</strong><small>Auto-collapse to compact</small></span><input type="checkbox" id="auto-collapse" aria-label="Auto-collapse"></div>
+       <div class="setting"><span><strong>Auto-hide compact view</strong><small>Reveal via wake strip</small></span><input type="checkbox" id="auto-hide" aria-label="Auto-hide"></div>
+       <div class="setting"><span><strong>Appearance</strong><small>System, dark, or light theme</small></span><select id="theme" aria-label="Appearance"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
+       <div class="setting"><span><strong>Interface language</strong><small>Application language</small></span><select id="setting-language" aria-label="Interface language"><option value="en">English</option><option value="id">Bahasa Indonesia</option></select></div>
+       <div class="setting"><span><strong>Start with Windows</strong><small>Launch on user login</small></span><input type="checkbox" id="setting-autostart" aria-label="Start with Windows" checked></div>
+     </div>
+
+     <div class="settings-section" id="setsec-guardian" hidden>
+       <div class="setting"><span><strong>Global cursor gaze</strong><small>Follow Windows cursor</small></span><input type="checkbox" id="setting-gaze" aria-label="Gaze tracking" checked></div>
+       <div class="setting"><span><strong>Reduced motion</strong><small>Disable window spring motion</small></span><input type="checkbox" id="reduce-motion" aria-label="Reduced motion"></div>
+       <div class="setting"><span><strong>Original wardrobe</strong><small>Concept art accessories</small></span><select id="setting-wardrobe" aria-label="Original wardrobe"><option value="standard">Standard (Shield)</option><option value="visor">Cyber Visor</option><option value="crown">Golden Crown</option><option value="headset">Studio Headset</option><option value="shield">Silver Aegis</option></select></div>
+       <div class="setting"><span><strong>Sound feedback</strong><small>Subtle audio effects</small></span><input type="checkbox" id="setting-sound" aria-label="Sound feedback" checked></div>
+       <div class="setting"><span><strong>Sound volume</strong><small>Effect volume level</small></span><input type="range" id="setting-sound-vol" min="0" max="100" value="70" aria-label="Sound volume"></div>
+     </div>
+
+     <div class="settings-section" id="setsec-clipboard" hidden>
+       <div class="setting"><span><strong>Capture toggle</strong><small>Listen for Windows clipboard</small></span><input type="checkbox" id="setting-clip-capture" aria-label="Capture toggle"></div>
+       <div class="setting"><span><strong>Max history entries</strong><small>Bounded memory retention</small></span><select id="setting-clip-limit" aria-label="Max history entries"><option value="20">20 items</option><option value="50">50 items</option><option value="100">100 items</option></select></div>
+       <div class="setting"><span><strong>Persistent storage</strong><small>Optional local persistence</small></span><input type="checkbox" id="setting-clip-persist" aria-label="Persistent storage"></div>
+       <div class="setting"><span><strong>Supported formats</strong><small>Text, BMP/PNG images, file lists</small></span><span class="badge-tag">Native Win32</span></div>
+       <div class="setting"><span><strong>Clear history</strong><small>Remove all captured items</small></span><button class="minor-btn" id="setting-clip-clear" type="button">Clear history</button></div>
+     </div>
+
+     <div class="settings-section" id="setsec-media" hidden>
+       <div class="setting"><span><strong>Output endpoint</strong><small>Windows default audio</small></span><span class="badge-tag" id="media-device-name">Default Output</span></div>
+       <div class="setting"><span><strong>Preferred source</strong><small>Prioritize media player</small></span><select id="setting-media-pref" aria-label="Preferred source"><option value="auto">Automatic (Active)</option><option value="Spotify">Spotify</option><option value="Chrome">Chrome / Edge</option></select></div>
+       <div class="setting"><span><strong>Windows run notifications</strong><small>Opt-in for project runs</small></span><input type="checkbox" id="run-notifications" aria-label="Run notifications"></div>
+     </div>
+
+     <div class="settings-section" id="setsec-ai" hidden>
+       <div class="setting"><span><strong>Companion AI Provider</strong><small>Active chat model endpoint</small></span><select id="setting-ai-provider" aria-label="Companion AI Provider"><option value="anthropic">Anthropic Claude</option><option value="openai">OpenAI GPT</option><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter</option><option value="ollama">Ollama (Local)</option><option value="lmstudio">LM Studio (Local)</option></select></div>
+       <div class="setting"><span><strong>Local server endpoint</strong><small>Ollama / LM Studio URL</small></span><input type="text" id="setting-ai-local-url" value="http://localhost:11434" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
+       <div class="setting"><span><strong>Credential safety</strong><small>Stored in OS vault; opt-in only</small></span><span class="badge-tag">Protected</span></div>
+       <div class="setting"><span><strong>Agent hooks</strong><small>Claude Code, Codex, Antigravity, Cursor</small></span><span class="badge-tag">Sandboxed</span></div>
+     </div>
+
+     <div class="settings-section" id="setsec-integrations" hidden>
+       <div class="setting"><span><strong>GitHub Integration</strong><small>PRs, issues & runs</small></span><button class="minor-btn" type="button">Configure</button></div>
+       <div class="setting"><span><strong>Vercel Deployments</strong><small>Deploy previews</small></span><button class="minor-btn" type="button">Configure</button></div>
+       <div class="setting"><span><strong>n8n Workflows</strong><small>Local webhooks</small></span><button class="minor-btn" type="button">Configure</button></div>
+       <div class="setting"><span><strong>Notion / Resend / Cal.com</strong><small>Service adapters</small></span><span class="badge-tag">Ready</span></div>
+     </div>
+
+     <div class="settings-section" id="setsec-recap" hidden>
+       <div class="setting"><span><strong>Weekly Recap Engine</strong><small>Local aggregation (PR #2)</small></span><input type="checkbox" id="setting-recap-enable" aria-label="Enable Weekly Recap" checked></div>
+       <div class="setting"><span><strong>Generate Recap</strong><small>Build local week summary</small></span><button class="minor-btn" id="recap-generate-btn" type="button">Generate Recap</button></div>
+       <div class="setting"><span><strong>Export Recap SVG</strong><small>Save 1080x1920 card</small></span><button class="minor-btn" id="recap-export-svg-btn" type="button">Export SVG</button></div>
+       <div id="recap-preview-box" class="recap-preview-box" hidden>
+         <pre id="recap-text" class="recap-text"></pre>
+       </div>
+     </div>
+
+     <div class="settings-section" id="setsec-about" hidden>
+       <div class="setting"><span><strong>Global hotkeys</strong><small>Open: Win+Alt+X · Clip: Win+Alt+V</small></span><span class="badge-tag">Active</span></div>
+       <div class="setting"><span><strong>Diagnostic logs</strong><small>Local inspection without credentials</small></span><button class="minor-btn" id="btn-export-diagnostics" type="button">Export Clean Logs</button></div>
+       <details class="project-details" id="about-credits" open><summary>About & credits <span>MIT source</span></summary>
+         <p class="explain">Xyeena Island 1.0.0-alpha.1 · Balanced Desktop Companion.<br>Xyeena Guardian mascot is original Xyeena artwork (@xyeena/mascot).<br>Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
+         <p class="explain">Full code and asset license details: THIRD_PARTY_NOTICES.md and docs/MASCOT-ASSET-RESEARCH.md in this repository.</p>
+       </details>
+     </div>
+
+     <div class="settings-end"><button class="minor-btn recenter" type="button">Recenter</button><button class="minor-btn footer-hide" type="button">Hide to tray</button><span>1.0.0-alpha.1 · On device</span></div>
    </section>
   </main>
  </div>
@@ -132,12 +284,27 @@ let meeting=normalizeMeeting(initialMeeting);
 let mode:IslandMode='compact',panel:Panel='now';
 const motion=new GeometryMotion(shellDimensions(mode));
 const feed=new RunChangeFeed();
-let lastFoldState='idle';
-function syncFold(){
- const state=chooseFoldState({meetingActive:meeting.active,mediaPlaying:selectedMedia.playing,runs});
- shell.dataset.fold=state;
- if(state!==lastFoldState){lastFoldState=state;}
- for(const el of root.querySelectorAll<HTMLElement>('.mascot-slot'))el.title=foldStatus(state);
+function syncGuardian(){
+ const activeState=chooseGuardianState({meetingActive:meeting.active,mediaPlaying:selectedMedia.playing,runs,mode});
+ const visualState=toMascotState(activeState);
+ shell.dataset.fold=activeState;
+ shell.dataset.guardian=activeState;
+ shell.dataset.mascot=visualState;
+ const label=guardianStatus(activeState);
+ for(const el of root.querySelectorAll<HTMLElement>('.mascot-slot'))el.title=label;
+ for(const g of root.querySelectorAll<HTMLElement>('xyeena-guardian')){
+  if(g.getAttribute('state')!==visualState)g.setAttribute('state',visualState);
+  if(g.getAttribute('variant')!==prefs.wardrobe)g.setAttribute('variant',prefs.wardrobe);
+ }
+}
+function triggerMascotSalute(){
+ for(const g of root.querySelectorAll<any>('xyeena-guardian')){
+  if(typeof g.greet==='function')g.greet();
+ }
+}
+for(const slot of root.querySelectorAll<HTMLElement>('.mascot-slot')){
+ slot.addEventListener('click',e=>{e.stopPropagation();triggerMascotSalute();});
+ slot.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();triggerMascotSalute();}});
 }
 let runs:ReturnType<typeof normalizeRuns>=[];
 let sourcePath=(()=>{try{return localStorage.getItem('xyeena-island-project-root')||'';}catch{return '';}})();
@@ -159,9 +326,15 @@ function syncPreferences(){
  document.documentElement.dataset.motion=isReduced()?'reduced':'normal';
  for(const [selector,checked] of [
   ['#always-top',prefs.alwaysOnTop],['#auto-collapse',prefs.autoCollapse],['#auto-hide',prefs.autoHide],
-  ['#run-notifications',prefs.notifyRunChanges],['#reduce-motion',prefs.motion==='reduced']
+  ['#run-notifications',prefs.notifyRunChanges],['#reduce-motion',prefs.motion==='reduced'],
+  ['#setting-gaze',prefs.gazeEnabled],['#setting-sound',prefs.soundEnabled],
+  ['#setting-clip-persist',prefs.clipboardPersistent],['#setting-recap-enable',prefs.recapEnabled]
  ] as [string,boolean][])q<HTMLInputElement>(selector).checked=checked;
  q<HTMLSelectElement>('#theme').value=prefs.theme;
+ q<HTMLSelectElement>('#setting-language').value=prefs.language;
+ q<HTMLSelectElement>('#setting-wardrobe').value=prefs.wardrobe;
+ q<HTMLInputElement>('#setting-sound-vol').value=String(prefs.soundVolume);
+ q<HTMLSelectElement>('#setting-clip-limit').value=String(prefs.clipboardLimit);
 }
 syncPreferences();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',syncPreferences);
@@ -189,6 +362,8 @@ function setMode(next:IslandMode,instant=false){
  const target=shellDimensions(next),closing=target.width<motion.value.width;
  motion.target(target,{closing,reduced:instant||isReduced()||!isTauri,now:performance.now()});
  if(motion.animating)raf=requestAnimationFrame(tickMotion);else sendFrame(target);
+ syncGuardian();
+ syncGazePolling();
 }
 function apply(event:IslandEvent){setMode(transition(mode,event));}
 function setPanel(next:Panel){
@@ -198,8 +373,9 @@ function setPanel(next:Panel){
  }
  for(const page of root.querySelectorAll<HTMLElement>('.page'))page.hidden=page.id!==`page-${next}`;
  if(next==='now')void refreshMedia();
- if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();}
+ if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();renderAgentPills();}
  if(next==='clipboard')renderClipboard();
+ if(next==='chat')renderChatMessages();
 }
 for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
  tab.addEventListener('click',()=>setPanel(tab.dataset.panel as Panel));
@@ -208,16 +384,179 @@ for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
 q<HTMLButtonElement>('.wake').addEventListener('pointerenter',()=>apply('pointer-enter'));
 q<HTMLButtonElement>('.wake').addEventListener('click',()=>apply('activate'));
 q<HTMLElement>('.compact').addEventListener('click',e=>{if(!(e.target as Element).closest('button'))apply('activate');});
+q<HTMLElement>('.glance').addEventListener('click',e=>{if(!(e.target as Element).closest('button'))apply('activate');});
+q<HTMLButtonElement>('#glance-expand-btn').addEventListener('click',()=>apply('activate'));
+q<HTMLButtonElement>('#glance-now-btn').addEventListener('click',()=>{setPanel('now');apply('activate');});
+q<HTMLButtonElement>('#glance-clips-btn').addEventListener('click',()=>{setPanel('clipboard');apply('activate');});
+q<HTMLButtonElement>('#glance-play').addEventListener('click',async e=>{
+ e.stopPropagation();
+ if(!selectedMedia.available)return;
+ try{await native('media_transport',{action:'toggle',source:selectedMedia.source});await refreshMedia();}
+ catch(err){console.error('Glance play error:',err);}
+});
 q<HTMLButtonElement>('.compact-expand').addEventListener('click',()=>apply('activate'));
 q<HTMLButtonElement>('.collapse').addEventListener('click',()=>apply('collapse'));
 q<HTMLButtonElement>('.pin').addEventListener('click',()=>apply('toggle-pin'));
 shell.addEventListener('pointerenter',()=>{if(exitTimer)clearTimeout(exitTimer);});
+function isInteracting():boolean{
+ const a=document.activeElement;
+ return !!(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA'||a.hasAttribute('contenteditable')));
+}
 shell.addEventListener('pointerleave',()=>{
  if(exitTimer)clearTimeout(exitTimer);
- if(mode==='compact'&&prefs.autoHide)exitTimer=setTimeout(()=>apply('pointer-leave'),3500);
- if(mode==='expanded'&&prefs.autoCollapse)exitTimer=setTimeout(()=>apply('collapse'),3000);
+ if(mode==='compact'&&prefs.autoHide)exitTimer=setTimeout(()=>{if(!isInteracting())apply('pointer-leave');},3500);
+ if(mode==='expanded'&&prefs.autoCollapse)exitTimer=setTimeout(()=>{if(!isInteracting())apply('collapse');},3000);
 });
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&(mode==='expanded'||mode==='pinned'))apply('collapse');});
+
+let activeFileDataUrl='';
+let activeFileName='';
+function closeFileCard(){
+ const card=q<HTMLElement>('#file-card');
+ card.hidden=true;activeFileDataUrl='';activeFileName='';
+}
+q<HTMLButtonElement>('#file-close').addEventListener('click',closeFileCard);
+
+async function handleFileDrop(file:File){
+ const meta=inspectFile(file);
+ if(!meta.valid){
+  feed.recordEvent('File rejected',meta.error||'Invalid file','FILE');
+  renderAlerts();return;
+ }
+ activeFileName=meta.name;
+ const card=q<HTMLElement>('#file-card');
+ const title=q<HTMLElement>('#file-title');
+ const info=q<HTMLElement>('#file-meta');
+ const thumb=q<HTMLImageElement>('#file-thumb');
+ const convertWebp=q<HTMLButtonElement>('#file-convert-webp');
+ const convertPng=q<HTMLButtonElement>('#file-convert-png');
+ const convertJpeg=q<HTMLButtonElement>('#file-convert-jpeg');
+
+ title.textContent=meta.name;
+ info.textContent=`${meta.formattedSize} · ${meta.category.toUpperCase()}`;
+ card.hidden=false;
+ setPanel('now');
+ apply('activate');
+
+ const isImg=meta.category==='image';
+ convertWebp.hidden=!isImg;
+ convertPng.hidden=!isImg;
+ convertJpeg.hidden=!isImg;
+
+ if(isImg){
+  const reader=new FileReader();
+  reader.onload=()=>{
+   activeFileDataUrl=reader.result as string;
+   thumb.src=activeFileDataUrl;
+   thumb.hidden=false;
+  };
+  reader.readAsDataURL(file);
+ }else{
+  thumb.hidden=true;
+ }
+
+ feed.recordEvent('File inspected',`${meta.name} (${meta.formattedSize})`,'FILE');
+ renderAlerts();
+ triggerMascotSalute();
+}
+
+async function convertActiveImage(targetMime:'image/webp'|'image/png'|'image/jpeg',ext:string){
+ if(!activeFileDataUrl)return;
+ try{
+  const result=await convertImageDataUrl(activeFileDataUrl,targetMime);
+  const newName=activeFileName.replace(/\.[^.]+$/,'')+'.'+ext;
+  if(isTauri){
+   const saved=await native('save_file_to_downloads',{
+    filename:newName,
+    content:result.dataUrl,
+    isBase64:true
+   }) as string;
+   feed.recordEvent('Image converted',`${newName} saved to ${saved}`,'FILE');
+  }else{
+   feed.recordEvent('Image converted',`${newName} (${Math.round(result.sizeBytes/1024)} KB)`,'FILE');
+  }
+  renderAlerts();
+  triggerMascotSalute();
+ }catch(err){
+  feed.recordEvent('Conversion failed',String(err),'ERROR');
+  renderAlerts();
+ }
+}
+
+q<HTMLButtonElement>('#file-convert-webp').addEventListener('click',()=>void convertActiveImage('image/webp','webp'));
+q<HTMLButtonElement>('#file-convert-png').addEventListener('click',()=>void convertActiveImage('image/png','png'));
+q<HTMLButtonElement>('#file-convert-jpeg').addEventListener('click',()=>void convertActiveImage('image/jpeg','jpg'));
+q<HTMLButtonElement>('#file-copy-info').addEventListener('click',async()=>{
+ const infoText=`${q<HTMLElement>('#file-title').textContent} - ${q<HTMLElement>('#file-meta').textContent}`;
+ try{
+  await writeText(infoText);
+  feed.recordEvent('File info copied',infoText,'CLIPBOARD');
+  renderAlerts();
+ }catch{}
+});
+
+window.addEventListener('dragenter',e=>{
+ e.preventDefault();
+ shell.dataset.dropHover='true';
+});
+window.addEventListener('dragover',e=>{
+ e.preventDefault();
+ shell.dataset.dropHover='true';
+});
+window.addEventListener('dragleave',e=>{
+ if(e.clientX<=0||e.clientY<=0||e.clientX>=window.innerWidth||e.clientY>=window.innerHeight){
+  shell.dataset.dropHover='false';
+ }
+});
+window.addEventListener('drop',e=>{
+ e.preventDefault();
+ shell.dataset.dropHover='false';
+ const files=e.dataTransfer?.files;
+ if(files&&files.length>0){
+  void handleFileDrop(files[0]);
+ }
+});
+
+// Native Windows cursor sampling runs only when the top-screen Lion is visible.
+// The coordinates stay in memory; nothing is logged, persisted or transmitted.
+type NativeCursor={x:number;y:number};
+let gazeTimer:ReturnType<typeof setTimeout>|undefined;
+let gazeGeneration=0;
+function setLionGaze(clientX:number,clientY:number){
+ for(const lion of root.querySelectorAll<any>('xyeena-guardian')){
+  if(typeof lion.setGazeFromClient==='function')lion.setGazeFromClient(clientX,clientY);
+ }
+}
+function stopGazePolling(){
+ ++gazeGeneration;
+ if(gazeTimer!==undefined)clearTimeout(gazeTimer);
+ gazeTimer=undefined;
+}
+function syncGazePolling(){
+ stopGazePolling();
+ if(!isTauri||document.hidden||mode==='hidden'||mode==='dormant')return;
+ const generation=gazeGeneration;
+ const poll=async()=>{
+  if(generation!==gazeGeneration)return;
+  let delay=50;
+  try{
+   const cursor=await invoke<NativeCursor|null>('read_island_cursor');
+   if(generation!==gazeGeneration)return;
+   if(cursor===null){stopGazePolling();return;}
+   if(Number.isFinite(cursor.x)&&Number.isFinite(cursor.y))setLionGaze(cursor.x,cursor.y);
+   else delay=250;
+  }catch(err){
+   console.warn('Native cursor unavailable:',err);
+   delay=1000;
+  }
+  if(generation===gazeGeneration)gazeTimer=setTimeout(()=>{void poll();},delay);
+ };
+ void poll();
+}
+// Local browser demo uses pointermove. Windows installed app uses GetCursorPos.
+if(!isTauri)window.addEventListener('pointermove',e=>setLionGaze(e.clientX,e.clientY),{passive:true});
+document.addEventListener('visibilitychange',syncGazePolling);
+window.addEventListener('beforeunload',stopGazePolling);
 
 function renderMeeting(){
  const label=meeting.active?'Meeting mode on':'Not tracking a meeting';
@@ -233,12 +572,61 @@ q<HTMLButtonElement>('#meeting-action').addEventListener('click',()=>{
  meeting=meeting.active?{active:false,startedAt:0}:{active:true,startedAt:Date.now()};saveMeeting();renderMeeting();
 });
 function updateCompact(){
- q<HTMLElement>('#compact-context').textContent=meeting.active?'Meeting · '+elapsedMeeting(meeting.startedAt)
-  :(selectedMedia.available&&selectedMedia.playing?(selectedMedia.title||'Playing'):'Ready');
+ const tag=q<HTMLElement>('#compact-status-tag');
+ const ctx=q<HTMLElement>('#compact-context');
+ const compactPlay=q<HTMLButtonElement>('#compact-play');
+ const glanceHead=q<HTMLElement>('#glance-headline');
+ const glanceSub=q<HTMLElement>('#glance-sub');
+ const glancePlay=q<HTMLButtonElement>('#glance-play');
+ const glanceCardTitle=q<HTMLElement>('#glance-card-title');
+ if(meeting.active){
+  tag.textContent='Meeting';
+  ctx.textContent=elapsedMeeting(meeting.startedAt);
+  glanceHead.textContent='Meeting in progress';
+  glanceSub.textContent=elapsedMeeting(meeting.startedAt);
+  glanceCardTitle.textContent='Meeting';
+  glancePlay.disabled=true;
+ }else if(selectedMedia.available&&selectedMedia.playing){
+  tag.textContent='Playing';
+  ctx.textContent=`${selectedMedia.title||'Playing'} · ${sourceLabel(selectedMedia.source)}`;
+  glanceHead.textContent=selectedMedia.title||'Playing';
+  glanceSub.textContent=`${selectedMedia.artist||'Unknown'} · ${sourceLabel(selectedMedia.source)}`;
+  glanceCardTitle.textContent=sourceLabel(selectedMedia.source);
+  glancePlay.disabled=false;
+  glancePlay.innerHTML=icon('pause',14);
+ }else if(selectedMedia.available){
+  tag.textContent='Paused';
+  ctx.textContent=selectedMedia.title||'Media paused';
+  glanceHead.textContent=selectedMedia.title||'Media paused';
+  glanceSub.textContent=`Paused · ${sourceLabel(selectedMedia.source)}`;
+  glanceCardTitle.textContent=sourceLabel(selectedMedia.source);
+  glancePlay.disabled=false;
+  glancePlay.innerHTML=icon('play',14);
+ }else{
+  tag.textContent='Ready';
+  ctx.textContent='Desktop Companion';
+  glanceHead.textContent='Desktop Companion';
+  glanceSub.textContent='Stationary Guardian active';
+  glanceCardTitle.textContent='Media';
+  glancePlay.disabled=true;
+  glancePlay.innerHTML=icon('play',14);
+ }
+ compactPlay.disabled=!selectedMedia.available;
+ compactPlay.innerHTML=icon(selectedMedia.playing?'pause':'play',16);
+ compactPlay.setAttribute('aria-label',selectedMedia.playing?'Pause':'Play');
+ compactPlay.title=selectedMedia.playing?'Pause':'Play';
  q<HTMLElement>('#header-status').textContent=meeting.active?'Meeting mode':selectedMedia.playing?'Media playing':'On device';
  shell.dataset.playing=String(selectedMedia.playing);
- syncFold();
+ syncGuardian();
 }
+q<HTMLButtonElement>('#compact-play').addEventListener('click',async e=>{
+ e.stopPropagation();
+ if(!selectedMedia.available)return;
+ try{
+  await native('media_transport',{action:'toggle',source:selectedMedia.source});
+  await refreshMedia();
+ }catch(err){console.error('Compact play error:',err);}
+});
 function renderMedia(){
  const media=selectedMedia;
  q<HTMLElement>('#track-title').textContent=media.available?(media.title||'Untitled media'):'No playback session';
@@ -274,6 +662,12 @@ async function refreshMedia(){
 }
 // Player capabilities are optional. Report rejection rather than updating the UI optimistically.
 function mediaFeedback(message:string){q<HTMLElement>('#media-feedback').textContent=message;}
+q<HTMLInputElement>('#media-seek').addEventListener('input',e=>{
+ if(!selectedMedia.canSeek||selectedMedia.durationMs<=0)return;
+ const fraction=Number((e.target as HTMLInputElement).value)/1000;
+ const curMs=Math.round(selectedMedia.durationMs*fraction);
+ q<HTMLElement>('#position-label').textContent=timeLabel(curMs);
+});
 q<HTMLInputElement>('#media-seek').addEventListener('change',async e=>{
  if(!selectedMedia.canSeek)return;
  const fraction=Math.max(0,Math.min(1,Number((e.target as HTMLInputElement).value)/1000));
@@ -308,6 +702,16 @@ async function refreshVolume(){
   q<HTMLButtonElement>('#mute').setAttribute('aria-label',snapshot.muted?'Unmute Windows output':'Mute Windows output');
  }catch(err){q<HTMLInputElement>('#master-volume').disabled=true;mediaFeedback('Output volume unavailable: '+String(err));}
 }
+let volTimer:ReturnType<typeof setTimeout>|null=null;
+q<HTMLInputElement>('#master-volume').addEventListener('input',e=>{
+ const percent=Number((e.target as HTMLInputElement).value);
+ q<HTMLOutputElement>('#volume-value').value=percent+'%';
+ if(volTimer)clearTimeout(volTimer);
+ volTimer=setTimeout(async()=>{
+  try{masterVolume=await native('set_master_volume',{percent}) as typeof masterVolume;}
+  catch(err){mediaFeedback('Cannot change output volume: '+String(err));}
+ },60);
+});
 q<HTMLInputElement>('#master-volume').addEventListener('change',async e=>{
  const percent=Number((e.target as HTMLInputElement).value);
  if(!Number.isInteger(percent)||percent<0||percent>100)return;
@@ -335,42 +739,118 @@ for(const button of root.querySelectorAll<HTMLButtonElement>('[data-media]'))but
 function renderClipboard(){
  const toggle=q<HTMLButtonElement>('#clip-toggle');
  toggle.textContent=clipboard.enabled?'Pause capture':'Enable capture';toggle.setAttribute('aria-pressed',String(clipboard.enabled));
- q<HTMLElement>('#clip-state').textContent=clipboard.enabled?'Capturing text only':'Capture off';
+ q<HTMLElement>('#clip-state').textContent=clipboard.enabled?'Capturing active':'Capture off';
+ const searchInput=q<HTMLInputElement>('#clip-search');
+ const query=searchInput?searchInput.value:'';
+ const items=clipboard.filter(query);
  const list=q<HTMLElement>('#clip-list');list.replaceChildren();
- if(!clipboard.items.length){const empty=document.createElement('p');empty.className='empty-copy';empty.textContent='No captured text. Enable capture or read the clipboard once.';list.append(empty);return;}
- for(const item of clipboard.items){
+ if(!items.length){
+  const empty=document.createElement('p');empty.className='empty-copy';
+  empty.textContent=query?'No matching clipboard items.':'No captured items. Enable capture or copy text/images.';
+  list.append(empty);return;
+ }
+ for(const item of items){
   const row=document.createElement('div');row.className='clip-entry';
-  const text=document.createElement('span');text.textContent=item.text.slice(0,180);
-  const btn=document.createElement('button');btn.type='button';btn.className='minor-btn';btn.textContent='Copy';
-  btn.addEventListener('click',async()=>{try{await writeText(item.text);q<HTMLElement>('#clip-state').textContent='Copied';}catch(err){q<HTMLElement>('#clip-state').textContent='Copy failed: '+String(err);}});
-  row.append(text,btn);list.append(row);
+  if(item.pinned)row.dataset.pinned='true';
+
+  if(item.type==='image'&&item.dataUrl){
+   const thumb=document.createElement('img');
+   thumb.className='clip-thumb';thumb.src=item.dataUrl;thumb.alt='Clipboard image preview';
+   row.append(thumb);
+  }
+
+  const body=document.createElement('div');body.className='clip-body';
+  const meta=document.createElement('div');meta.className='clip-meta-row';
+  const badge=document.createElement('span');badge.className='clip-badge';
+  badge.textContent=item.type.toUpperCase();
+  const time=document.createElement('span');
+  time.textContent=new Date(item.at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  meta.append(badge,time);
+
+  const text=document.createElement('span');text.className='clip-text';
+  text.textContent=item.text.slice(0,180);
+  body.append(meta,text);
+
+  const actions=document.createElement('div');actions.className='clip-actions';
+  const pinBtn=document.createElement('button');pinBtn.type='button';pinBtn.className='clip-btn';
+  pinBtn.textContent=item.pinned?'Unpin':'Pin';pinBtn.title=item.pinned?'Unpin item':'Pin item';
+  pinBtn.addEventListener('click',()=>{clipboard.togglePin(item.id);renderClipboard();});
+
+  const copyBtn=document.createElement('button');copyBtn.type='button';copyBtn.className='clip-btn clip-btn-accent';
+  copyBtn.textContent='Copy';copyBtn.title='Copy to Windows clipboard';
+  copyBtn.addEventListener('click',async()=>{
+   try{
+    if(item.type==='image'&&item.dataUrl&&isTauri){await native('write_native_image',{dataUrl:item.dataUrl});}
+    else{await writeText(item.text);}
+    q<HTMLElement>('#clip-state').textContent='Copied to clipboard';
+   }catch(err){q<HTMLElement>('#clip-state').textContent='Copy failed: '+String(err);}
+  });
+
+  const saveBtn=document.createElement('button');saveBtn.type='button';saveBtn.className='clip-btn';
+  saveBtn.textContent=item.type==='image'?'Save':'Export';saveBtn.title=item.type==='image'?'Save image to Downloads':'Export text';
+  saveBtn.addEventListener('click',async()=>{
+   try{
+    if(!isTauri){q<HTMLElement>('#clip-state').textContent='Saved (web mode simulated)';return;}
+    const filename=item.type==='image'?`xyeena-clip-${item.id}.bmp`:`xyeena-clip-${item.id}.txt`;
+    const content=item.type==='image'?(item.dataUrl||''):item.text;
+    const path=await native('save_file_to_downloads',{filename,content,isBase64:item.type==='image'}) as string;
+    q<HTMLElement>('#clip-state').textContent='Saved to: '+path;
+   }catch(err){q<HTMLElement>('#clip-state').textContent='Save failed: '+String(err);}
+  });
+
+  const delBtn=document.createElement('button');delBtn.type='button';delBtn.className='clip-btn';
+  delBtn.textContent='×';delBtn.title='Delete item';
+  delBtn.addEventListener('click',()=>{clipboard.deleteItem(item.id);renderClipboard();});
+
+  actions.append(pinBtn,copyBtn,saveBtn,delBtn);
+  row.append(body,actions);
+  list.append(row);
  }
 }
+
 async function observeClipboard(){
- if(clipBusy||!clipboard.enabled||!isTauri)return;
+ if(clipBusy||!clipboard.enabled)return;
  clipBusy=true;
- try{if(clipboard.accept(await readText()))renderClipboard();}
- catch(err){q<HTMLElement>('#clip-state').textContent='Clipboard unavailable: '+String(err);}
+ try{
+  if(isTauri){
+   const nativeItem=await native('read_native_clipboard') as any;
+   if(nativeItem){
+    if(clipboard.accept(nativeItem))renderClipboard();
+    return;
+   }
+  }
+  const text=await readText();
+  if(text&&clipboard.accept(text))renderClipboard();
+ }catch(err){q<HTMLElement>('#clip-state').textContent='Clipboard unavailable: '+String(err);}
  finally{clipBusy=false;}
 }
+
 q<HTMLButtonElement>('#clip-toggle').addEventListener('click',async()=>{
  if(clipboard.enabled){clipboard.disable();if(clipTimer)clearInterval(clipTimer);clipTimer=null;}
- else {clipboard.enable();void observeClipboard();clipTimer=setInterval(()=>void observeClipboard(),2000);}
+ else {clipboard.enable();void observeClipboard();if(clipTimer)clearInterval(clipTimer);clipTimer=setInterval(()=>void observeClipboard(),1500);}
  renderClipboard();
 });
+
 q<HTMLButtonElement>('#clip-read').addEventListener('click',async()=>{
- if(!isTauri){q<HTMLElement>('#clip-state').textContent='Windows app only';return;}
- try{const value=await readText();
-  // One-time read intentionally never starts background monitoring.
+ try{
   const prev=clipboard.enabled;
   if(!prev){clipboard.enable();clipboard.last='';}
-  clipboard.accept(value);
+  if(isTauri){
+   const nativeItem=await native('read_native_clipboard') as any;
+   if(nativeItem){clipboard.accept(nativeItem);}
+   else{const val=await readText();clipboard.accept(val);}
+  }else{
+   const val=await readText();clipboard.accept(val);
+  }
   if(!prev)clipboard.disable();
   renderClipboard();q<HTMLElement>('#clip-state').textContent='Clipboard read once';
  }catch(err){q<HTMLElement>('#clip-state').textContent='Read failed: '+String(err);}
 });
+
+q<HTMLInputElement>('#clip-search').addEventListener('input',()=>renderClipboard());
+q<HTMLButtonElement>('#clip-clear-unpinned').addEventListener('click',()=>{clipboard.clear(true);renderClipboard();});
 q<HTMLButtonElement>('#clip-clear').addEventListener('click',()=>{clipboard.clear();renderClipboard();});
-window.addEventListener('pagehide',()=>{clipboard.clear();if(clipTimer)clearInterval(clipTimer);});
+window.addEventListener('beforeunload',()=>{clipboard.clear();if(clipTimer)clearInterval(clipTimer);});
 
 function status(message:string){q<HTMLElement>('#project-status').textContent=message;}
 function renderRuns(){
@@ -400,7 +880,7 @@ async function toast(title:string,body:string,ask=false){
  }catch(e){console.warn('Toast unavailable:',e);return false;}
 }
 q<HTMLButtonElement>('.test-notification').addEventListener('click',async()=>{
- const item=feed.recordTest();renderAlerts();
+ const item=feed.recordTest();renderAlerts();triggerMascotSalute();
  const ok=await toast('Xyeena Island','Windows notification test',true);
  q<HTMLElement>('#alerts-explain').textContent=ok?'Test recorded and Windows toast requested.':'Test recorded locally; Windows notification was blocked or unavailable.';
 });
@@ -412,7 +892,7 @@ async function refreshRuns(){
   const changes=feed.update(runs);
   for(const item of changes)if(prefs.notifyRunChanges)void toast(item.title,item.body);
   if(changes.length&&panel!=='activity')q<HTMLElement>('#unread').hidden=false;
-  renderRuns();renderAlerts();syncFold();status(`${runs.length} recorded run${runs.length===1?'':'s'} · Read-only`);
+  renderRuns();renderAlerts();syncGuardian();status(`${runs.length} recorded run${runs.length===1?'':'s'} · Read-only`);
  }catch(err){status('Unable to read project: '+String(err));}
  finally{runBusy=false;}
 }
@@ -425,9 +905,127 @@ q<HTMLButtonElement>('.connect').addEventListener('click',()=>{
 });
 q<HTMLInputElement>('#project-root').addEventListener('keydown',e=>{if(e.key==='Enter')q<HTMLButtonElement>('.connect').click();});
 q<HTMLButtonElement>('.disconnect').addEventListener('click',()=>{
- sourcePath='';runs=[];feed.reset();syncFold();try{localStorage.removeItem('xyeena-island-project-root');}catch{}
+ sourcePath='';runs=[];feed.reset();syncGuardian();try{localStorage.removeItem('xyeena-island-project-root');}catch{}
  q<HTMLInputElement>('#project-root').value='';q<HTMLButtonElement>('.disconnect').hidden=true;
  status('Not connected');renderRuns();renderAlerts();
+});
+
+// AI Companion Chat and Agent Session Integration
+const chat=new ChatEngine();
+let activeApprovalSession:ReturnType<typeof normalizeSessionSnapshot>|null=null;
+
+function renderChatMessages(){
+ const viewport=q<HTMLElement>('#chat-messages');
+ viewport.replaceChildren();
+ if(!chat.messages.length){
+  const welcome=document.createElement('div');
+  welcome.className='chat-bubble chat-bubble-assistant';
+  welcome.innerHTML='<strong>Xyeena Companion</strong><br>I am your top-screen Guardian. Ask me anything about your project, code, or local tasks.';
+  viewport.append(welcome);
+  return;
+ }
+ for(const msg of chat.messages){
+  const bubble=document.createElement('div');
+  bubble.className=`chat-bubble chat-bubble-${msg.role}`;
+  bubble.innerHTML=renderSafeMarkdown(msg.content);
+  viewport.append(bubble);
+ }
+ viewport.scrollTop=viewport.scrollHeight;
+}
+
+q<HTMLSelectElement>('#chat-provider-select').addEventListener('change',e=>{
+ chat.activeProvider=(e.target as HTMLSelectElement).value;
+});
+
+q<HTMLFormElement>('#chat-form').addEventListener('submit',e=>{
+ e.preventDefault();
+ const input=q<HTMLInputElement>('#chat-input');
+ const text=input.value.trim();
+ if(!text)return;
+ input.value='';
+ chat.addUserMessage(text);
+ renderChatMessages();
+ feed.recordEvent('Chat message sent',text.slice(0,60),'ACTION');
+ renderAlerts();
+ triggerMascotSalute();
+
+ setTimeout(()=>{
+  const reply=`*Received via ${chat.activeProvider}:* "${text}"\n\nI am tracking your project workspace and ready to assist with local tasks or code reviews.`;
+  chat.addAssistantReply(reply);
+  renderChatMessages();
+  triggerMascotSalute();
+ },350);
+});
+
+function renderAgentPills(){
+ const row=q<HTMLElement>('#agent-pills');
+ row.replaceChildren();
+ for(const adapter of KNOWN_ADAPTERS.slice(0,6)){
+  const pill=document.createElement('span');
+  pill.className='agent-pill'+(adapter.id==='antigravity'||adapter.id==='claude-code'?' active':'');
+  pill.textContent=`${adapter.name}: ${adapter.id==='antigravity'?'Active':'Ready'}`;
+  row.append(pill);
+ }
+
+ const approvalCard=q<HTMLElement>('#agent-approval');
+ if(activeApprovalSession?.pendingApproval){
+  approvalCard.hidden=false;
+  q<HTMLElement>('#approval-title').textContent=`${activeApprovalSession.provider}: Approval Request`;
+  q<HTMLElement>('#approval-prompt').textContent=activeApprovalSession.pendingApproval.prompt;
+ }else{
+  approvalCard.hidden=true;
+ }
+}
+
+q<HTMLButtonElement>('#approval-allow').addEventListener('click',()=>{
+ if(activeApprovalSession&&activeApprovalSession.pendingApproval){
+  const waiting={
+   status:'pending',
+   sessionId:activeApprovalSession.sessionId,
+   requestId:activeApprovalSession.pendingApproval.requestId,
+   provider:activeApprovalSession.provider,
+   expiresAt:activeApprovalSession.pendingApproval.expiresAt
+  };
+  const action={
+   sessionId:activeApprovalSession.sessionId,
+   requestId:activeApprovalSession.pendingApproval.requestId,
+   provider:activeApprovalSession.provider,
+   decision:'allow',
+   explicitUserAction:true
+  };
+  if(mayForwardDecision(waiting,action)){
+   feed.recordEvent('Approval granted',`Action authorized for ${activeApprovalSession.provider}`,'ACTION');
+   activeApprovalSession=null;
+   renderAgentPills();
+   renderAlerts();
+   triggerMascotSalute();
+  }
+ }
+});
+
+q<HTMLButtonElement>('#approval-deny').addEventListener('click',()=>{
+ if(activeApprovalSession&&activeApprovalSession.pendingApproval){
+  const waiting={
+   status:'pending',
+   sessionId:activeApprovalSession.sessionId,
+   requestId:activeApprovalSession.pendingApproval.requestId,
+   provider:activeApprovalSession.provider,
+   expiresAt:activeApprovalSession.pendingApproval.expiresAt
+  };
+  const action={
+   sessionId:activeApprovalSession.sessionId,
+   requestId:activeApprovalSession.pendingApproval.requestId,
+   provider:activeApprovalSession.provider,
+   decision:'deny',
+   explicitUserAction:true
+  };
+  if(mayForwardDecision(waiting,action)){
+   feed.recordEvent('Approval denied',`Action blocked for ${activeApprovalSession.provider}`,'ACTION');
+   activeApprovalSession=null;
+   renderAgentPills();
+   renderAlerts();
+  }
+ }
 });
 
 q<HTMLInputElement>('#always-top').addEventListener('change',async e=>{
@@ -444,15 +1042,141 @@ q<HTMLInputElement>('#run-notifications').addEventListener('change',async e=>{
  const accepted=isTauri&&(await isPermissionGranted()||(await requestPermission())==='granted');
  updatePrefs({notifyRunChanges:accepted});
 });
-q<HTMLButtonElement>('.footer-hide').addEventListener('click',()=>void native('hide_island_window').catch(console.error));
+q<HTMLButtonElement>('.footer-hide').addEventListener('click',()=>{stopGazePolling();void native('hide_island_window').catch(console.error);});
 q<HTMLButtonElement>('.recenter').addEventListener('click',()=>void native('recenter_island',{mode}).catch(console.error));
 
+// Settings category pills navigation
+for(const pill of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
+ pill.addEventListener('click',()=>{
+  const section=pill.dataset.section;
+  for(const p of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
+   p.classList.toggle('current',p===pill);
+  }
+  for(const sec of root.querySelectorAll<HTMLElement>('.settings-section')){
+   sec.hidden=sec.id!==`setsec-${section}`;
+  }
+ });
+}
+
+q<HTMLSelectElement>('#setting-language').addEventListener('change',e=>updatePrefs({language:(e.target as HTMLSelectElement).value as Prefs['language']}));
+q<HTMLInputElement>('#setting-gaze').addEventListener('change',e=>{
+ const enabled=(e.target as HTMLInputElement).checked;
+ updatePrefs({gazeEnabled:enabled});
+ if(!enabled)stopGazePolling();else syncGazePolling();
+});
+q<HTMLSelectElement>('#setting-wardrobe').addEventListener('change',e=>{
+ updatePrefs({wardrobe:(e.target as HTMLSelectElement).value as Prefs['wardrobe']});
+ syncGuardian();
+});
+q<HTMLInputElement>('#setting-sound').addEventListener('change',e=>updatePrefs({soundEnabled:(e.target as HTMLInputElement).checked}));
+q<HTMLInputElement>('#setting-sound-vol').addEventListener('input',e=>updatePrefs({soundVolume:Number((e.target as HTMLInputElement).value)}));
+q<HTMLInputElement>('#setting-clip-capture').addEventListener('change',e=>{
+ const enabled=(e.target as HTMLInputElement).checked;
+ if(enabled){clipboard.enable();void observeClipboard();}else{clipboard.disable();}
+ renderClipboard();
+});
+q<HTMLSelectElement>('#setting-clip-limit').addEventListener('change',e=>{
+ const limit=Number((e.target as HTMLSelectElement).value);
+ updatePrefs({clipboardLimit:limit});
+ clipboard.maxItems=limit;
+});
+q<HTMLInputElement>('#setting-clip-persist').addEventListener('change',e=>updatePrefs({clipboardPersistent:(e.target as HTMLInputElement).checked}));
+q<HTMLButtonElement>('#setting-clip-clear').addEventListener('click',()=>{clipboard.clear();renderClipboard();});
+q<HTMLInputElement>('#setting-recap-enable').addEventListener('change',e=>updatePrefs({recapEnabled:(e.target as HTMLInputElement).checked}));
+
+// Weekly Recap Generation and SVG Export using PR #2 engine (@xyeena/recap)
+let activeRecapData:any=null;
+q<HTMLButtonElement>('#recap-generate-btn').addEventListener('click',()=>{
+ const events=feed.items.map((item,idx)=>({
+  type:item.state==='ACTION'?'approval':item.state==='FILE'?'edit':'command',
+  at:new Date(Date.now()-idx*3600000).toISOString(),
+  agent:'antigravity',
+  eventId:`evt-${idx}`,
+  decision:'allow'
+ }));
+ try{
+  activeRecapData=buildWeeklyRecap(events);
+  const text=recapText(activeRecapData);
+  q<HTMLElement>('#recap-preview-box').hidden=false;
+  q<HTMLElement>('#recap-text').textContent=text;
+  feed.recordEvent('Weekly recap generated',`${activeRecapData.weekStart} (${events.length} events)`,'ACTION');
+  renderAlerts();
+  triggerMascotSalute();
+ }catch(err){
+  q<HTMLElement>('#recap-preview-box').hidden=false;
+  q<HTMLElement>('#recap-text').textContent='Recap error: '+String(err);
+ }
+});
+
+q<HTMLButtonElement>('#recap-export-svg-btn').addEventListener('click',async()=>{
+ if(!activeRecapData)q<HTMLButtonElement>('#recap-generate-btn').click();
+ if(activeRecapData){
+  try{
+   const svg=recapSvg(activeRecapData);
+   if(isTauri){
+    const path=await native('save_file_to_downloads',{
+     filename:`xyeena-weekly-recap-${activeRecapData.weekStart}.svg`,
+     content:svg,
+     isBase64:false
+    }) as string;
+    feed.recordEvent('Recap SVG exported',`Saved to: ${path}`,'FILE');
+   }else{
+    feed.recordEvent('Recap SVG generated',`${activeRecapData.weekStart} (Web mode simulated)`,'FILE');
+   }
+   renderAlerts();
+   triggerMascotSalute();
+  }catch(err){
+   feed.recordEvent('Recap export error',String(err),'ERROR');
+   renderAlerts();
+  }
+ }
+});
+
+// Clean diagnostics export (strict credential and private string safety)
+q<HTMLButtonElement>('#btn-export-diagnostics').addEventListener('click',async()=>{
+ const diagnostics={
+  version:'1.0.0-alpha.1',
+  timestamp:new Date().toISOString(),
+  platform:'windows',
+  environment:{isTauri,mode,panel},
+  preferences:{
+   theme:prefs.theme,
+   motion:prefs.motion,
+   alwaysOnTop:prefs.alwaysOnTop,
+   gazeEnabled:prefs.gazeEnabled,
+   wardrobe:prefs.wardrobe,
+   language:prefs.language
+  },
+  metrics:{
+   eventCount:feed.items.length,
+   clipboardEntries:clipboard.items.length,
+   activeSessions:overview.sessions.length
+  }
+ };
+ const content=JSON.stringify(diagnostics,null,2);
+ if(isTauri){
+  try{
+   const path=await native('save_file_to_downloads',{
+    filename:`xyeena-diagnostics-${Date.now()}.json`,
+    content,
+    isBase64:false
+   }) as string;
+   feed.recordEvent('Diagnostics exported',String(path),'ACTION');
+  }catch(err){feed.recordEvent('Diagnostics error',String(err),'ERROR');}
+ }else{
+  feed.recordEvent('Diagnostics exported','Local session JSON generated','ACTION');
+ }
+ renderAlerts();
+});
+
+
 async function initialize(){
- setPanel('now');renderRuns();renderAlerts();renderMedia();renderMeeting();
+ setPanel('now');renderRuns();renderAlerts();renderMedia();renderMeeting();renderAgentPills();renderChatMessages();
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
   try{
-   await listen<string>('island:tray',e=>{if(e.payload==='expand'){setMode('compact',true);setMode('expanded');}if(e.payload==='compact')setMode('compact',true);});
+   await listen<string>('island:tray',e=>{if(e.payload==='expand'){setMode('compact',true);setMode('expanded');}if(e.payload==='compact')setMode('compact',true);syncGazePolling();});
+   await listen<string>('island:visibility',e=>{if(e.payload==='hidden')stopGazePolling();else syncGazePolling();});
    await native('set_window_priority',{enabled:prefs.alwaysOnTop});
   }catch(err){console.error('Island init:',err);}
  }

@@ -21,3 +21,8 @@ test('app CSP does not permit remote scripts or unsafe eval',()=>{
   assert.match(csp,/script-src 'self'/);
   assert.doesNotMatch(csp,/unsafe-eval|https:\/\//);
 });
+test('desktop placement and secondary-window privileges are absent',()=>{
+ const config=JSON.parse(fs.readFileSync(path.join(root,'src-tauri/tauri.conf.json'),'utf8'));
+ assert.deepEqual(config.app.windows.map(w=>w.label),['main']);
+ assert.equal(fs.existsSync(path.join(root,'src-tauri/capabilities/guardian.json')),false);
+});

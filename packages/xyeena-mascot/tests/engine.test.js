@@ -51,3 +51,10 @@ test('controller handles concurrent tasks, interrupt priorities, and transient e
  controller.removeTask('a');assert.equal(controller.state,'idle');
  detach();assert.deepEqual(history,['idle','working','greeting','approval','greeting','working','idle']);
 });
+
+test('XyeenaGuardian class and define function import safely in Node and browser environments', async () => {
+ const { XyeenaGuardian, defineXyeenaGuardian } = await import('../src/guardian.js');
+ assert.equal(typeof XyeenaGuardian, 'function');
+ assert.equal(typeof defineXyeenaGuardian, 'function');
+ assert.equal(defineXyeenaGuardian(), null);
+});

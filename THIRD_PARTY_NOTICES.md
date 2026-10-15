@@ -22,9 +22,9 @@ The mathematical motion module is adapted as documented below, with copyright an
 - The Island UI, visuals, logo, text, sounds, and window application code are not copied from Coucou; no Coucou/Mochi restricted assets are included.
 - This is not an endorsement or an official Coucou derivative/release.
 
-## Xyeena Fold character provenance
+## Xyeena Guardian and Fold character provenance
 
-`Xyeena Fold` silhouette and expression SVG (`src/core/mascot.mjs`) and its visual motion (`src/style.css`) are original Xyeena source; no third-party character asset is included. The *geometry/window* motion engine continues to use properly attributed MIT mathematics from Coucou as described above.
+The original `Xyeena Guardian` lion mascot custom element (`packages/xyeena-mascot/src/guardian.js`) and `Xyeena Fold` vector definitions are original Xyeena source; no third-party character assets or Coucou/Mochi restricted artwork, audio, or animations are included. The *geometry/window* motion engine continues to use properly attributed MIT mathematics from Coucou as described above.
 
 Free asset research in `docs/MASCOT-ASSET-RESEARCH.md` lists Kenney and Rive references. These are **not** bundled or licensed as part of the Xyeena executable merely by linking to them.
 

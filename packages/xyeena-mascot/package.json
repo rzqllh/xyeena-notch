@@ -1,13 +1,20 @@
 {
-  "name":"@xyeena/mascot",
-  "version":"0.1.0",
-  "private":true,
-  "type":"module",
-  "exports":{
-    ".":{"types":"./src/index.d.ts","default":"./src/index.js"},
-    "./react":"./react/XyeenaGuardian.tsx",
-    "./identity":{"types":"./src/identity.d.ts","default":"./src/identity.js"}
+  "name": "@xyeena/mascot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./react": "./react/XyeenaGuardian.tsx"
   },
-  "scripts":{"test":"node --test tests/*.test.js"},
-  "engines":{"node":">=22"}
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "description": "Xyn — the original notch-first Xyeena Lion Guardian mascot engine."
 }

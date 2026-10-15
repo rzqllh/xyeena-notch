@@ -24,3 +24,8 @@ test('third party source attribution and native branding are present',()=>{
   assert.equal(fs.existsSync(path.join(root,item)),true,item);
  }
 });
+test('notch-first release has exactly one Island window',()=>{
+ assert.deepEqual(conf.app.windows.map(w=>w.label),['main']);
+ assert.equal(fs.existsSync(path.join(root,'guardian.html')),false);
+ assert.equal(fs.existsSync(path.join(root,'src-tauri/capabilities/guardian.json')),false);
+});

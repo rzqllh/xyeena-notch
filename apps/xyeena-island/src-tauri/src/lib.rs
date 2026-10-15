@@ -1,5 +1,6 @@
 //! Xyeena Island MVP: transparent top-edge companion, tray, and opt-in read-only run summaries.
 //! No hooks, agent approvals, autostart, sockets, or network endpoints.
+mod clipboard;
 mod media;
 mod volume;
 use std::fs;
@@ -8,25 +9,64 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, WebviewWindow};
 
+// On-demand read-only cursor sampling. No hooks, stored coordinates, or desktop pet.
+#[derive(serde::Serialize)]
+struct IslandCursor {
+    x: f64,
+    y: f64,
+}
+
+#[tauri::command]
+fn read_island_cursor(window: WebviewWindow) -> Result<Option<IslandCursor>, String> {
+    if window.label() != "main" {
+        return Err("Cursor access is limited to the main Island".into());
+    }
+    if !window.is_visible().map_err(|e| e.to_string())? {
+        return Ok(None);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let mut cursor = windows::Win32::Foundation::POINT::default();
+        unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut cursor) }
+            .map_err(|e| format!("Cannot read cursor position: {e}"))?;
+        let position = window.inner_position().map_err(|e| e.to_string())?;
+        let scale = window.scale_factor().map_err(|e| e.to_string())?;
+        if !scale.is_finite() || scale <= 0.0 {
+            return Err("Invalid monitor scale".into());
+        }
+        Ok(Some(IslandCursor {
+            x: (f64::from(cursor.x) - f64::from(position.x)) / scale,
+            y: (f64::from(cursor.y) - f64::from(position.y)) / scale,
+        }))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(None)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Mode {
     Hidden,
     Compact,
+    Glance,
     Expanded,
 }
 impl Mode {
     fn parse(value: &str) -> Result<Self, String> {
         match value {
-            "hidden" => Ok(Self::Hidden),
+            "hidden" | "dormant" => Ok(Self::Hidden),
             "compact" => Ok(Self::Compact),
-            "expanded" | "pinned" => Ok(Self::Expanded),
+            "glance" => Ok(Self::Glance),
+            "expanded" | "focused" | "pinned" => Ok(Self::Expanded),
             _ => Err("Invalid island mode".into()),
         }
     }
     fn dimensions(self) -> (f64, f64) {
         match self {
             Self::Hidden => (184.0, 8.0),
-            Self::Compact => (352.0, 52.0),
+            Self::Compact => (400.0, 92.0),
+            Self::Glance => (480.0, 144.0),
             Self::Expanded => (620.0, 396.0),
         }
     }
@@ -89,6 +129,7 @@ fn set_window_priority(window: WebviewWindow, enabled: bool) -> Result<(), Strin
 
 #[tauri::command]
 fn hide_island_window(window: WebviewWindow) -> Result<(), String> {
+    let _ = window.emit("island:visibility", "hidden");
     window
         .hide()
         .map_err(|e| format!("Hide window failed: {e}"))
@@ -97,6 +138,42 @@ fn hide_island_window(window: WebviewWindow) -> Result<(), String> {
 #[tauri::command]
 fn recenter_island(window: WebviewWindow, mode: String) -> Result<(), String> {
     set_mode(&window, Mode::parse(&mode)?)
+}
+
+#[tauri::command]
+fn read_native_clipboard() -> Result<Option<clipboard::NativeClipboardItem>, String> {
+    clipboard::read_native_clipboard_item()
+}
+
+#[tauri::command]
+fn write_native_image(data_url: String) -> Result<(), String> {
+    clipboard::write_native_image_to_clipboard(&data_url)
+}
+
+#[tauri::command]
+fn save_file_to_downloads(
+    filename: String,
+    content: String,
+    is_base64: bool,
+) -> Result<String, String> {
+    let base_dir = std::env::var_os("USERPROFILE")
+        .map(|p| std::path::PathBuf::from(p).join("Downloads"))
+        .filter(|p| p.exists())
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let path = base_dir.join(&filename);
+    if is_base64 {
+        let b64 = if let Some(idx) = content.find(',') {
+            &content[idx + 1..]
+        } else {
+            &content
+        };
+        let bytes = clipboard::base64_decode(b64).ok_or("Invalid base64 payload")?;
+        std::fs::write(&path, bytes).map_err(|e| format!("Cannot save file: {e}"))?;
+    } else {
+        std::fs::write(&path, content.as_bytes()).map_err(|e| format!("Cannot save file: {e}"))?;
+    }
+    Ok(path.to_string_lossy().to_string())
 }
 
 #[derive(serde::Serialize)]
@@ -196,6 +273,7 @@ fn show_island(app: &tauri::AppHandle, requested: &str) {
         let _ = set_mode(&window, Mode::Compact);
         let _ = window.show();
         let _ = window.set_focus();
+        let _ = window.emit("island:visibility", "shown");
         let _ = window.emit("island:tray", requested);
     }
 }
@@ -228,6 +306,7 @@ pub fn run() {
                     "compact" => show_island(app, "compact"),
                     "hide" => {
                         if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit("island:visibility", "hidden");
                             let _ = window.hide();
                         }
                     }
@@ -250,7 +329,10 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.hide();
+                if window.label() == "main" {
+                    let _ = window.emit("island:visibility", "hidden");
+                    let _ = window.hide();
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -269,6 +351,10 @@ pub fn run() {
             volume::get_master_volume,
             volume::set_master_volume,
             volume::set_master_mute,
+            read_island_cursor,
+            read_native_clipboard,
+            write_native_image,
+            save_file_to_downloads,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");
@@ -279,7 +365,7 @@ mod tests {
     use super::{bounded_text, Mode};
     #[test]
     fn geometry_is_bounded() {
-        for mode in [Mode::Hidden, Mode::Compact, Mode::Expanded] {
+        for mode in [Mode::Hidden, Mode::Compact, Mode::Glance, Mode::Expanded] {
             let (w, h) = mode.dimensions();
             assert!((184.0..=640.0).contains(&w) && (7.0..=420.0).contains(&h));
         }

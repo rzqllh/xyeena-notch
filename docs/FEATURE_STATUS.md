@@ -4,13 +4,13 @@ This table is the user-facing source of truth. **Implemented** means source exis
 
 | Capability | Status | Required gate |
 |---|---|---|
-| Top-edge Island / tray / topmost | Implemented, Windows acceptance pending | Native build, DPI/fullscreen/focus/restart QA |
+| Top-edge Island / tray / topmost | Implemented (adaptive dormant 184x8, compact 400x92, glance 480x144, focused 620x396; interaction-safe auto-collapse), Windows acceptance pending | Native build, DPI/fullscreen/focus/restart QA |
 | Coucou-style spring geometry | Implemented; performance unverified | 60/120Hz frame capture and pointer hit testing |
-| Xyeena Fold | Original static-vector/animated states | Visual and accessibility review |
-| Windows media playback + transport | Implemented, acceptance pending | Browser/Spotify supported-session tests |
+| Xyeena Guardian (notch-first lion) | Canvas 2D eye/head rig in Island; native Windows cursor-sampling candidate, no desktop placement | Visual identity and global gaze outside Island still need Windows QA |
+| Windows media playback + transport | Implemented; input debouncing and real-time volume feedback added, acceptance pending | Browser/Spotify supported-session tests |
 | Seek, shuffle and repeat | Implemented, player-dependent | Player capability tests; accurate status labels |
-| Windows default-output volume/mute | Implemented, acceptance pending | Windows Core Audio device tests |
-| Clipboard text-only history | Implemented, opt-in | Opt-out, clear, secret heuristics, restart privacy tests |
+| Windows default-output volume/mute | Implemented with debounced input feedback, acceptance pending | Windows Core Audio device tests |
+| Clipboard text-only history | Implemented, opt-in; lifecycle bug repaired (persists across collapse/hide, clears only on exit/explicit clear) | Opt-out, clear, secret heuristics, restart privacy tests |
 | User-opt-in OS notifications | Implemented | Packaged install/OS permission test |
 | Xyeena read-only run summaries | Implemented | Real CLI project with snapshots and malformed paths |
 | Meeting timer | Implemented manually | Timeout/refresh/restore acceptance |
@@ -22,7 +22,7 @@ This table is the user-facing source of truth. **Implemented** means source exis
 | GitHub/Vercel/other services | NOT implemented | OAuth scopes, credentials, API integration |
 | File drop / code diff | NOT implemented | Windows WebView2 drop path + explicit consent |
 | Weekly recap / analytics | NOT implemented | Verified aggregate source, local retention controls |
-| Desktop-floating mascot / wardrobes | NOT implemented | Owned rig and assets, window safety |
+| Desktop placement | Removed per product decision; no secondary window or Perch/Follow toggle | Verify no desktop window or obsolete IPC in Windows installation |
 | Autostart / signed updater | NOT implemented | Opt-in autostart, signing keys and rollback |
 | Phone pairing / Linux | NOT implemented | Separate architecture and security review |
 
