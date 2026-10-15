@@ -138,141 +138,143 @@ root.innerHTML=`
        <button class="file-action-btn" id="file-copy-info" type="button">Copy Info</button>
      </div>
     </div>
-    <div class="section-heading calls-heading"><div><span class="kicker">CALLS & MEETINGS</span><h2>Meeting mode</h2></div><span class="meeting-duration" id="meeting-clock" aria-live="off"></span></div>
-    <div class="call-row"><span class="call-icon" aria-hidden="true">${icon('headset',19)}</span>
-      <p id="meeting-summary">Not tracking a meeting</p>
-      <button class="meeting-button" type="button" id="meeting-action">Start</button>
-    </div>
-    <p class="explain" id="meeting-explain">Manual timer. Teams call detection requires a separate Microsoft 365 connection; playback sessions do not report calls.</p>
    </section>
-   <section class="page" id="page-clipboard" role="tabpanel" hidden>
-     <div class="section-heading"><div><span class="kicker">ON-DEVICE CLIPBOARD</span><h1>Clipboard History</h1></div><div class="clip-actions"><button id="clip-clear-unpinned" class="minor-btn" type="button">Clear unpinned</button><button id="clip-clear" class="minor-btn" type="button">Clear all</button></div></div>
-     <p class="explain clip-warning">In-memory history for text, images, and file lists. Sensitive tokens are best-effort filtered.</p>
-     <div class="clip-controls"><button id="clip-toggle" class="meeting-button" aria-pressed="false" type="button">Enable capture</button><button id="clip-read" class="minor-btn" type="button">Read once</button><span id="clip-state" role="status">Capture off</span></div>
-     <div class="clip-search-bar">${icon('logo',13)}<input id="clip-search" type="search" placeholder="Search clipboard history..." aria-label="Search clips"></div>
-     <div id="clip-list" class="clip-list" aria-label="Clipboard history"></div>
-   </section>
-   <section class="page" id="page-activity" role="tabpanel" hidden>
-    <div class="section-heading"><div><span class="kicker">ON-DEVICE HISTORY</span><h1>Activity & Agents</h1></div><button class="minor-btn test-notification" type="button">${icon('bell',14)} Test toast</button></div>
-    <div class="agent-pills-row" id="agent-pills" aria-label="Detected agent sessions"></div>
-    <div id="agent-approval" class="agent-approval-box" hidden>
-      <strong id="approval-title">Approval Request</strong>
-      <p class="explain" id="approval-prompt">Allow action?</p>
-      <div class="agent-approval-actions">
-        <button class="action-btn" id="approval-allow" type="button">Allow</button>
-        <button class="minor-btn" id="approval-deny" type="button">Deny</button>
-      </div>
-    </div>
-    <p class="explain" id="alerts-explain">Real local events, agent sessions, and Xyeena run changes appear here.</p>
-    <div class="history alert-history" id="alerts"></div>
-    <details class="project-details" id="project-details">
-      <summary>Connect Xyeena Agentic project <span>Optional</span></summary>
-      <p class="explain activity-explain">Projects need Xyeena Agentic run snapshots. Island doesn't create runs or install hooks.</p>
-      <div class="path-row"><label class="path-wrap">${icon('folder',16)}<input id="project-root" type="text" placeholder="Absolute project folder" aria-label="Absolute path to Xyeena project" spellcheck="false" autocomplete="off"/></label><button class="action-btn connect" type="button">Connect</button></div>
-      <p class="status-line" id="project-status" role="status">Not connected</p>
-      <div id="runs" class="history"></div>
-      <button class="minor-btn disconnect" type="button" hidden>Disconnect</button>
-    </details>
-   </section>
-   <section class="page" id="page-chat" role="tabpanel" hidden>
-     <div class="section-heading">
-       <div><span class="kicker">ON-DEVICE AI</span><h1>Companion Chat</h1></div>
-       <select id="chat-provider-select" aria-label="AI Provider" class="chat-provider-dropdown">
-         <option value="anthropic">Claude 3.7 / 3.5</option>
-         <option value="openai">OpenAI GPT-4o</option>
-         <option value="gemini">Google Gemini 2.0</option>
-         <option value="ollama">Ollama (Local)</option>
-         <option value="lmstudio">LM Studio (Local)</option>
-       </select>
-     </div>
-     <div class="chat-viewport" id="chat-messages" aria-live="polite"></div>
-     <form class="chat-input-row" id="chat-form">
-       <input id="chat-input" type="text" placeholder="Ask Xyeena anything or discuss code..." autocomplete="off">
-       <button class="action-btn" type="submit" id="chat-send">Send</button>
-     </form>
-   </section>
-   <section class="page" id="page-preferences" role="tabpanel" hidden>
-     <div class="section-heading">
-       <div><span class="kicker settings-kicker">PREFERENCES</span><h1>Settings</h1></div>
-     </div>
-     <div class="settings-nav-pills" id="settings-pills">
-       <button class="settings-pill current" type="button" data-section="general">General</button>
-       <button class="settings-pill" type="button" data-section="guardian">Guardian</button>
-       <button class="settings-pill" type="button" data-section="clipboard">Clipboard</button>
-       <button class="settings-pill" type="button" data-section="media">Media</button>
-       <button class="settings-pill" type="button" data-section="ai">AI & Agents</button>
-       <button class="settings-pill" type="button" data-section="integrations">Integrations</button>
-       <button class="settings-pill" type="button" data-section="recap">Weekly Recap</button>
-       <button class="settings-pill" type="button" data-section="about">About & Hotkeys</button>
-     </div>
-
-     <div class="settings-section" id="setsec-general">
-       <div class="setting"><span><strong>Keep above windows</strong><small>Always on top</small></span><input type="checkbox" id="always-top" aria-label="Always on top"></div>
-       <div class="setting"><span><strong>Collapse on pointer exit</strong><small>Auto-collapse to compact</small></span><input type="checkbox" id="auto-collapse" aria-label="Auto-collapse"></div>
-       <div class="setting"><span><strong>Auto-hide compact view</strong><small>Reveal via wake strip</small></span><input type="checkbox" id="auto-hide" aria-label="Auto-hide"></div>
-       <div class="setting"><span><strong>Appearance</strong><small>System, dark, or light theme</small></span><select id="theme" aria-label="Appearance"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
-       <div class="setting"><span><strong>Interface language</strong><small>Application language</small></span><select id="setting-language" aria-label="Interface language"><option value="en">English</option><option value="id">Bahasa Indonesia</option></select></div>
-       <div class="setting"><span><strong>Start with Windows</strong><small>Launch on user login</small></span><input type="checkbox" id="setting-autostart" aria-label="Start with Windows" checked></div>
-     </div>
-
-     <div class="settings-section" id="setsec-guardian" hidden>
-       <div class="setting"><span><strong>Global cursor gaze</strong><small>Follow Windows cursor</small></span><input type="checkbox" id="setting-gaze" aria-label="Gaze tracking" checked></div>
-       <div class="setting"><span><strong>Reduced motion</strong><small>Disable window spring motion</small></span><input type="checkbox" id="reduce-motion" aria-label="Reduced motion"></div>
-       <div class="setting"><span><strong>Original wardrobe</strong><small>Concept art accessories</small></span><select id="setting-wardrobe" aria-label="Original wardrobe"><option value="standard">Standard (Shield)</option><option value="visor">Cyber Visor</option><option value="crown">Golden Crown</option><option value="headset">Studio Headset</option><option value="shield">Silver Aegis</option></select></div>
-       <div class="setting"><span><strong>Sound feedback</strong><small>Subtle audio effects</small></span><input type="checkbox" id="setting-sound" aria-label="Sound feedback" checked></div>
-       <div class="setting"><span><strong>Sound volume</strong><small>Effect volume level</small></span><input type="range" id="setting-sound-vol" min="0" max="100" value="70" aria-label="Sound volume"></div>
-     </div>
-
-     <div class="settings-section" id="setsec-clipboard" hidden>
-       <div class="setting"><span><strong>Capture toggle</strong><small>Listen for Windows clipboard</small></span><input type="checkbox" id="setting-clip-capture" aria-label="Capture toggle"></div>
-       <div class="setting"><span><strong>Max history entries</strong><small>Bounded memory retention</small></span><select id="setting-clip-limit" aria-label="Max history entries"><option value="20">20 items</option><option value="50">50 items</option><option value="100">100 items</option></select></div>
-       <div class="setting"><span><strong>Persistent storage</strong><small>Optional local persistence</small></span><input type="checkbox" id="setting-clip-persist" aria-label="Persistent storage"></div>
-       <div class="setting"><span><strong>Supported formats</strong><small>Text, BMP/PNG images, file lists</small></span><span class="badge-tag">Native Win32</span></div>
-       <div class="setting"><span><strong>Clear history</strong><small>Remove all captured items</small></span><button class="minor-btn" id="setting-clip-clear" type="button">Clear history</button></div>
-     </div>
-
-     <div class="settings-section" id="setsec-media" hidden>
-       <div class="setting"><span><strong>Output endpoint</strong><small>Windows default audio</small></span><span class="badge-tag" id="media-device-name">Default Output</span></div>
-       <div class="setting"><span><strong>Preferred source</strong><small>Prioritize media player</small></span><select id="setting-media-pref" aria-label="Preferred source"><option value="auto">Automatic (Active)</option><option value="Spotify">Spotify</option><option value="Chrome">Chrome / Edge</option></select></div>
-       <div class="setting"><span><strong>Windows run notifications</strong><small>Opt-in for project runs</small></span><input type="checkbox" id="run-notifications" aria-label="Run notifications"></div>
-     </div>
-
-     <div class="settings-section" id="setsec-ai" hidden>
-       <div class="setting"><span><strong>Companion AI Provider</strong><small>Active chat model endpoint</small></span><select id="setting-ai-provider" aria-label="Companion AI Provider"><option value="anthropic">Anthropic Claude</option><option value="openai">OpenAI GPT</option><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter</option><option value="ollama">Ollama (Local)</option><option value="lmstudio">LM Studio (Local)</option></select></div>
-       <div class="setting"><span><strong>Local server endpoint</strong><small>Ollama / LM Studio URL</small></span><input type="text" id="setting-ai-local-url" value="http://localhost:11434" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
-       <div class="setting"><span><strong>Provider API Key (BYOK)</strong><small>Session memory; never logged or exported</small></span><input type="password" id="setting-ai-api-key" placeholder="Enter API key" autocomplete="off" spellcheck="false" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
-       <div class="setting"><span><strong>Credential safety</strong><small>In-memory session key (opt-in BYOK)</small></span><span class="badge-tag" id="badge-ai-creds">Session Memory</span></div>
-       <div class="setting"><span><strong>Agent access boundary</strong><small>Read-only IPC snapshots; no hook writing</small></span><span class="badge-tag">Read-only IPC</span></div>
-     </div>
-
-     <div class="settings-section" id="setsec-integrations" hidden>
-       <div class="setting"><span><strong>GitHub Integration</strong><small>PRs, issues & runs</small></span><span class="badge-tag">Setup required</span></div>
-       <div class="setting"><span><strong>Vercel Deployments</strong><small>Deploy previews</small></span><span class="badge-tag">Setup required</span></div>
-       <div class="setting"><span><strong>n8n Workflows</strong><small>Local webhooks</small></span><span class="badge-tag">Setup required</span></div>
-       <div class="setting"><span><strong>Notion / Resend / Cal.com</strong><small>Service adapters</small></span><span class="badge-tag">Setup required</span></div>
-     </div>
-
-     <div class="settings-section" id="setsec-recap" hidden>
-       <div class="setting"><span><strong>Weekly Recap Engine</strong><small>Local aggregation (PR #2)</small></span><input type="checkbox" id="setting-recap-enable" aria-label="Enable Weekly Recap" checked></div>
-       <div class="setting"><span><strong>Generate Recap</strong><small>Build local week summary</small></span><button class="minor-btn" id="recap-generate-btn" type="button">Generate Recap</button></div>
-       <div class="setting"><span><strong>Export Recap SVG</strong><small>Save 1080x1920 card</small></span><button class="minor-btn" id="recap-export-svg-btn" type="button">Export SVG</button></div>
-       <div id="recap-preview-box" class="recap-preview-box" hidden>
-         <pre id="recap-text" class="recap-text"></pre>
+    <section class="page" id="page-clipboard" role="tabpanel" hidden>
+      <div class="section-heading"><div><span class="kicker" id="clip-kicker">ON-DEVICE CLIPBOARD</span><h1 id="clip-heading">Clipboard History</h1></div><div class="clip-actions"><button id="clip-clear-unpinned" class="minor-btn" type="button">Clear unpinned</button><button id="clip-clear" class="minor-btn" type="button">Clear all</button></div></div>
+      <p class="explain clip-warning" id="clip-explain">In-memory history for text, images, and file lists. Sensitive tokens are best-effort filtered. Clears on exit for privacy.</p>
+      <div class="clip-controls"><button id="clip-toggle" class="meeting-button" aria-pressed="false" type="button">Enable capture</button><button id="clip-read" class="minor-btn" type="button">Read once</button><span id="clip-state" role="status">Capture off</span></div>
+      <div class="clip-search-bar">${icon('logo',13)}<input id="clip-search" type="search" placeholder="Search clipboard history..." aria-label="Search clips"></div>
+      <div id="clip-list" class="clip-list" aria-label="Clipboard history"></div>
+    </section>
+    <section class="page" id="page-activity" role="tabpanel" hidden>
+     <div class="section-heading"><div><span class="kicker" id="act-kicker">ON-DEVICE HISTORY</span><h1 id="act-heading">Activity & Agents</h1></div><button class="minor-btn" id="refresh-activity-btn" type="button">Refresh</button></div>
+     <div class="agent-pills-row" id="agent-pills" aria-label="Detected agent sessions"></div>
+     <div id="agent-approval" class="agent-approval-box" hidden>
+       <strong id="approval-title">Approval Request</strong>
+       <p class="explain" id="approval-prompt">Allow action?</p>
+       <div class="agent-approval-actions">
+         <button class="action-btn" id="approval-allow" type="button">Allow</button>
+         <button class="minor-btn" id="approval-deny" type="button">Deny</button>
        </div>
      </div>
+     <p class="explain" id="alerts-explain">Real local events, agent sessions, and Xyeena run changes appear here.</p>
+     <div class="history alert-history" id="alerts"></div>
+     <details class="project-details" id="project-details">
+       <summary id="proj-summary">Connect Xyeena Agentic project <span>Optional</span></summary>
+       <p class="explain activity-explain" id="proj-explain">Projects need Xyeena Agentic run snapshots. Island doesn't create runs or install hooks.</p>
+       <div class="path-row"><label class="path-wrap">${icon('folder',16)}<input id="project-root" type="text" placeholder="Absolute project folder" aria-label="Absolute path to Xyeena project" spellcheck="false" autocomplete="off"/></label><button class="action-btn connect" type="button">Connect</button></div>
+       <p class="status-line" id="project-status" role="status">Not connected</p>
+       <div id="runs" class="history"></div>
+       <button class="minor-btn disconnect" type="button" hidden>Disconnect</button>
+     </details>
+    </section>
+    <section class="page" id="page-chat" role="tabpanel" hidden>
+      <div class="section-heading chat-header-hero">
+        <div class="chat-hero-titles">
+          <span class="kicker" id="chat-kicker">COMPANION CHAT</span>
+          <h1 id="chat-heading">Chat with Xyn</h1>
+          <span class="chat-hero-sub" id="chat-xyn-status">Watching your workspace · Standing guard</span>
+        </div>
+        <div class="chat-provider-badge-wrap">
+          <select id="chat-provider-select" aria-label="AI Provider" class="chat-provider-dropdown" title="Select AI Provider">
+            <option value="gemini">Google Gemini 2.0</option>
+            <option value="anthropic">Anthropic Claude</option>
+            <option value="openai">OpenAI GPT-4o</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="ollama">Ollama (Local)</option>
+            <option value="lmstudio">LM Studio (Local)</option>
+          </select>
+        </div>
+      </div>
+      <div id="chat-inline-setup" class="chat-setup-box" hidden></div>
+      <div class="chat-viewport" id="chat-messages" aria-live="polite"></div>
+      <form class="chat-input-row" id="chat-form">
+        <textarea id="chat-input" rows="1" placeholder="Ask Xyn anything (Enter to send, Shift+Enter for new line)..." autocomplete="off" spellcheck="false" aria-label="Chat input"></textarea>
+        <button class="action-btn" type="submit" id="chat-send">Send</button>
+        <button class="minor-btn" type="button" id="chat-stop" hidden title="Stop generation">Stop</button>
+      </form>
+    </section>
+    <section class="page" id="page-preferences" role="tabpanel" hidden>
+      <div class="section-heading">
+        <div><span class="kicker settings-kicker" id="set-kicker">PREFERENCES</span><h1 id="set-heading">Settings</h1></div>
+      </div>
+      <div class="settings-nav-pills" id="settings-pills">
+        <button class="settings-pill current" type="button" data-section="general">General</button>
+        <button class="settings-pill" type="button" data-section="guardian">Guardian</button>
+        <button class="settings-pill" type="button" data-section="clipboard">Clipboard</button>
+        <button class="settings-pill" type="button" data-section="media">Media</button>
+        <button class="settings-pill" type="button" data-section="ai">AI & Agents</button>
+        <button class="settings-pill" type="button" data-section="integrations">Integrations</button>
+        <button class="settings-pill" type="button" data-section="recap">Weekly Recap</button>
+        <button class="settings-pill" type="button" data-section="about">About & Hotkeys</button>
+      </div>
 
-     <div class="settings-section" id="setsec-about" hidden>
-       <div class="setting"><span><strong>Global hotkeys</strong><small>Open: Win+Alt+X · Clip: Win+Alt+V</small></span><span class="badge-tag">Desktop native</span></div>
-       <div class="setting"><span><strong>Diagnostic logs</strong><small>Local inspection without credentials</small></span><button class="minor-btn" id="btn-export-diagnostics" type="button">Export Clean Logs</button></div>
-       <details class="project-details" id="about-credits" open><summary>About & credits <span>MIT source</span></summary>
-         <p class="explain">Xyeena Island 1.0.0-alpha.1 · Balanced Desktop Companion.<br>Xyeena Guardian mascot is original Xyeena artwork (@xyeena/mascot).<br>Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
-         <p class="explain">Full code and asset license details: THIRD_PARTY_NOTICES.md and docs/MASCOT-ASSET-RESEARCH.md in this repository.</p>
-       </details>
-     </div>
+      <div class="settings-section" id="setsec-general">
+        <div class="setting"><span><strong>Keep above windows</strong><small>Always on top</small></span><input type="checkbox" id="always-top" aria-label="Always on top"></div>
+        <div class="setting"><span><strong>Collapse on pointer exit</strong><small>Auto-collapse to compact</small></span><input type="checkbox" id="auto-collapse" aria-label="Auto-collapse"></div>
+        <div class="setting"><span><strong>Auto-hide compact view</strong><small>Reveal via wake strip</small></span><input type="checkbox" id="auto-hide" aria-label="Auto-hide"></div>
+        <div class="setting"><span><strong>Appearance</strong><small>System, dark, or light theme</small></span><select id="theme" aria-label="Appearance"><option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
+        <div class="setting"><span><strong>Interface language</strong><small>Application display language</small></span><select id="setting-language" aria-label="Interface language"><option value="en">English</option><option value="id">Bahasa Indonesia</option></select></div>
+        <div class="setting"><span><strong>Start with Windows</strong><small>Launch on user login (Windows startup apps)</small></span><span class="badge-tag">Windows Managed</span></div>
+      </div>
 
-     <div class="settings-end"><button class="minor-btn recenter" type="button">Recenter</button><button class="minor-btn footer-hide" type="button">Hide to tray</button><span>1.0.0-alpha.1 · On device</span></div>
-   </section>
-  </main>
+      <div class="settings-section" id="setsec-guardian" hidden>
+        <div class="setting"><span><strong>Global cursor gaze</strong><small>Follow Windows cursor</small></span><input type="checkbox" id="setting-gaze" aria-label="Gaze tracking" checked></div>
+        <div class="setting"><span><strong>Reduced motion</strong><small>Disable window spring motion</small></span><input type="checkbox" id="reduce-motion" aria-label="Reduced motion"></div>
+        <div class="setting"><span><strong>Original wardrobe</strong><small>Concept art accessories</small></span><select id="setting-wardrobe" aria-label="Original wardrobe"><option value="standard">Standard (Shield)</option><option value="visor">Cyber Visor</option><option value="crown">Golden Crown</option><option value="headset">Studio Headset</option><option value="shield">Silver Aegis</option></select></div>
+        <div class="setting"><span><strong>Sound feedback</strong><small>Subtle audio effects on interaction</small></span><input type="checkbox" id="setting-sound" aria-label="Sound feedback" checked></div>
+        <div class="setting"><span><strong>Sound volume</strong><small>Effect volume level</small></span><input type="range" id="setting-sound-vol" min="0" max="100" value="70" aria-label="Sound volume"></div>
+      </div>
+
+      <div class="settings-section" id="setsec-clipboard" hidden>
+        <div class="setting"><span><strong>Capture toggle</strong><small>Listen for Windows clipboard</small></span><input type="checkbox" id="setting-clip-capture" aria-label="Capture toggle"></div>
+        <div class="setting"><span><strong>Max history entries</strong><small>Bounded memory retention</small></span><select id="setting-clip-limit" aria-label="Max history entries"><option value="20">20 items</option><option value="50">50 items</option><option value="100">100 items</option></select></div>
+        <div class="setting"><span><strong>Storage mode</strong><small>Session memory only. Clears on exit for privacy</small></span><span class="badge-tag">Session Memory</span></div>
+        <div class="setting"><span><strong>Supported formats</strong><small>Text, BMP/PNG images, file lists</small></span><span class="badge-tag">Native Win32</span></div>
+        <div class="setting"><span><strong>Clear history</strong><small>Remove all captured items</small></span><button class="minor-btn" id="setting-clip-clear" type="button">Clear history</button></div>
+      </div>
+
+      <div class="settings-section" id="setsec-media" hidden>
+        <div class="setting"><span><strong>Output endpoint</strong><small>Windows default audio</small></span><span class="badge-tag" id="media-device-name">Default Output</span></div>
+        <div class="setting"><span><strong>Preferred source</strong><small>Prioritize media player</small></span><select id="setting-media-pref" aria-label="Preferred source"><option value="auto">Automatic (Active)</option><option value="Spotify">Spotify</option><option value="Chrome">Chrome / Edge</option></select></div>
+        <div class="setting"><span><strong>Windows run notifications</strong><small>Opt-in for project runs</small></span><input type="checkbox" id="run-notifications" aria-label="Run notifications"></div>
+      </div>
+
+      <div class="settings-section" id="setsec-ai" hidden>
+        <div class="setting"><span><strong>Companion AI Provider</strong><small>Active chat model endpoint</small></span><select id="setting-ai-provider" aria-label="Companion AI Provider"><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic Claude</option><option value="openai">OpenAI GPT</option><option value="openrouter">OpenRouter</option><option value="ollama">Ollama (Local)</option><option value="lmstudio">LM Studio (Local)</option></select></div>
+        <div class="setting"><span><strong>Local server endpoint</strong><small>Ollama / LM Studio URL</small></span><input type="text" id="setting-ai-local-url" value="http://localhost:11434" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
+        <div class="setting"><span><strong>Provider API Key (BYOK)</strong><small>Session memory; never logged or exported</small></span><input type="password" id="setting-ai-api-key" placeholder="Enter API key" autocomplete="off" spellcheck="false" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
+        <div class="setting"><span><strong>Credential safety</strong><small>In-memory session key (opt-in BYOK)</small></span><span class="badge-tag" id="badge-ai-creds">Session Memory</span></div>
+        <div class="setting"><span><strong>Agent access boundary</strong><small>Read-only IPC snapshots; no hook writing</small></span><span class="badge-tag">Read-only IPC</span></div>
+      </div>
+
+      <div class="settings-section" id="setsec-integrations" hidden>
+        <div class="setting"><span><strong>CLI Service Integrations</strong><small>GitHub, Vercel, n8n, Notion</small></span><span class="badge-tag">Configured via CLI</span></div>
+        <p class="explain" style="padding:6px 0">Service integrations connect securely through the Xyeena CLI using environment tokens. The desktop Island maintains a read-only session boundary without storing external OAuth credentials.</p>
+      </div>
+
+      <div class="settings-section" id="setsec-recap" hidden>
+        <div class="setting"><span><strong>Weekly Recap Engine</strong><small>Local aggregation (PR #2)</small></span><input type="checkbox" id="setting-recap-enable" aria-label="Enable Weekly Recap" checked></div>
+        <div class="setting"><span><strong>Generate Recap</strong><small>Build local week summary from real activity</small></span><button class="minor-btn" id="recap-generate-btn" type="button">Generate Recap</button></div>
+        <div class="setting"><span><strong>Export Recap SVG</strong><small>Save 1080x1920 card</small></span><button class="minor-btn" id="recap-export-svg-btn" type="button">Export SVG</button></div>
+        <div id="recap-preview-box" class="recap-preview-box" hidden>
+          <pre id="recap-text" class="recap-text"></pre>
+        </div>
+      </div>
+
+      <div class="settings-section" id="setsec-about" hidden>
+        <div class="setting"><span><strong>Global hotkeys</strong><small>Open: Win+Alt+X · Clip: Win+Alt+V</small></span><span class="badge-tag">Desktop native</span></div>
+        <div class="setting"><span><strong>Test notification</strong><small>Verify native Windows toast alerts</small></span><button class="minor-btn test-notification" type="button">Send Test Toast</button></div>
+        <div class="setting"><span><strong>Diagnostic logs</strong><small>Local inspection without credentials</small></span><button class="minor-btn" id="btn-export-diagnostics" type="button">Export Clean Logs</button></div>
+        <details class="project-details" id="about-credits" open><summary>About & credits <span>MIT source</span></summary>
+          <p class="explain">Xyeena Island 1.0.0-alpha.1 · Balanced Desktop Companion.<br>Xyn is the canonical Golden Lion mascot (@xyeena/mascot).<br>Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
+          <p class="explain">Full code and asset license details: THIRD_PARTY_NOTICES.md and docs/MASCOT-ASSET-RESEARCH.md in this repository.</p>
+        </details>
+      </div>
+
+      <div class="settings-end"><button class="minor-btn recenter" type="button">Recenter</button><button class="minor-btn footer-hide" type="button">Hide to tray</button><span>1.0.0-alpha.1 · On device</span></div>
+    </section>
+   </main>
  </div>
 </div>`;
 
@@ -298,7 +300,79 @@ function syncGuardian(){
   if(g.getAttribute('variant')!==prefs.wardrobe)g.setAttribute('variant',prefs.wardrobe);
  }
 }
+function playFeedbackSound(type:'tap'|'chime'|'error'){
+ if(!prefs.soundEnabled||prefs.soundVolume<=0)return;
+ try{
+  const AudioCtx=window.AudioContext||(window as any).webkitAudioContext;
+  if(!AudioCtx)return;
+  const ctx=new AudioCtx();
+  const osc=ctx.createOscillator();
+  const gain=ctx.createGain();
+  const vol=(prefs.soundVolume/100)*0.12;
+  gain.gain.setValueAtTime(vol,ctx.currentTime);
+  if(type==='chime'){
+   osc.type='sine';
+   osc.frequency.setValueAtTime(587.33,ctx.currentTime);
+   osc.frequency.exponentialRampToValueAtTime(880,ctx.currentTime+0.1);
+   gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.22);
+   osc.connect(gain);gain.connect(ctx.destination);
+   osc.start();osc.stop(ctx.currentTime+0.22);
+  }else if(type==='tap'){
+   osc.type='triangle';
+   osc.frequency.setValueAtTime(440,ctx.currentTime);
+   gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.06);
+   osc.connect(gain);gain.connect(ctx.destination);
+   osc.start();osc.stop(ctx.currentTime+0.06);
+  }else{
+   osc.type='sawtooth';
+   osc.frequency.setValueAtTime(220,ctx.currentTime);
+   gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.15);
+   osc.connect(gain);gain.connect(ctx.destination);
+   osc.start();osc.stop(ctx.currentTime+0.15);
+  }
+ }catch{}
+}
+
+const I18N = {
+ en: {
+  now:'Now',clips:'Clips',activity:'Activity',chat:'Chat',settings:'Settings',
+  chatTitle:'Chat with Xyn',chatKicker:'COMPANION CHAT',chatStatus:'Watching your workspace · Standing guard',
+  chatPlaceholder:'Ask Xyn anything (Enter to send, Shift+Enter for new line)...',
+  clipHeading:'Clipboard History',clipExplain:'In-memory history for text, images, and file lists. Clears on exit for privacy.',
+  pauseCapture:'Pause capture',enableCapture:'Enable capture',monitoringActive:'Monitoring active',captureOff:'Capture off',
+  actHeading:'Activity & Agents',setHeading:'Settings'
+ },
+ id: {
+  now:'Sekarang',clips:'Klip',activity:'Aktivitas',chat:'Obrolan',settings:'Pengaturan',
+  chatTitle:'Obrolan bersama Xyn',chatKicker:'TEMAN AI NOTCH',chatStatus:'Menjaga ruang kerja Anda · Siaga',
+  chatPlaceholder:'Tanya Xyn apa saja (Enter kirim, Shift+Enter baris baru)...',
+  clipHeading:'Riwayat Papan Klip',clipExplain:'Riwayat sesi lokal untuk teks, gambar, dan file. Dihapus saat keluar demi privasi.',
+  pauseCapture:'Jeda pantau',enableCapture:'Aktifkan pantau',monitoringActive:'Pantauan aktif',captureOff:'Pantauan mati',
+  actHeading:'Aktivitas & Agen',setHeading:'Pengaturan'
+ }
+};
+
+function applyLanguage(lang:Prefs['language']){
+ const dict=I18N[lang]||I18N.en;
+ for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
+  const p=tab.dataset.panel as Panel;
+  if(p&&dict[p as keyof typeof dict]){
+   const badge=tab.querySelector('.nav-unread');
+   tab.textContent=dict[p as keyof typeof dict];
+   if(badge)tab.prepend(badge);
+  }
+ }
+ const chatH=q<HTMLElement>('#chat-heading');if(chatH)chatH.textContent=dict.chatTitle;
+ const chatK=q<HTMLElement>('#chat-kicker');if(chatK)chatK.textContent=dict.chatKicker;
+ const chatIn=q<HTMLTextAreaElement>('#chat-input');if(chatIn)chatIn.placeholder=dict.chatPlaceholder;
+ const clipH=q<HTMLElement>('#clip-heading');if(clipH)clipH.textContent=dict.clipHeading;
+ const clipExp=q<HTMLElement>('#clip-explain');if(clipExp)clipExp.textContent=dict.clipExplain;
+ const actH=q<HTMLElement>('#act-heading');if(actH)actH.textContent=dict.actHeading;
+ const setH=q<HTMLElement>('#set-heading');if(setH)setH.textContent=dict.setHeading;
+}
+
 function triggerMascotSalute(){
+ playFeedbackSound('chime');
  for(const g of root.querySelectorAll<any>('xyeena-guardian')){
   if(typeof g.greet==='function')g.greet();
  }
@@ -314,12 +388,12 @@ let selectedSource='', selectedMedia:Media=pickSession(overview);
 const clipboard=new ClipboardHistory();
 let clipBusy=false,clipTimer:ReturnType<typeof setInterval>|null=null;
 let masterVolume={available:false,percent:0,muted:false,scope:'Windows master output'};
+let isDraggingVolume=false,volumeSeq=0,volumePollTimer:ReturnType<typeof setInterval>|null=null;
 let shuffleEnabled=false,repeatMode:'off'|'list'|'track'='off';
 let mediaBusy=false,runBusy=false,raf=0,resizeInFlight=false;
 let nextFrame:{width:number,height:number}|null=null,exitTimer:ReturnType<typeof setTimeout>|undefined;
 const isReduced=()=>prefs.motion==='reduced'||(prefs.motion==='system'&&matchMedia('(prefers-reduced-motion: reduce)').matches);
 function storePrefs(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(prefs));}catch{}}
-function saveMeeting(){try{localStorage.setItem(MEETING_KEY,JSON.stringify(meeting));}catch{}}
 function updatePrefs(changes:Partial<Prefs>){prefs=sanitizeSettings({...prefs,...changes});storePrefs();syncPreferences();}
 function syncPreferences(){
  const theme=prefs.theme==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):prefs.theme;
@@ -329,13 +403,14 @@ function syncPreferences(){
   ['#always-top',prefs.alwaysOnTop],['#auto-collapse',prefs.autoCollapse],['#auto-hide',prefs.autoHide],
   ['#run-notifications',prefs.notifyRunChanges],['#reduce-motion',prefs.motion==='reduced'],
   ['#setting-gaze',prefs.gazeEnabled],['#setting-sound',prefs.soundEnabled],
-  ['#setting-clip-persist',prefs.clipboardPersistent],['#setting-recap-enable',prefs.recapEnabled]
+  ['#setting-recap-enable',prefs.recapEnabled]
  ] as [string,boolean][])q<HTMLInputElement>(selector).checked=checked;
  q<HTMLSelectElement>('#theme').value=prefs.theme;
  q<HTMLSelectElement>('#setting-language').value=prefs.language;
  q<HTMLSelectElement>('#setting-wardrobe').value=prefs.wardrobe;
  q<HTMLInputElement>('#setting-sound-vol').value=String(prefs.soundVolume);
  q<HTMLSelectElement>('#setting-clip-limit').value=String(prefs.clipboardLimit);
+ applyLanguage(prefs.language);
 }
 syncPreferences();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',syncPreferences);
@@ -352,31 +427,49 @@ function sendFrame(frame:{width:number,height:number}){
  catch(err){console.error('Window resize:',err);nextFrame=null;}
  finally{resizeInFlight=false;}})();
 }
-function tickMotion(now:number){raf=0;sendFrame(motion.step(now));if(motion.animating)raf=requestAnimationFrame(tickMotion);else sendFrame(motion.value);}
+function tickMotion(now:number){
+ raf=0;
+ sendFrame(motion.step(now));
+ if(motion.animating){
+  raf=requestAnimationFrame(tickMotion);
+ }else{
+  sendFrame(motion.value);
+  shell.dataset.animating='settled';
+ }
+}
 function setMode(next:IslandMode,instant=false){
  if(exitTimer)clearTimeout(exitTimer);
  if(mode===next&&!instant)return;
+ const closing=shellDimensions(next).width<motion.value.width||shellDimensions(next).height<motion.value.height;
  mode=next;shell.dataset.mode=mode;
+ shell.dataset.animating=closing?'collapsing':'expanding';
  q<HTMLButtonElement>('.pin').setAttribute('aria-pressed',String(mode==='pinned'));
  prefs=sanitizeSettings({...prefs,pinned:mode==='pinned'});storePrefs();
  if(raf)cancelAnimationFrame(raf);
- const target=shellDimensions(next),closing=target.width<motion.value.width;
+ const target=shellDimensions(next);
  motion.target(target,{closing,reduced:instant||isReduced()||!isTauri,now:performance.now()});
- if(motion.animating)raf=requestAnimationFrame(tickMotion);else sendFrame(target);
+ if(motion.animating)raf=requestAnimationFrame(tickMotion);
+ else{
+  sendFrame(target);
+  shell.dataset.animating='settled';
+ }
  syncGuardian();
  syncGazePolling();
+ if(next==='hidden'||next==='dormant')stopVolumePolling();
+ else startVolumePolling();
 }
 function apply(event:IslandEvent){setMode(transition(mode,event));}
 function setPanel(next:Panel){
+ playFeedbackSound('tap');
  panel=next;shell.dataset.panel=next;
  for(const button of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
   const active=button.dataset.panel===next;button.classList.toggle('current',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;
  }
  for(const page of root.querySelectorAll<HTMLElement>('.page'))page.hidden=page.id!==`page-${next}`;
- if(next==='now')void refreshMedia();
+ if(next==='now'){void refreshMedia();startVolumePolling();}
  if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();renderAgentPills();}
  if(next==='clipboard')renderClipboard();
- if(next==='chat')renderChatMessages();
+ if(next==='chat'){checkChatInlineSetup();renderChatMessages();}
 }
 for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
  tab.addEventListener('click',()=>setPanel(tab.dataset.panel as Panel));
@@ -398,7 +491,10 @@ q<HTMLButtonElement>('#glance-play').addEventListener('click',async e=>{
 q<HTMLButtonElement>('.compact-expand').addEventListener('click',()=>apply('activate'));
 q<HTMLButtonElement>('.collapse').addEventListener('click',()=>apply('collapse'));
 q<HTMLButtonElement>('.pin').addEventListener('click',()=>apply('toggle-pin'));
-shell.addEventListener('pointerenter',()=>{if(exitTimer)clearTimeout(exitTimer);});
+shell.addEventListener('pointerenter',()=>{
+ if(exitTimer)clearTimeout(exitTimer);
+ if(mode==='compact'&&shell.dataset.animating==='collapsing')apply('activate');
+});
 function isInteracting():boolean{
  const a=document.activeElement;
  return !!(a&&(a.tagName==='INPUT'||a.tagName==='SELECT'||a.tagName==='TEXTAREA'||a.hasAttribute('contenteditable')));
@@ -600,7 +696,7 @@ function stopGazePolling(){
 }
 function syncGazePolling(){
  stopGazePolling();
- if(!isTauri||document.hidden||mode==='hidden'||mode==='dormant')return;
+ if(!isTauri||!prefs.gazeEnabled||document.hidden||mode==='hidden'||mode==='dormant')return;
  const generation=gazeGeneration;
  const poll=async()=>{
   if(generation!==gazeGeneration)return;
@@ -624,19 +720,6 @@ if(!isTauri)window.addEventListener('pointermove',e=>setLionGaze(e.clientX,e.cli
 document.addEventListener('visibilitychange',syncGazePolling);
 window.addEventListener('beforeunload',stopGazePolling);
 
-function renderMeeting(){
- const label=meeting.active?'Meeting mode on':'Not tracking a meeting';
- q<HTMLElement>('#meeting-summary').textContent=label;
- q<HTMLElement>('#meeting-clock').textContent=meeting.active?elapsedMeeting(meeting.startedAt):'';
- q<HTMLButtonElement>('#meeting-action').textContent=meeting.active?'End':'Start';
- q<HTMLElement>('#meeting-explain').textContent=meeting.active
-  ?'Manual timer · Xyeena is not monitoring your microphone or recording a call.'
-  :'Manual meeting timer. Teams presence requires Microsoft 365 permission; playback APIs do not detect calls.';
- updateCompact();
-}
-q<HTMLButtonElement>('#meeting-action').addEventListener('click',()=>{
- meeting=meeting.active?{active:false,startedAt:0}:{active:true,startedAt:Date.now()};saveMeeting();renderMeeting();
-});
 function updateCompact(){
  const tag=q<HTMLElement>('#compact-status-tag');
  const ctx=q<HTMLElement>('#compact-context');
@@ -645,14 +728,7 @@ function updateCompact(){
  const glanceSub=q<HTMLElement>('#glance-sub');
  const glancePlay=q<HTMLButtonElement>('#glance-play');
  const glanceCardTitle=q<HTMLElement>('#glance-card-title');
- if(meeting.active){
-  tag.textContent='Meeting';
-  ctx.textContent=elapsedMeeting(meeting.startedAt);
-  glanceHead.textContent='Meeting in progress';
-  glanceSub.textContent=elapsedMeeting(meeting.startedAt);
-  glanceCardTitle.textContent='Meeting';
-  glancePlay.disabled=true;
- }else if(selectedMedia.available&&selectedMedia.playing){
+ if(selectedMedia.available&&selectedMedia.playing){
   tag.textContent='Playing';
   ctx.textContent=`${selectedMedia.title||'Playing'} · ${sourceLabel(selectedMedia.source)}`;
   glanceHead.textContent=selectedMedia.title||'Playing';
@@ -681,7 +757,7 @@ function updateCompact(){
  compactPlay.innerHTML=icon(selectedMedia.playing?'pause':'play',16);
  compactPlay.setAttribute('aria-label',selectedMedia.playing?'Pause':'Play');
  compactPlay.title=selectedMedia.playing?'Pause':'Play';
- q<HTMLElement>('#header-status').textContent=meeting.active?'Meeting mode':selectedMedia.playing?'Media playing':'On device';
+ q<HTMLElement>('#header-status').textContent=selectedMedia.playing?'Media playing':'On device';
  shell.dataset.playing=String(selectedMedia.playing);
  syncGuardian();
 }
@@ -758,35 +834,82 @@ q<HTMLButtonElement>('#repeat').addEventListener('click',async()=>{
   mediaFeedback(applied?'Repeat change requested; player state may differ.':'Selected player does not support repeat.');}
  catch(err){mediaFeedback('Repeat unavailable: '+String(err));}
 });
+function startVolumePolling(){
+ if(volumePollTimer)return;
+ void refreshVolume();
+ volumePollTimer=setInterval(()=>{
+  if(panel==='now'&&!document.hidden&&mode!=='hidden'&&mode!=='dormant'&&!isDraggingVolume){
+   void refreshVolume();
+  }
+ },250);
+}
+function stopVolumePolling(){
+ if(volumePollTimer){clearInterval(volumePollTimer);volumePollTimer=null;}
+}
 async function refreshVolume(){
  if(!isTauri)return;
- try{const snapshot=await native('get_master_volume') as typeof masterVolume;
+ try{
+  const snapshot=await native('get_master_volume') as typeof masterVolume;
   masterVolume=snapshot;
-  q<HTMLInputElement>('#master-volume').value=String(snapshot.percent);
-  q<HTMLOutputElement>('#volume-value').value=snapshot.percent+'%';
+  if(!isDraggingVolume){
+   q<HTMLInputElement>('#master-volume').value=String(snapshot.percent);
+   q<HTMLOutputElement>('#volume-value').value=snapshot.percent+'%';
+  }
   q<HTMLButtonElement>('#mute').innerHTML=icon(snapshot.muted?'mute':'volume',15);
   q<HTMLButtonElement>('#mute').setAttribute('aria-label',snapshot.muted?'Unmute Windows output':'Mute Windows output');
- }catch(err){q<HTMLInputElement>('#master-volume').disabled=true;mediaFeedback('Output volume unavailable: '+String(err));}
+  q<HTMLInputElement>('#master-volume').disabled=false;
+ }catch(err){
+  q<HTMLInputElement>('#master-volume').disabled=true;
+  mediaFeedback('Output volume unavailable: '+String(err));
+ }
 }
 let volTimer:ReturnType<typeof setTimeout>|null=null;
-q<HTMLInputElement>('#master-volume').addEventListener('input',e=>{
+const volInput=q<HTMLInputElement>('#master-volume');
+volInput.addEventListener('pointerdown',()=>{isDraggingVolume=true;});
+window.addEventListener('pointerup',()=>{
+ if(isDraggingVolume){
+  isDraggingVolume=false;
+  void refreshVolume();
+ }
+});
+volInput.addEventListener('input',e=>{
+ isDraggingVolume=true;
  const percent=Number((e.target as HTMLInputElement).value);
  q<HTMLOutputElement>('#volume-value').value=percent+'%';
+ const seq=++volumeSeq;
  if(volTimer)clearTimeout(volTimer);
  volTimer=setTimeout(async()=>{
-  try{masterVolume=await native('set_master_volume',{percent}) as typeof masterVolume;}
-  catch(err){mediaFeedback('Cannot change output volume: '+String(err));}
- },60);
+  try{
+   const res=await native('set_master_volume',{percent}) as typeof masterVolume;
+   if(seq===volumeSeq){
+    masterVolume=res;
+    q<HTMLButtonElement>('#mute').innerHTML=icon(res.muted?'mute':'volume',15);
+   }
+  }catch(err){mediaFeedback('Cannot change output volume: '+String(err));}
+ },40);
 });
-q<HTMLInputElement>('#master-volume').addEventListener('change',async e=>{
+volInput.addEventListener('change',async e=>{
+ isDraggingVolume=false;
  const percent=Number((e.target as HTMLInputElement).value);
  if(!Number.isInteger(percent)||percent<0||percent>100)return;
- try{masterVolume=await native('set_master_volume',{percent}) as typeof masterVolume;await refreshVolume();}
- catch(err){mediaFeedback('Cannot change output volume: '+String(err));await refreshVolume();}
+ const seq=++volumeSeq;
+ try{
+  const res=await native('set_master_volume',{percent}) as typeof masterVolume;
+  if(seq===volumeSeq){
+   masterVolume=res;
+   q<HTMLButtonElement>('#mute').innerHTML=icon(res.muted?'mute':'volume',15);
+  }
+  await refreshVolume();
+ }catch(err){
+  mediaFeedback('Cannot change output volume: '+String(err));
+  await refreshVolume();
+ }
 });
 q<HTMLButtonElement>('#mute').addEventListener('click',async()=>{
- try{masterVolume=await native('set_master_mute',{muted:!masterVolume.muted}) as typeof masterVolume;await refreshVolume();}
- catch(err){mediaFeedback('Cannot toggle output mute: '+String(err));}
+ try{
+  masterVolume=await native('set_master_mute',{muted:!masterVolume.muted}) as typeof masterVolume;
+  await refreshVolume();
+ }catch(err){mediaFeedback('Cannot toggle output mute: '+String(err));}
 });
 
 q<HTMLSelectElement>('#media-choice').addEventListener('change',e=>{
@@ -801,11 +924,32 @@ for(const button of root.querySelectorAll<HTMLButtonElement>('[data-media]'))but
  finally{button.disabled=!selectedMedia.available;}
 });
 
+// Authoritative clipboard capture controller (syncs Clips tab and Settings toggle)
+function setClipboardCapture(enabled:boolean){
+ if(clipboard.enabled===enabled)return;
+ if(enabled){
+  clipboard.enable();
+  void observeClipboard();
+  if(clipTimer)clearInterval(clipTimer);
+  clipTimer=setInterval(()=>void observeClipboard(),1500);
+ }else{
+  clipboard.disable();
+  if(clipTimer){clearInterval(clipTimer);clipTimer=null;}
+ }
+ const settingToggle=q<HTMLInputElement>('#setting-clip-capture');
+ if(settingToggle)settingToggle.checked=clipboard.enabled;
+ renderClipboard();
+}
+
 // Clipboard monitoring never starts by default or on application restart.
 function renderClipboard(){
  const toggle=q<HTMLButtonElement>('#clip-toggle');
- toggle.textContent=clipboard.enabled?'Pause capture':'Enable capture';toggle.setAttribute('aria-pressed',String(clipboard.enabled));
- q<HTMLElement>('#clip-state').textContent=clipboard.enabled?'Capturing active':'Capture off';
+ toggle.textContent=clipboard.enabled?'Pause capture':'Enable capture';
+ toggle.setAttribute('aria-pressed',String(clipboard.enabled));
+ q<HTMLElement>('#clip-state').textContent=clipboard.enabled?'Monitoring active':'Capture off';
+ const settingToggle=q<HTMLInputElement>('#setting-clip-capture');
+ if(settingToggle)settingToggle.checked=clipboard.enabled;
+
  const searchInput=q<HTMLInputElement>('#clip-search');
  const query=searchInput?searchInput.value:'';
  const items=clipboard.filter(query);
@@ -891,25 +1035,19 @@ async function observeClipboard(){
  finally{clipBusy=false;}
 }
 
-q<HTMLButtonElement>('#clip-toggle').addEventListener('click',async()=>{
- if(clipboard.enabled){clipboard.disable();if(clipTimer)clearInterval(clipTimer);clipTimer=null;}
- else {clipboard.enable();void observeClipboard();if(clipTimer)clearInterval(clipTimer);clipTimer=setInterval(()=>void observeClipboard(),1500);}
- renderClipboard();
-});
+q<HTMLButtonElement>('#clip-toggle').addEventListener('click',()=>setClipboardCapture(!clipboard.enabled));
 
 q<HTMLButtonElement>('#clip-read').addEventListener('click',async()=>{
  try{
-  const prev=clipboard.enabled;
-  if(!prev){clipboard.enable();clipboard.last='';}
   if(isTauri){
    const nativeItem=await native('read_native_clipboard') as any;
    if(nativeItem){clipboard.accept(nativeItem);}
-   else{const val=await readText();clipboard.accept(val);}
+   else{const val=await readText();if(val)clipboard.accept(val);}
   }else{
-   const val=await readText();clipboard.accept(val);
+   const val=await readText();if(val)clipboard.accept(val);
   }
-  if(!prev)clipboard.disable();
-  renderClipboard();q<HTMLElement>('#clip-state').textContent='Clipboard read once';
+  renderClipboard();
+  q<HTMLElement>('#clip-state').textContent=clipboard.enabled?'Monitoring active':'Capture off (read once)';
  }catch(err){q<HTMLElement>('#clip-state').textContent='Read failed: '+String(err);}
 });
 
@@ -979,6 +1117,42 @@ q<HTMLButtonElement>('.disconnect').addEventListener('click',()=>{
 // AI Companion Chat and Agent Session Integration
 const chat=new ChatEngine();
 let activeApprovalSession:ReturnType<typeof normalizeSessionSnapshot>|null=null;
+let chatAbortController:AbortController|null=null;
+let sessionApiKey='';
+
+function setXynChatState(state:'idle'|'thinking'|'speaking'|'error'){
+ const sub=q<HTMLElement>('#chat-status');
+ const stopBtn=q<HTMLButtonElement>('#chat-stop');
+ const sendBtn=q<HTMLButtonElement>('#chat-send');
+ if(state==='thinking'){
+  if(sub)sub.textContent='Xyn is thinking & reading context...';
+  if(stopBtn)stopBtn.hidden=false;
+  if(sendBtn)sendBtn.disabled=true;
+  playFeedbackSound('tap');
+ }else if(state==='speaking'){
+  if(sub)sub.textContent='Xyn is responding...';
+  if(stopBtn)stopBtn.hidden=false;
+  if(sendBtn)sendBtn.disabled=true;
+ }else if(state==='error'){
+  if(sub)sub.textContent='Xyn encountered an issue';
+  if(stopBtn)stopBtn.hidden=true;
+  if(sendBtn)sendBtn.disabled=false;
+  playFeedbackSound('error');
+ }else{
+  if(sub)sub.textContent=I18N[prefs.language]?.chatStatus||I18N.en.chatStatus;
+  if(stopBtn)stopBtn.hidden=true;
+  if(sendBtn)sendBtn.disabled=false;
+ }
+}
+
+function checkChatInlineSetup(){
+ const box=q<HTMLElement>('#chat-inline-setup');
+ if(!box)return;
+ const prov=chat.activeProvider;
+ const needsKey=['gemini','openai','anthropic'].includes(prov);
+ const hasKey=!!(sessionApiKey||q<HTMLInputElement>('#setting-ai-api-key')?.value?.trim());
+ box.hidden=!needsKey||hasKey;
+}
 
 function renderChatMessages(){
  const viewport=q<HTMLElement>('#chat-messages');
@@ -986,7 +1160,7 @@ function renderChatMessages(){
  if(!chat.messages.length){
   const welcome=document.createElement('div');
   welcome.className='chat-bubble chat-bubble-assistant';
-  welcome.innerHTML='<strong>Xyeena Companion</strong><br>I am your top-screen Guardian. Ask me anything about your project, code, or local tasks.';
+  welcome.innerHTML='<strong>Xyn (Golden Lion Guardian)</strong><br>I am your top-screen companion. Ask me anything about your project, code, or local tasks.';
   viewport.append(welcome);
   return;
  }
@@ -994,24 +1168,73 @@ function renderChatMessages(){
   const bubble=document.createElement('div');
   bubble.className=`chat-bubble chat-bubble-${msg.role}`;
   bubble.innerHTML=renderSafeMarkdown(msg.content);
+  for(const pre of bubble.querySelectorAll('pre')){
+   const btn=document.createElement('button');
+   btn.type='button';btn.className='code-copy-btn';btn.textContent='Copy';
+   btn.addEventListener('click',async()=>{
+    const code=pre.querySelector('code')?.textContent||pre.textContent||'';
+    try{
+     await writeText(code);
+     btn.textContent='Copied!';
+     setTimeout(()=>{btn.textContent='Copy';},1500);
+    }catch{}
+   });
+   pre.style.position='relative';
+   pre.append(btn);
+  }
   viewport.append(bubble);
  }
  viewport.scrollTop=viewport.scrollHeight;
 }
 
 q<HTMLSelectElement>('#chat-provider-select').addEventListener('change',e=>{
- chat.activeProvider=(e.target as HTMLSelectElement).value;
+ const prov=(e.target as HTMLSelectElement).value;
+ chat.activeProvider=prov;
+ const setSelect=q<HTMLSelectElement>('#setting-ai-provider');
+ if(setSelect)setSelect.value=prov;
+ checkChatInlineSetup();
 });
 
-let chatAbortController:AbortController|null=null;
-let sessionApiKey='';
+q<HTMLButtonElement>('#btn-save-inline-key')?.addEventListener('click',()=>{
+ const val=q<HTMLInputElement>('#chat-inline-key-input')?.value?.trim()||'';
+ if(val){
+  sessionApiKey=val;
+  const setInput=q<HTMLInputElement>('#setting-ai-api-key');
+  if(setInput)setInput.value=val;
+  const badge=q<HTMLElement>('#badge-ai-creds');
+  if(badge)badge.textContent='Key Set (In-Memory)';
+  checkChatInlineSetup();
+  playFeedbackSound('chime');
+ }
+});
+
+q<HTMLButtonElement>('#chat-stop')?.addEventListener('click',()=>{
+ if(chatAbortController){
+  chatAbortController.abort();
+  chatAbortController=null;
+  setXynChatState('idle');
+ }
+});
+
+const chatInput=q<HTMLTextAreaElement>('#chat-input');
+chatInput.addEventListener('input',()=>{
+ chatInput.style.height='auto';
+ chatInput.style.height=Math.min(chatInput.scrollHeight,120)+'px';
+});
+chatInput.addEventListener('keydown',e=>{
+ if(e.key==='Enter'&&!e.shiftKey){
+  e.preventDefault();
+  q<HTMLFormElement>('#chat-form').requestSubmit();
+ }
+});
 
 q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
  e.preventDefault();
- const input=q<HTMLInputElement>('#chat-input');
+ const input=q<HTMLTextAreaElement>('#chat-input');
  const text=input.value.trim();
  if(!text)return;
  input.value='';
+ input.style.height='auto';
 
  chat.addUserMessage(text);
  renderChatMessages();
@@ -1019,11 +1242,7 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
  // Privacy-safe activity logging: NEVER log raw prompt text or secrets!
  feed.recordEvent('Chat message submitted',`Provider: ${chat.activeProvider}`,'ACTION');
  renderAlerts();
- triggerMascotSalute();
-
- const sendBtn=q<HTMLButtonElement>('#chat-send');
- sendBtn.disabled=true;
- sendBtn.textContent='...';
+ setXynChatState('thinking');
 
  const placeholder=chat.addAssistantReply('Thinking...');
  renderChatMessages();
@@ -1035,6 +1254,7 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
 
   // Remove the temporary placeholder before running completion
   chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
+  setXynChatState('speaking');
 
   await chat.requestCompletion({
    provider:chat.activeProvider,
@@ -1044,14 +1264,20 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
    signal:chatAbortController.signal,
   });
   renderChatMessages();
+  playFeedbackSound('chime');
   triggerMascotSalute();
+  setXynChatState('idle');
  }catch(err:any){
   chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
-  chat.addAssistantReply(`⚠️ **Chat error:** ${err?.message||String(err)}`);
+  if(err?.name==='AbortError'){
+   chat.addAssistantReply('*Response generation cancelled.*');
+  }else{
+   chat.addAssistantReply(`⚠️ **Chat error:** ${err?.message||String(err)}`);
+  }
   renderChatMessages();
+  setXynChatState('error');
+  setTimeout(()=>setXynChatState('idle'),4000);
  }finally{
-  sendBtn.disabled=false;
-  sendBtn.textContent='Send';
   chatAbortController=null;
  }
 });
@@ -1065,13 +1291,13 @@ function renderAgentPills(){
   pill.className='agent-pill'+(isLive?' active':'');
   const stateLabel=isLive
    ?(activeApprovalSession?.status==='working'?'Working':'Waiting for input')
-   :'Not connected';
+   :'Adapter ready (No active session)';
   pill.textContent=`${adapter.name}: ${stateLabel}`;
   row.append(pill);
  }
 
  const approvalCard=q<HTMLElement>('#agent-approval');
- if(activeApprovalSession?.pendingApproval){
+ if(activeApprovalSession?.pendingApproval&&activeApprovalSession.pendingApproval.expiresAt>Date.now()){
   approvalCard.hidden=false;
   q<HTMLElement>('#approval-title').textContent=`${activeApprovalSession.provider}: Approval Request`;
   q<HTMLElement>('#approval-prompt').textContent=activeApprovalSession.pendingApproval.prompt;
@@ -1175,11 +1401,7 @@ q<HTMLSelectElement>('#setting-wardrobe').addEventListener('change',e=>{
 });
 q<HTMLInputElement>('#setting-sound').addEventListener('change',e=>updatePrefs({soundEnabled:(e.target as HTMLInputElement).checked}));
 q<HTMLInputElement>('#setting-sound-vol').addEventListener('input',e=>updatePrefs({soundVolume:Number((e.target as HTMLInputElement).value)}));
-q<HTMLInputElement>('#setting-clip-capture').addEventListener('change',e=>{
- const enabled=(e.target as HTMLInputElement).checked;
- if(enabled){clipboard.enable();void observeClipboard();}else{clipboard.disable();}
- renderClipboard();
-});
+q<HTMLInputElement>('#setting-clip-capture').addEventListener('change',e=>setClipboardCapture((e.target as HTMLInputElement).checked));
 q<HTMLSelectElement>('#setting-clip-limit').addEventListener('change',e=>{
  const limit=Number((e.target as HTMLSelectElement).value);
  updatePrefs({clipboardLimit:limit});
@@ -1194,29 +1416,40 @@ q<HTMLSelectElement>('#setting-ai-provider')?.addEventListener('change',e=>{
  chat.activeProvider=prov;
  const select=q<HTMLSelectElement>('#chat-provider-select');
  if(select)select.value=prov;
+ checkChatInlineSetup();
 });
 q<HTMLInputElement>('#setting-ai-api-key')?.addEventListener('input',e=>{
  sessionApiKey=(e.target as HTMLInputElement).value.trim();
  const badge=q<HTMLElement>('#badge-ai-creds');
  if(badge)badge.textContent=sessionApiKey?'Key Set (In-Memory)':'Session Memory';
+ checkChatInlineSetup();
 });
 
 // Weekly Recap Generation and SVG Export using PR #2 engine (@xyeena/recap)
 let activeRecapData:any=null;
 q<HTMLButtonElement>('#recap-generate-btn').addEventListener('click',()=>{
- const events=feed.items.map((item,idx)=>({
-  type:item.state==='ACTION'?'approval':item.state==='FILE'?'edit':'command',
-  at:new Date(Date.now()-idx*3600000).toISOString(),
-  agent:'antigravity',
-  eventId:`evt-${idx}`,
-  decision:'allow'
- }));
+ const sevenDaysAgo=Date.now()-7*86400000;
+ const realEvents=feed.items
+  .filter(item=>(item.timestamp||0)>=sevenDaysAgo)
+  .map((item,idx)=>({
+   type:item.state==='ACTION'?'approval':item.state==='FILE'?'edit':'command',
+   at:new Date(item.timestamp||Date.now()).toISOString(),
+   agent:'xyeena-island',
+   eventId:`evt-${item.id||idx}`,
+   decision:'allow'
+  }));
+ if(!realEvents.length){
+  activeRecapData=null;
+  q<HTMLElement>('#recap-preview-box').hidden=false;
+  q<HTMLElement>('#recap-text').textContent='No recorded activity in the past 7 days.\nGenuine activity from file inspections, approvals, or CLI runs will appear here.';
+  return;
+ }
  try{
-  activeRecapData=buildWeeklyRecap(events);
+  activeRecapData=buildWeeklyRecap(realEvents);
   const text=recapText(activeRecapData);
   q<HTMLElement>('#recap-preview-box').hidden=false;
   q<HTMLElement>('#recap-text').textContent=text;
-  feed.recordEvent('Weekly recap generated',`${activeRecapData.weekStart} (${events.length} events)`,'ACTION');
+  feed.recordEvent('Weekly recap generated',`${activeRecapData.weekStart} (${realEvents.length} events)`,'ACTION');
   renderAlerts();
   triggerMascotSalute();
  }catch(err){
@@ -1279,16 +1512,15 @@ q<HTMLButtonElement>('#btn-export-diagnostics').addEventListener('click',async()
     isBase64:false
    }) as string;
    feed.recordEvent('Diagnostics exported',String(path),'ACTION');
-  }catch(err){feed.recordEvent('Diagnostics error',String(err),'ERROR');}
+  }catch(err){feed.recordEvent('Diagnostics error',String(err));}
  }else{
   feed.recordEvent('Diagnostics exported','Local session JSON generated','ACTION');
  }
  renderAlerts();
 });
 
-
 async function initialize(){
- setPanel('now');renderRuns();renderAlerts();renderMedia();renderMeeting();renderAgentPills();renderChatMessages();
+ setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentPills();renderChatMessages();
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
   try{
@@ -1298,10 +1530,8 @@ async function initialize(){
   }catch(err){console.error('Island init:',err);}
  }
  setMode(prefs.pinned?'pinned':'compact',true);
- void refreshMedia();void refreshVolume();renderClipboard();
+ void refreshMedia();startVolumePolling();renderClipboard();
  setInterval(()=>{if(!document.hidden||mode==='compact')void refreshMedia();},5000);
- setInterval(()=>{if(panel==='now'&&!document.hidden)void refreshVolume();},10000);
  setInterval(()=>{if(sourcePath&&(prefs.notifyRunChanges||!document.hidden))void refreshRuns();},10000);
- setInterval(()=>{if(meeting.active)renderMeeting();},15000);
 }
 void initialize();
