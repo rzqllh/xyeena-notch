@@ -163,20 +163,44 @@ export class ChatEngine {
       throw new Error(`Unsupported AI provider: ${provider}`);
     }
 
+    if (signal?.aborted) {
+      const err = new Error('Chat completion aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
+
     let responseText = '';
     let status = 200;
 
     if (typeof nativeInvoker === 'function') {
       try {
-        const res = await nativeInvoker('native_ai_request', {
+        const invokePromise = nativeInvoker('native_ai_request', {
           url,
           method: 'POST',
           headers,
           body
         });
+        const res = signal ? await Promise.race([
+          invokePromise,
+          new Promise((_, reject) => {
+            if (signal.aborted) {
+              const err = new Error('Chat completion aborted');
+              err.name = 'AbortError';
+              reject(err);
+            } else {
+              signal.addEventListener('abort', () => {
+                const err = new Error('Chat completion aborted');
+                err.name = 'AbortError';
+                reject(err);
+              }, { once: true });
+            }
+          })
+        ]) : await invokePromise;
         status = res.status;
         responseText = res.body;
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') throw err;
+        if (typeof err === 'string' && err.includes('AbortError')) throw new Error(err);
         throw new Error(`Native transport failed for ${provider}: ${err instanceof Error ? err.message : String(err)}`);
       }
     } else {
@@ -190,6 +214,8 @@ export class ChatEngine {
         status = res.status;
         responseText = await res.text();
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') throw err;
+        if (typeof err === 'string' && err.includes('AbortError')) throw new Error(err);
         throw new Error(`Connection to ${provider} failed (${url}). Ensure endpoint is active.`);
       }
     }

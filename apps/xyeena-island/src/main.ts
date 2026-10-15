@@ -15,7 +15,7 @@ import {RunChangeFeed} from './core/notifications.mjs';
 import {chooseGuardianState,toMascotState,guardianStatus,defineXyeenaGuardian} from './core/mascot.mjs';
 import {inspectFile,convertImageDataUrl} from './core/files.mjs';
 import {ChatEngine,AI_PROVIDERS,renderSafeMarkdown} from './core/ai-chat.mjs';
-import {KNOWN_ADAPTERS,normalizeSessionSnapshot} from './core/agent-adapters.mjs';
+import {KNOWN_ADAPTERS,getAdapter,normalizeSessionSnapshot} from './core/agent-adapters.mjs';
 import {mayForwardDecision} from './core/agent-events.mjs';
 import {buildWeeklyRecap,recapText,recapSvg} from '@xyeena/recap';
 import './style.css';
@@ -122,6 +122,17 @@ root.innerHTML=`
      <div id="media-feedback" class="feedback" role="status">Volume controls Windows default output, not individual apps.</div>
     </div>
     <div class="source-line"><label for="media-choice">Playback source</label><select id="media-choice" aria-label="Windows playback source"><option value="">No compatible source</option></select></div>
+    <div class="meeting-card" id="meeting-card">
+      <div class="meeting-header">
+        <div>
+          <span class="kicker">CALLS & MEETINGS</span>
+          <strong id="meeting-summary">Not tracking a meeting</strong>
+          <span id="meeting-clock" class="clock"></span>
+        </div>
+        <button class="meeting-button" id="meeting-action" type="button">Start</button>
+      </div>
+      <p class="explain" id="meeting-explain">Manual meeting timer. Teams presence requires Microsoft 365 permission; playback APIs do not detect calls.</p>
+    </div>
     <div class="file-card" id="file-card" hidden>
      <div class="file-card-header">
        <img class="file-card-thumb" id="file-thumb" src="" alt="File preview" hidden>
@@ -186,7 +197,16 @@ root.innerHTML=`
           </select>
         </div>
       </div>
-      <div id="chat-inline-setup" class="chat-setup-box" hidden></div>
+      <div id="chat-inline-setup" class="chat-setup-box" hidden>
+        <div class="chat-setup-header">
+          <strong id="chat-setup-title">API Key Required</strong>
+          <span class="chat-setup-sub">Stored in session memory only (BYOK). Never logged or exported.</span>
+        </div>
+        <div class="chat-setup-input-row">
+          <input type="password" id="chat-inline-key-input" placeholder="Paste API key here..." autocomplete="off" spellcheck="false" aria-label="API key input">
+          <button class="action-btn" type="button" id="btn-save-inline-key">Save Key</button>
+        </div>
+      </div>
       <div class="chat-viewport" id="chat-messages" aria-live="polite"></div>
       <form class="chat-input-row" id="chat-form">
         <textarea id="chat-input" rows="1" placeholder="Ask Xyn anything (Enter to send, Shift+Enter for new line)..." autocomplete="off" spellcheck="false" aria-label="Chat input"></textarea>
@@ -263,7 +283,7 @@ root.innerHTML=`
       </div>
 
       <div class="settings-section" id="setsec-about" hidden>
-        <div class="setting"><span><strong>Global hotkeys</strong><small>Open: Win+Alt+X · Clip: Win+Alt+V</small></span><span class="badge-tag">Desktop native</span></div>
+        <div class="setting"><span><strong>Keyboard shortcuts</strong><small>Esc: Collapse · ←/→: Switch tab · Enter: Send chat</small></span><span class="badge-tag">In-app</span></div>
         <div class="setting"><span><strong>Test notification</strong><small>Verify native Windows toast alerts</small></span><button class="minor-btn test-notification" type="button">Send Test Toast</button></div>
         <div class="setting"><span><strong>Diagnostic logs</strong><small>Local inspection without credentials</small></span><button class="minor-btn" id="btn-export-diagnostics" type="button">Export Clean Logs</button></div>
         <details class="project-details" id="about-credits" open><summary>About & credits <span>MIT source</span></summary>
@@ -287,8 +307,9 @@ let meeting=normalizeMeeting(initialMeeting);
 let mode:IslandMode='compact',panel:Panel='now';
 const motion=new GeometryMotion(shellDimensions(mode));
 const feed=new RunChangeFeed();
+let chatMascotState: string | null = null;
 function syncGuardian(){
- const activeState=chooseGuardianState({meetingActive:meeting.active,mediaPlaying:selectedMedia.playing,runs,mode});
+ const activeState=chatMascotState||chooseGuardianState({meetingActive:meeting.active,mediaPlaying:selectedMedia.playing,runs,mode});
  const visualState=toMascotState(activeState);
  shell.dataset.fold=activeState;
  shell.dataset.guardian=activeState;
@@ -364,6 +385,7 @@ function applyLanguage(lang:Prefs['language']){
  }
  const chatH=q<HTMLElement>('#chat-heading');if(chatH)chatH.textContent=dict.chatTitle;
  const chatK=q<HTMLElement>('#chat-kicker');if(chatK)chatK.textContent=dict.chatKicker;
+ const chatS=q<HTMLElement>('#chat-xyn-status');if(chatS)chatS.textContent=dict.chatStatus;
  const chatIn=q<HTMLTextAreaElement>('#chat-input');if(chatIn)chatIn.placeholder=dict.chatPlaceholder;
  const clipH=q<HTMLElement>('#clip-heading');if(clipH)clipH.textContent=dict.clipHeading;
  const clipExp=q<HTMLElement>('#clip-explain');if(clipExp)clipExp.textContent=dict.clipExplain;
@@ -410,6 +432,11 @@ function syncPreferences(){
  q<HTMLSelectElement>('#setting-wardrobe').value=prefs.wardrobe;
  q<HTMLInputElement>('#setting-sound-vol').value=String(prefs.soundVolume);
  q<HTMLSelectElement>('#setting-clip-limit').value=String(prefs.clipboardLimit);
+ q<HTMLSelectElement>('#setting-media-pref').value=prefs.preferredMedia;
+ const recapBtn=q<HTMLButtonElement>('#recap-generate-btn');
+ const exportBtn=q<HTMLButtonElement>('#recap-export-svg-btn');
+ if(recapBtn)recapBtn.disabled=!prefs.recapEnabled;
+ if(exportBtn)exportBtn.disabled=!prefs.recapEnabled;
  applyLanguage(prefs.language);
 }
 syncPreferences();
@@ -720,6 +747,26 @@ if(!isTauri)window.addEventListener('pointermove',e=>setLionGaze(e.clientX,e.cli
 document.addEventListener('visibilitychange',syncGazePolling);
 window.addEventListener('beforeunload',stopGazePolling);
 
+function renderMeeting(){
+ const label=meeting.active?'Meeting mode on':'Not tracking a meeting';
+ const summaryEl=root.querySelector<HTMLElement>('#meeting-summary');
+ if(summaryEl)summaryEl.textContent=label;
+ const clockEl=root.querySelector<HTMLElement>('#meeting-clock');
+ if(clockEl)clockEl.textContent=meeting.active?elapsedMeeting(meeting.startedAt):'';
+ const btnEl=root.querySelector<HTMLButtonElement>('#meeting-action');
+ if(btnEl)btnEl.textContent=meeting.active?'End':'Start';
+ const expEl=root.querySelector<HTMLElement>('#meeting-explain');
+ if(expEl)expEl.textContent=meeting.active
+  ?'Manual timer · Xyeena is not monitoring your microphone or recording a call.'
+  :'Manual meeting timer. Teams presence requires Microsoft 365 permission; playback APIs do not detect calls.';
+ updateCompact();
+}
+q<HTMLButtonElement>('#meeting-action').addEventListener('click',()=>{
+ meeting=meeting.active?{active:false,startedAt:0}:{active:true,startedAt:Date.now()};
+ try{localStorage.setItem(MEETING_KEY,JSON.stringify(meeting));}catch{}
+ renderMeeting();
+});
+
 function updateCompact(){
  const tag=q<HTMLElement>('#compact-status-tag');
  const ctx=q<HTMLElement>('#compact-context');
@@ -728,7 +775,14 @@ function updateCompact(){
  const glanceSub=q<HTMLElement>('#glance-sub');
  const glancePlay=q<HTMLButtonElement>('#glance-play');
  const glanceCardTitle=q<HTMLElement>('#glance-card-title');
- if(selectedMedia.available&&selectedMedia.playing){
+ if(meeting.active){
+  tag.textContent='Meeting';
+  ctx.textContent=elapsedMeeting(meeting.startedAt);
+  glanceHead.textContent='Meeting in progress';
+  glanceSub.textContent=elapsedMeeting(meeting.startedAt);
+  glanceCardTitle.textContent='Meeting';
+  glancePlay.disabled=true;
+ }else if(selectedMedia.available&&selectedMedia.playing){
   tag.textContent='Playing';
   ctx.textContent=`${selectedMedia.title||'Playing'} · ${sourceLabel(selectedMedia.source)}`;
   glanceHead.textContent=selectedMedia.title||'Playing';
@@ -757,7 +811,7 @@ function updateCompact(){
  compactPlay.innerHTML=icon(selectedMedia.playing?'pause':'play',16);
  compactPlay.setAttribute('aria-label',selectedMedia.playing?'Pause':'Play');
  compactPlay.title=selectedMedia.playing?'Pause':'Play';
- q<HTMLElement>('#header-status').textContent=selectedMedia.playing?'Media playing':'On device';
+ q<HTMLElement>('#header-status').textContent=meeting.active?'Meeting mode':selectedMedia.playing?'Media playing':'On device';
  shell.dataset.playing=String(selectedMedia.playing);
  syncGuardian();
 }
@@ -796,7 +850,7 @@ async function refreshMedia(){
  mediaBusy=true;
  try{
   overview=normalizeSessions(await native('get_media_sessions'));
-  selectedMedia=pickSession(overview,selectedSource);
+  selectedMedia=pickSession(overview,prefs.preferredMedia||selectedSource);
   if(!overview.sessions.some(s=>s.source===selectedSource))selectedSource=selectedMedia.source;
   renderMedia();
  }catch(err){q<HTMLElement>('#track-artist').textContent='Windows playback unavailable: '+String(err);}
@@ -834,6 +888,10 @@ q<HTMLButtonElement>('#repeat').addEventListener('click',async()=>{
   mediaFeedback(applied?'Repeat change requested; player state may differ.':'Selected player does not support repeat.');}
  catch(err){mediaFeedback('Repeat unavailable: '+String(err));}
 });
+let volumeInFlight = false;
+let volumeReqSeq = 0;
+let lastAppliedVolumeSeq = 0;
+
 function startVolumePolling(){
  if(volumePollTimer)return;
  void refreshVolume();
@@ -847,20 +905,27 @@ function stopVolumePolling(){
  if(volumePollTimer){clearInterval(volumePollTimer);volumePollTimer=null;}
 }
 async function refreshVolume(){
- if(!isTauri)return;
+ if(!isTauri||volumeInFlight)return;
+ volumeInFlight=true;
+ const seq=++volumeReqSeq;
  try{
   const snapshot=await native('get_master_volume') as typeof masterVolume;
-  masterVolume=snapshot;
-  if(!isDraggingVolume){
-   q<HTMLInputElement>('#master-volume').value=String(snapshot.percent);
-   q<HTMLOutputElement>('#volume-value').value=snapshot.percent+'%';
+  if(seq>=lastAppliedVolumeSeq){
+   lastAppliedVolumeSeq=seq;
+   masterVolume=snapshot;
+   if(!isDraggingVolume){
+    q<HTMLInputElement>('#master-volume').value=String(snapshot.percent);
+    q<HTMLOutputElement>('#volume-value').value=snapshot.percent+'%';
+   }
+   q<HTMLButtonElement>('#mute').innerHTML=icon(snapshot.muted?'mute':'volume',15);
+   q<HTMLButtonElement>('#mute').setAttribute('aria-label',snapshot.muted?'Unmute Windows output':'Mute Windows output');
+   q<HTMLInputElement>('#master-volume').disabled=false;
   }
-  q<HTMLButtonElement>('#mute').innerHTML=icon(snapshot.muted?'mute':'volume',15);
-  q<HTMLButtonElement>('#mute').setAttribute('aria-label',snapshot.muted?'Unmute Windows output':'Mute Windows output');
-  q<HTMLInputElement>('#master-volume').disabled=false;
  }catch(err){
   q<HTMLInputElement>('#master-volume').disabled=true;
   mediaFeedback('Output volume unavailable: '+String(err));
+ }finally{
+  volumeInFlight=false;
  }
 }
 let volTimer:ReturnType<typeof setTimeout>|null=null;
@@ -1121,24 +1186,32 @@ let chatAbortController:AbortController|null=null;
 let sessionApiKey='';
 
 function setXynChatState(state:'idle'|'thinking'|'speaking'|'error'){
- const sub=q<HTMLElement>('#chat-status');
+ const sub=q<HTMLElement>('#chat-xyn-status');
  const stopBtn=q<HTMLButtonElement>('#chat-stop');
  const sendBtn=q<HTMLButtonElement>('#chat-send');
  if(state==='thinking'){
+  chatMascotState='thinking';
+  syncGuardian();
   if(sub)sub.textContent='Xyn is thinking & reading context...';
   if(stopBtn)stopBtn.hidden=false;
   if(sendBtn)sendBtn.disabled=true;
   playFeedbackSound('tap');
  }else if(state==='speaking'){
+  chatMascotState='working';
+  syncGuardian();
   if(sub)sub.textContent='Xyn is responding...';
   if(stopBtn)stopBtn.hidden=false;
   if(sendBtn)sendBtn.disabled=true;
  }else if(state==='error'){
+  chatMascotState='error';
+  syncGuardian();
   if(sub)sub.textContent='Xyn encountered an issue';
   if(stopBtn)stopBtn.hidden=true;
   if(sendBtn)sendBtn.disabled=false;
   playFeedbackSound('error');
  }else{
+  chatMascotState=null;
+  syncGuardian();
   if(sub)sub.textContent=I18N[prefs.language]?.chatStatus||I18N.en.chatStatus;
   if(stopBtn)stopBtn.hidden=true;
   if(sendBtn)sendBtn.disabled=false;
@@ -1149,7 +1222,7 @@ function checkChatInlineSetup(){
  const box=q<HTMLElement>('#chat-inline-setup');
  if(!box)return;
  const prov=chat.activeProvider;
- const needsKey=['gemini','openai','anthropic'].includes(prov);
+ const needsKey=['gemini','openai','anthropic','openrouter'].includes(prov);
  const hasKey=!!(sessionApiKey||q<HTMLInputElement>('#setting-ai-api-key')?.value?.trim());
  box.hidden=!needsKey||hasKey;
 }
@@ -1187,16 +1260,24 @@ function renderChatMessages(){
  viewport.scrollTop=viewport.scrollHeight;
 }
 
-q<HTMLSelectElement>('#chat-provider-select').addEventListener('change',e=>{
- const prov=(e.target as HTMLSelectElement).value;
+function onProviderChange(prov:string){
  chat.activeProvider=prov;
+ const match=AI_PROVIDERS.find(p=>p.id===prov);
+ if(match)chat.activeModel=match.defaultModel;
  const setSelect=q<HTMLSelectElement>('#setting-ai-provider');
- if(setSelect)setSelect.value=prov;
+ if(setSelect&&setSelect.value!==prov)setSelect.value=prov;
+ const chatSelect=q<HTMLSelectElement>('#chat-provider-select');
+ if(chatSelect&&chatSelect.value!==prov)chatSelect.value=prov;
  checkChatInlineSetup();
+}
+q<HTMLSelectElement>('#chat-provider-select').addEventListener('change',e=>{
+ onProviderChange((e.target as HTMLSelectElement).value);
 });
 
-q<HTMLButtonElement>('#btn-save-inline-key')?.addEventListener('click',()=>{
- const val=q<HTMLInputElement>('#chat-inline-key-input')?.value?.trim()||'';
+const inlineInput=q<HTMLInputElement>('#chat-inline-key-input');
+const saveInlineBtn=q<HTMLButtonElement>('#btn-save-inline-key');
+function saveInlineKey(){
+ const val=inlineInput?.value?.trim()||'';
  if(val){
   sessionApiKey=val;
   const setInput=q<HTMLInputElement>('#setting-ai-api-key');
@@ -1205,6 +1286,14 @@ q<HTMLButtonElement>('#btn-save-inline-key')?.addEventListener('click',()=>{
   if(badge)badge.textContent='Key Set (In-Memory)';
   checkChatInlineSetup();
   playFeedbackSound('chime');
+  triggerMascotSalute();
+ }
+}
+saveInlineBtn?.addEventListener('click',saveInlineKey);
+inlineInput?.addEventListener('keydown',e=>{
+ if(e.key==='Enter'){
+  e.preventDefault();
+  saveInlineKey();
  }
 });
 
@@ -1285,21 +1374,27 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
 function renderAgentPills(){
  const row=q<HTMLElement>('#agent-pills');
  row.replaceChildren();
- for(const adapter of KNOWN_ADAPTERS.slice(0,6)){
-  const pill=document.createElement('span');
-  const isLive=activeApprovalSession?.provider===adapter.id;
-  pill.className='agent-pill'+(isLive?' active':'');
-  const stateLabel=isLive
-   ?(activeApprovalSession?.status==='working'?'Working':'Waiting for input')
-   :'Adapter ready (No active session)';
-  pill.textContent=`${adapter.name}: ${stateLabel}`;
-  row.append(pill);
+ const activeSessions: NonNullable<ReturnType<typeof normalizeSessionSnapshot>>[] = activeApprovalSession ? [activeApprovalSession] : [];
+ if(!activeSessions.length){
+  const empty=document.createElement('p');
+  empty.className='empty-copy';
+  empty.textContent='No active agent sessions connected. Sessions will appear here when listening.';
+  row.append(empty);
+ }else{
+  for(const sess of activeSessions){
+   const pill=document.createElement('span');
+   pill.className='agent-pill active';
+   const label=sess.provider ? (getAdapter(sess.provider)?.name || sess.provider) : 'Agent';
+   pill.textContent=`${label}: ${sess.status === 'working' ? 'Working' : sess.status === 'approval' ? 'Needs Approval' : 'Active'}`;
+   row.append(pill);
+  }
  }
 
  const approvalCard=q<HTMLElement>('#agent-approval');
  if(activeApprovalSession?.pendingApproval&&activeApprovalSession.pendingApproval.expiresAt>Date.now()){
   approvalCard.hidden=false;
-  q<HTMLElement>('#approval-title').textContent=`${activeApprovalSession.provider}: Approval Request`;
+  const adapterName=getAdapter(activeApprovalSession.provider)?.name||activeApprovalSession.provider;
+  q<HTMLElement>('#approval-title').textContent=`${adapterName}: Approval Request`;
   q<HTMLElement>('#approval-prompt').textContent=activeApprovalSession.pendingApproval.prompt;
   q<HTMLButtonElement>('#approval-allow').disabled=false;
   q<HTMLButtonElement>('#approval-deny').disabled=false;
@@ -1325,7 +1420,7 @@ q<HTMLButtonElement>('#approval-allow').addEventListener('click',()=>{
    explicitUserAction:true
   };
   if(mayForwardDecision(waiting,action)){
-   feed.recordEvent('Approval acknowledged',`Decision forwarded to ${activeApprovalSession.provider}`,'ACTION');
+   feed.recordEvent('Approval acknowledged',`Decision validated for ${activeApprovalSession.provider}`,'ACTION');
    activeApprovalSession=null;
    renderAgentPills();
    renderAlerts();
@@ -1351,7 +1446,7 @@ q<HTMLButtonElement>('#approval-deny').addEventListener('click',()=>{
    explicitUserAction:true
   };
   if(mayForwardDecision(waiting,action)){
-   feed.recordEvent('Approval denied',`Action blocked for ${activeApprovalSession.provider}`,'ACTION');
+   feed.recordEvent('Approval denied',`Action denied for ${activeApprovalSession.provider}`,'ACTION');
    activeApprovalSession=null;
    renderAgentPills();
    renderAlerts();
@@ -1407,16 +1502,23 @@ q<HTMLSelectElement>('#setting-clip-limit').addEventListener('change',e=>{
  updatePrefs({clipboardLimit:limit});
  clipboard.maxItems=limit;
 });
-q<HTMLInputElement>('#setting-clip-persist').addEventListener('change',e=>updatePrefs({clipboardPersistent:(e.target as HTMLInputElement).checked}));
 q<HTMLButtonElement>('#setting-clip-clear').addEventListener('click',()=>{clipboard.clear();renderClipboard();});
-q<HTMLInputElement>('#setting-recap-enable').addEventListener('change',e=>updatePrefs({recapEnabled:(e.target as HTMLInputElement).checked}));
+q<HTMLSelectElement>('#setting-media-pref').addEventListener('change',e=>{
+ const pref=(e.target as HTMLSelectElement).value;
+ updatePrefs({preferredMedia:pref});
+ void refreshMedia();
+});
+q<HTMLInputElement>('#setting-recap-enable').addEventListener('change',e=>{
+ const enabled=(e.target as HTMLInputElement).checked;
+ updatePrefs({recapEnabled:enabled});
+ const recapBtn=q<HTMLButtonElement>('#recap-generate-btn');
+ const exportBtn=q<HTMLButtonElement>('#recap-export-svg-btn');
+ if(recapBtn)recapBtn.disabled=!enabled;
+ if(exportBtn)exportBtn.disabled=!enabled;
+});
 
 q<HTMLSelectElement>('#setting-ai-provider')?.addEventListener('change',e=>{
- const prov=(e.target as HTMLSelectElement).value;
- chat.activeProvider=prov;
- const select=q<HTMLSelectElement>('#chat-provider-select');
- if(select)select.value=prov;
- checkChatInlineSetup();
+ onProviderChange((e.target as HTMLSelectElement).value);
 });
 q<HTMLInputElement>('#setting-ai-api-key')?.addEventListener('input',e=>{
  sessionApiKey=(e.target as HTMLInputElement).value.trim();
@@ -1428,16 +1530,37 @@ q<HTMLInputElement>('#setting-ai-api-key')?.addEventListener('input',e=>{
 // Weekly Recap Generation and SVG Export using PR #2 engine (@xyeena/recap)
 let activeRecapData:any=null;
 q<HTMLButtonElement>('#recap-generate-btn').addEventListener('click',()=>{
+ if(!prefs.recapEnabled){
+  q<HTMLElement>('#recap-preview-box').hidden=false;
+  q<HTMLElement>('#recap-text').textContent='Weekly Recap is currently disabled in Settings.';
+  return;
+ }
  const sevenDaysAgo=Date.now()-7*86400000;
- const realEvents=feed.items
-  .filter(item=>(item.timestamp||0)>=sevenDaysAgo)
-  .map((item,idx)=>({
-   type:item.state==='ACTION'?'approval':item.state==='FILE'?'edit':'command',
-   at:new Date(item.timestamp||Date.now()).toISOString(),
-   agent:'xyeena-island',
-   eventId:`evt-${item.id||idx}`,
-   decision:'allow'
-  }));
+ const realEvents:any[]=[];
+ for(const item of feed.items){
+  if((item.timestamp||0)<sevenDaysAgo)continue;
+  const lowerTitle=item.title.toLowerCase();
+  const lowerBody=item.body.toLowerCase();
+  const at=new Date(item.timestamp||Date.now()).toISOString();
+  if(lowerTitle.includes('approval')||lowerBody.includes('decision')){
+   const decision=lowerTitle.includes('denied')||lowerBody.includes('denied')?'deny':'allow';
+   realEvents.push({type:'approval',at,agent:'other',eventId:`evt-${item.id}`,decision});
+  }else if(item.state==='FILE'||lowerTitle.includes('file')){
+   realEvents.push({type:'edit',at,agent:'other',eventId:`evt-${item.id}`});
+  }else if(lowerTitle.includes('chat')){
+   realEvents.push({type:'question',at,agent:'other',eventId:`evt-${item.id}`});
+  }else{
+   realEvents.push({type:'command',at,agent:'other',eventId:`evt-${item.id}`});
+  }
+ }
+ for(const run of runs){
+  const at=new Date(Date.now()).toISOString();
+  if(run.state==='DONE'||run.state==='SUCCESS'||run.state==='FINISHED'){
+   realEvents.push({type:'task_finish',at,agent:'other',sessionId:run.runId,eventId:`run-fin-${run.runId}`});
+  }else{
+   realEvents.push({type:'session_start',at,agent:'other',sessionId:run.runId,eventId:`run-start-${run.runId}`});
+  }
+ }
  if(!realEvents.length){
   activeRecapData=null;
   q<HTMLElement>('#recap-preview-box').hidden=false;

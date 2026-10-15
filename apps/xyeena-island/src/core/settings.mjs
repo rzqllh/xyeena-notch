@@ -14,7 +14,8 @@
  *   wardrobe: 'standard' | 'visor' | 'crown' | 'headset' | 'shield',
  *   clipboardLimit: number,
  *   clipboardPersistent: boolean,
- *   recapEnabled: boolean
+ *   recapEnabled: boolean,
+ *   preferredMedia: string
  * }} IslandSettings */
 
 /** @type {Readonly<IslandSettings>} */
@@ -34,7 +35,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   wardrobe: 'standard',
   clipboardLimit: 50,
   clipboardPersistent: false,
-  recapEnabled: true
+  recapEnabled: true,
+  preferredMedia: 'auto'
 });
 
 export const STORAGE_KEY = 'xyeena-island-preferences-v1';
@@ -43,6 +45,7 @@ export const STORAGE_KEY = 'xyeena-island-preferences-v1';
 export function sanitizeSettings(value) {
   const obj = /** @type {Record<string, unknown>} */ (value && typeof value === 'object' && !Array.isArray(value) ? value : {});
   const wardrobeValues = ['standard', 'visor', 'crown', 'headset', 'shield'];
+  const prefMediaValues = ['auto', 'Spotify', 'Chrome'];
   return {
     pinned: typeof obj.pinned === 'boolean' ? obj.pinned : DEFAULT_SETTINGS.pinned,
     alwaysOnTop: typeof obj.alwaysOnTop === 'boolean' ? obj.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
@@ -60,5 +63,6 @@ export function sanitizeSettings(value) {
     clipboardLimit: typeof obj.clipboardLimit === 'number' && [20, 50, 100].includes(obj.clipboardLimit) ? obj.clipboardLimit : DEFAULT_SETTINGS.clipboardLimit,
     clipboardPersistent: typeof obj.clipboardPersistent === 'boolean' ? obj.clipboardPersistent : DEFAULT_SETTINGS.clipboardPersistent,
     recapEnabled: typeof obj.recapEnabled === 'boolean' ? obj.recapEnabled : DEFAULT_SETTINGS.recapEnabled,
+    preferredMedia: prefMediaValues.includes(/** @type {string} */ (obj.preferredMedia)) ? /** @type {string} */ (obj.preferredMedia) : DEFAULT_SETTINGS.preferredMedia,
   };
 }
