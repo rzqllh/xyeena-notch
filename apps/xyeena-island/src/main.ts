@@ -240,15 +240,16 @@ root.innerHTML=`
      <div class="settings-section" id="setsec-ai" hidden>
        <div class="setting"><span><strong>Companion AI Provider</strong><small>Active chat model endpoint</small></span><select id="setting-ai-provider" aria-label="Companion AI Provider"><option value="anthropic">Anthropic Claude</option><option value="openai">OpenAI GPT</option><option value="gemini">Google Gemini</option><option value="openrouter">OpenRouter</option><option value="ollama">Ollama (Local)</option><option value="lmstudio">LM Studio (Local)</option></select></div>
        <div class="setting"><span><strong>Local server endpoint</strong><small>Ollama / LM Studio URL</small></span><input type="text" id="setting-ai-local-url" value="http://localhost:11434" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
-       <div class="setting"><span><strong>Credential safety</strong><small>Stored in OS vault; opt-in only</small></span><span class="badge-tag">Protected</span></div>
-       <div class="setting"><span><strong>Agent hooks</strong><small>Claude Code, Codex, Antigravity, Cursor</small></span><span class="badge-tag">Sandboxed</span></div>
+       <div class="setting"><span><strong>Provider API Key (BYOK)</strong><small>Session memory; never logged or exported</small></span><input type="password" id="setting-ai-api-key" placeholder="Enter API key" autocomplete="off" spellcheck="false" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
+       <div class="setting"><span><strong>Credential safety</strong><small>In-memory session key (opt-in BYOK)</small></span><span class="badge-tag" id="badge-ai-creds">Session Memory</span></div>
+       <div class="setting"><span><strong>Agent access boundary</strong><small>Read-only IPC snapshots; no hook writing</small></span><span class="badge-tag">Read-only IPC</span></div>
      </div>
 
      <div class="settings-section" id="setsec-integrations" hidden>
-       <div class="setting"><span><strong>GitHub Integration</strong><small>PRs, issues & runs</small></span><button class="minor-btn" type="button">Configure</button></div>
-       <div class="setting"><span><strong>Vercel Deployments</strong><small>Deploy previews</small></span><button class="minor-btn" type="button">Configure</button></div>
-       <div class="setting"><span><strong>n8n Workflows</strong><small>Local webhooks</small></span><button class="minor-btn" type="button">Configure</button></div>
-       <div class="setting"><span><strong>Notion / Resend / Cal.com</strong><small>Service adapters</small></span><span class="badge-tag">Ready</span></div>
+       <div class="setting"><span><strong>GitHub Integration</strong><small>PRs, issues & runs</small></span><span class="badge-tag">Setup required</span></div>
+       <div class="setting"><span><strong>Vercel Deployments</strong><small>Deploy previews</small></span><span class="badge-tag">Setup required</span></div>
+       <div class="setting"><span><strong>n8n Workflows</strong><small>Local webhooks</small></span><span class="badge-tag">Setup required</span></div>
+       <div class="setting"><span><strong>Notion / Resend / Cal.com</strong><small>Service adapters</small></span><span class="badge-tag">Setup required</span></div>
      </div>
 
      <div class="settings-section" id="setsec-recap" hidden>
@@ -261,7 +262,7 @@ root.innerHTML=`
      </div>
 
      <div class="settings-section" id="setsec-about" hidden>
-       <div class="setting"><span><strong>Global hotkeys</strong><small>Open: Win+Alt+X · Clip: Win+Alt+V</small></span><span class="badge-tag">Active</span></div>
+       <div class="setting"><span><strong>Global hotkeys</strong><small>Open: Win+Alt+X · Clip: Win+Alt+V</small></span><span class="badge-tag">Desktop native</span></div>
        <div class="setting"><span><strong>Diagnostic logs</strong><small>Local inspection without credentials</small></span><button class="minor-btn" id="btn-export-diagnostics" type="button">Export Clean Logs</button></div>
        <details class="project-details" id="about-credits" open><summary>About & credits <span>MIT source</span></summary>
          <p class="explain">Xyeena Island 1.0.0-alpha.1 · Balanced Desktop Companion.<br>Xyeena Guardian mascot is original Xyeena artwork (@xyeena/mascot).<br>Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
@@ -516,6 +517,71 @@ window.addEventListener('drop',e=>{
   void handleFileDrop(files[0]);
  }
 });
+
+async function handleNativePathDrop(filePath:string){
+ if(!isTauri)return;
+ try{
+  const dropped=await native('read_dropped_file',{path:filePath}) as {
+   name:string;
+   sizeBytes:number;
+   dataUrl?:string;
+   textPreview?:string;
+   category:string;
+   extension:string;
+  };
+  if(!dropped)return;
+  activeFileName=dropped.name;
+  const card=q<HTMLElement>('#file-card');
+  const title=q<HTMLElement>('#file-title');
+  const info=q<HTMLElement>('#file-meta');
+  const thumb=q<HTMLImageElement>('#file-thumb');
+  const convertWebp=q<HTMLButtonElement>('#file-convert-webp');
+  const convertPng=q<HTMLButtonElement>('#file-convert-png');
+  const convertJpeg=q<HTMLButtonElement>('#file-convert-jpeg');
+
+  const formattedSize=dropped.sizeBytes>1048576
+   ?`${(dropped.sizeBytes/1048576).toFixed(1)} MB`
+   :`${Math.round(dropped.sizeBytes/1024)} KB`;
+
+  title.textContent=dropped.name;
+  info.textContent=`${formattedSize} · ${dropped.category.toUpperCase()}`;
+  card.hidden=false;
+  setPanel('now');
+  apply('activate');
+
+  const isImg=dropped.category==='image';
+  convertWebp.hidden=!isImg;
+  convertPng.hidden=!isImg;
+  convertJpeg.hidden=!isImg;
+
+  if(isImg&&dropped.dataUrl){
+   activeFileDataUrl=dropped.dataUrl;
+   thumb.src=activeFileDataUrl;
+   thumb.hidden=false;
+  }else{
+   thumb.hidden=true;
+  }
+
+  feed.recordEvent('File inspected',`${dropped.name} (${formattedSize})`,'FILE');
+  renderAlerts();
+  triggerMascotSalute();
+ }catch(err){
+  feed.recordEvent('File drop error',String(err),'ERROR');
+  renderAlerts();
+ }
+}
+
+if(isTauri){
+ void listen<{paths?:string[]}>('tauri://drag-drop',e=>{
+  shell.dataset.dropHover='false';
+  const paths=e.payload?.paths;
+  if(paths&&paths.length>0){
+   void handleNativePathDrop(paths[0]);
+  }
+ });
+ void listen('tauri://drag-enter',()=>{shell.dataset.dropHover='true';});
+ void listen('tauri://drag-leave',()=>{shell.dataset.dropHover='false';});
+}
 
 // Native Windows cursor sampling runs only when the top-screen Lion is visible.
 // The coordinates stay in memory; nothing is logged, persisted or transmitted.
@@ -937,24 +1003,57 @@ q<HTMLSelectElement>('#chat-provider-select').addEventListener('change',e=>{
  chat.activeProvider=(e.target as HTMLSelectElement).value;
 });
 
-q<HTMLFormElement>('#chat-form').addEventListener('submit',e=>{
+let chatAbortController:AbortController|null=null;
+let sessionApiKey='';
+
+q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
  e.preventDefault();
  const input=q<HTMLInputElement>('#chat-input');
  const text=input.value.trim();
  if(!text)return;
  input.value='';
+
  chat.addUserMessage(text);
  renderChatMessages();
- feed.recordEvent('Chat message sent',text.slice(0,60),'ACTION');
+
+ // Privacy-safe activity logging: NEVER log raw prompt text or secrets!
+ feed.recordEvent('Chat message submitted',`Provider: ${chat.activeProvider}`,'ACTION');
  renderAlerts();
  triggerMascotSalute();
 
- setTimeout(()=>{
-  const reply=`*Received via ${chat.activeProvider}:* "${text}"\n\nI am tracking your project workspace and ready to assist with local tasks or code reviews.`;
-  chat.addAssistantReply(reply);
+ const sendBtn=q<HTMLButtonElement>('#chat-send');
+ sendBtn.disabled=true;
+ sendBtn.textContent='...';
+
+ const placeholder=chat.addAssistantReply('Thinking...');
+ renderChatMessages();
+
+ try{
+  chatAbortController=new AbortController();
+  const localUrl=q<HTMLInputElement>('#setting-ai-local-url')?.value||'';
+  const key=sessionApiKey||q<HTMLInputElement>('#setting-ai-api-key')?.value||'';
+
+  // Remove the temporary placeholder before running completion
+  chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
+
+  await chat.requestCompletion({
+   provider:chat.activeProvider,
+   localUrl,
+   apiKey:key,
+   nativeInvoker:isTauri?native:undefined,
+   signal:chatAbortController.signal,
+  });
   renderChatMessages();
   triggerMascotSalute();
- },350);
+ }catch(err:any){
+  chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
+  chat.addAssistantReply(`⚠️ **Chat error:** ${err?.message||String(err)}`);
+  renderChatMessages();
+ }finally{
+  sendBtn.disabled=false;
+  sendBtn.textContent='Send';
+  chatAbortController=null;
+ }
 });
 
 function renderAgentPills(){
@@ -962,8 +1061,12 @@ function renderAgentPills(){
  row.replaceChildren();
  for(const adapter of KNOWN_ADAPTERS.slice(0,6)){
   const pill=document.createElement('span');
-  pill.className='agent-pill'+(adapter.id==='antigravity'||adapter.id==='claude-code'?' active':'');
-  pill.textContent=`${adapter.name}: ${adapter.id==='antigravity'?'Active':'Ready'}`;
+  const isLive=activeApprovalSession?.provider===adapter.id;
+  pill.className='agent-pill'+(isLive?' active':'');
+  const stateLabel=isLive
+   ?(activeApprovalSession?.status==='working'?'Working':'Waiting for input')
+   :'Not connected';
+  pill.textContent=`${adapter.name}: ${stateLabel}`;
   row.append(pill);
  }
 
@@ -972,6 +1075,8 @@ function renderAgentPills(){
   approvalCard.hidden=false;
   q<HTMLElement>('#approval-title').textContent=`${activeApprovalSession.provider}: Approval Request`;
   q<HTMLElement>('#approval-prompt').textContent=activeApprovalSession.pendingApproval.prompt;
+  q<HTMLButtonElement>('#approval-allow').disabled=false;
+  q<HTMLButtonElement>('#approval-deny').disabled=false;
  }else{
   approvalCard.hidden=true;
  }
@@ -994,7 +1099,7 @@ q<HTMLButtonElement>('#approval-allow').addEventListener('click',()=>{
    explicitUserAction:true
   };
   if(mayForwardDecision(waiting,action)){
-   feed.recordEvent('Approval granted',`Action authorized for ${activeApprovalSession.provider}`,'ACTION');
+   feed.recordEvent('Approval acknowledged',`Decision forwarded to ${activeApprovalSession.provider}`,'ACTION');
    activeApprovalSession=null;
    renderAgentPills();
    renderAlerts();
@@ -1083,6 +1188,18 @@ q<HTMLSelectElement>('#setting-clip-limit').addEventListener('change',e=>{
 q<HTMLInputElement>('#setting-clip-persist').addEventListener('change',e=>updatePrefs({clipboardPersistent:(e.target as HTMLInputElement).checked}));
 q<HTMLButtonElement>('#setting-clip-clear').addEventListener('click',()=>{clipboard.clear();renderClipboard();});
 q<HTMLInputElement>('#setting-recap-enable').addEventListener('change',e=>updatePrefs({recapEnabled:(e.target as HTMLInputElement).checked}));
+
+q<HTMLSelectElement>('#setting-ai-provider')?.addEventListener('change',e=>{
+ const prov=(e.target as HTMLSelectElement).value;
+ chat.activeProvider=prov;
+ const select=q<HTMLSelectElement>('#chat-provider-select');
+ if(select)select.value=prov;
+});
+q<HTMLInputElement>('#setting-ai-api-key')?.addEventListener('input',e=>{
+ sessionApiKey=(e.target as HTMLInputElement).value.trim();
+ const badge=q<HTMLElement>('#badge-ai-creds');
+ if(badge)badge.textContent=sessionApiKey?'Key Set (In-Memory)':'Session Memory';
+});
 
 // Weekly Recap Generation and SVG Export using PR #2 engine (@xyeena/recap)
 let activeRecapData:any=null;

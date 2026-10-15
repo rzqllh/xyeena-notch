@@ -122,6 +122,10 @@ export async function convertImageDataUrl(sourceDataUrl, targetMime, quality = 0
         reject(new Error('Cannot acquire canvas context for conversion'));
         return;
       }
+      if (targetMime === 'image/jpeg') {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
       ctx.drawImage(img, 0, 0);
       const converted = canvas.toDataURL(targetMime, quality);
       resolve({

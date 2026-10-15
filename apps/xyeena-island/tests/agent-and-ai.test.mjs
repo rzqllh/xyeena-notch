@@ -79,3 +79,56 @@ test('renderSafeMarkdown safely escapes HTML and formats code blocks', () => {
   assert.ok(rendered.includes('<strong>world</strong>'));
   assert.ok(rendered.includes('<pre class="code-block" data-lang="js"><code>console.log(42);</code></pre>'));
 });
+
+test('ChatEngine fails closed when remote provider is missing API key', async () => {
+  const engine = new ChatEngine();
+  engine.addUserMessage('Hello cloud');
+  await assert.rejects(
+    () => engine.requestCompletion({ provider: 'openai', apiKey: '' }),
+    /API key required for openai/
+  );
+  await assert.rejects(
+    () => engine.requestCompletion({ provider: 'anthropic', apiKey: '' }),
+    /API key required for anthropic/
+  );
+});
+
+test('ChatEngine handles nativeInvoker transport and parses provider replies', async () => {
+  const engine = new ChatEngine();
+  engine.addUserMessage('Explain async');
+
+  const mockInvoker = async (cmd, payload) => {
+    assert.equal(cmd, 'native_ai_request');
+    assert.ok(payload.url.includes('/api/chat'));
+    return {
+      status: 200,
+      body: JSON.stringify({ message: { role: 'assistant', content: 'Async in JavaScript executes non-blocking tasks.' } })
+    };
+  };
+
+  const reply = await engine.requestCompletion({
+    provider: 'ollama',
+    nativeInvoker: mockInvoker
+  });
+
+  assert.equal(reply, 'Async in JavaScript executes non-blocking tasks.');
+  assert.equal(engine.messages.length, 2);
+  assert.equal(engine.messages[1].content, 'Async in JavaScript executes non-blocking tasks.');
+});
+
+test('ChatEngine handles HTTP 401 and 429 without synthetic fallbacks', async () => {
+  const engine = new ChatEngine();
+  engine.addUserMessage('Test errors');
+
+  const mockInvoker401 = async () => ({ status: 401, body: 'Unauthorized' });
+  await assert.rejects(
+    () => engine.requestCompletion({ provider: 'anthropic', apiKey: 'sk-invalid', nativeInvoker: mockInvoker401 }),
+    /Authentication failed \(401 Unauthorized\)/
+  );
+
+  const mockInvoker429 = async () => ({ status: 429, body: 'Too many requests' });
+  await assert.rejects(
+    () => engine.requestCompletion({ provider: 'openai', apiKey: 'sk-test', nativeInvoker: mockInvoker429 }),
+    /Rate limit exceeded \(429 Too Many Requests\)/
+  );
+});

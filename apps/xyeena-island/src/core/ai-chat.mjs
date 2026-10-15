@@ -73,6 +73,167 @@ export class ChatEngine {
       this.messages = this.messages.slice(-this.maxMessages);
     }
   }
+
+  /**
+   * Executes a real AI completion via privileged native transport (Tauri) or fallback fetch.
+   * Handles local models (Ollama, LM Studio) and remote BYOK providers (Anthropic, OpenAI, Gemini, OpenRouter).
+   * @param {object} params
+   * @param {string} [params.provider]
+   * @param {string} [params.model]
+   * @param {string} [params.localUrl]
+   * @param {string} [params.apiKey]
+   * @param {function} [params.nativeInvoker]
+   * @param {AbortSignal} [params.signal]
+   * @returns {Promise<string>}
+   */
+  async requestCompletion(params = {}) {
+    const provider = params.provider || this.activeProvider;
+    const model = params.model || this.activeModel;
+    const localUrl = (params.localUrl || '').trim();
+    const apiKey = (params.apiKey || '').trim();
+    const nativeInvoker = params.nativeInvoker;
+    const signal = params.signal;
+
+    const isLocal = provider === 'ollama' || provider === 'lmstudio';
+    if (!isLocal && !apiKey) {
+      throw new Error(`API key required for ${provider}. Please configure your API key in Settings.`);
+    }
+
+    let url = '';
+    /** @type {Record<string, string>} */
+    let headers = { 'Content-Type': 'application/json' };
+    let body = '';
+
+    const history = this.messages.map(m => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: m.content
+    }));
+
+    if (provider === 'ollama') {
+      const base = localUrl || 'http://127.0.0.1:11434';
+      url = `${base.replace(/\/+$/, '')}/api/chat`;
+      body = JSON.stringify({
+        model: model || 'llama3:latest',
+        messages: history,
+        stream: false
+      });
+    } else if (provider === 'lmstudio') {
+      const base = localUrl || 'http://127.0.0.1:1234';
+      url = `${base.replace(/\/+$/, '')}/v1/chat/completions`;
+      body = JSON.stringify({
+        model: model || 'local-model',
+        messages: history,
+        stream: false
+      });
+    } else if (provider === 'openai') {
+      url = 'https://api.openai.com/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+      body = JSON.stringify({
+        model: model || 'gpt-4o',
+        messages: history,
+        stream: false
+      });
+    } else if (provider === 'anthropic') {
+      url = 'https://api.anthropic.com/v1/messages';
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+      body = JSON.stringify({
+        model: model || 'claude-3-7-sonnet-latest',
+        max_tokens: 1024,
+        messages: history.filter(m => m.role === 'user' || m.role === 'assistant')
+      });
+    } else if (provider === 'gemini') {
+      const gModel = model || 'gemini-2.0-flash';
+      url = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      body = JSON.stringify({
+        contents: history.map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }]
+        }))
+      });
+    } else if (provider === 'openrouter') {
+      url = 'https://openrouter.ai/api/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+      body = JSON.stringify({
+        model: model || 'anthropic/claude-3.5-sonnet',
+        messages: history,
+        stream: false
+      });
+    } else {
+      throw new Error(`Unsupported AI provider: ${provider}`);
+    }
+
+    let responseText = '';
+    let status = 200;
+
+    if (typeof nativeInvoker === 'function') {
+      try {
+        const res = await nativeInvoker('native_ai_request', {
+          url,
+          method: 'POST',
+          headers,
+          body
+        });
+        status = res.status;
+        responseText = res.body;
+      } catch (err) {
+        throw new Error(`Native transport failed for ${provider}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } else {
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers,
+          body,
+          signal
+        });
+        status = res.status;
+        responseText = await res.text();
+      } catch (err) {
+        throw new Error(`Connection to ${provider} failed (${url}). Ensure endpoint is active.`);
+      }
+    }
+
+    if (status === 401) {
+      throw new Error(`Authentication failed (401 Unauthorized) for ${provider}. Please verify your API key.`);
+    }
+    if (status === 429) {
+      throw new Error(`Rate limit exceeded (429 Too Many Requests) for ${provider}. Please try again shortly.`);
+    }
+    if (status < 200 || status >= 300) {
+      let errDetail = responseText.slice(0, 200);
+      try {
+        const parsedErr = JSON.parse(responseText);
+        errDetail = parsedErr.error?.message || parsedErr.message || errDetail;
+      } catch {}
+      throw new Error(`Provider error (${status}) from ${provider}: ${errDetail}`);
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(responseText);
+    } catch {
+      throw new Error(`Invalid JSON response from ${provider}`);
+    }
+
+    let reply = '';
+    if (provider === 'ollama') {
+      reply = parsed.message?.content || '';
+    } else if (provider === 'anthropic') {
+      reply = parsed.content?.[0]?.text || '';
+    } else if (provider === 'gemini') {
+      reply = parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else {
+      reply = parsed.choices?.[0]?.message?.content || '';
+    }
+
+    if (!reply.trim()) {
+      throw new Error(`Empty response received from ${provider}`);
+    }
+
+    this.addAssistantReply(reply);
+    return reply;
+  }
 }
 
 /**
