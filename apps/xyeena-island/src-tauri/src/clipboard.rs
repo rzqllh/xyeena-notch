@@ -28,7 +28,7 @@ fn calculate_hash_bytes(b: &[u8]) -> u64 {
     hasher.finish()
 }
 
-fn simple_base64_encode(data: &[u8]) -> String {
+pub(crate) fn simple_base64_encode(data: &[u8]) -> String {
     const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
@@ -69,8 +69,13 @@ fn dib_to_bmp(dib: &[u8]) -> Option<Vec<u8>> {
         };
         num_colors * 4
     } else if bi_compression == 3 {
-        // BI_BITFIELDS: 3 DWORD masks
-        12
+        // BI_BITFIELDS: 3 DWORD masks follow BITMAPINFOHEADER (size 40).
+        // For BITMAPV4HEADER (108) or BITMAPV5HEADER (124), masks are embedded in the header struct itself.
+        if bi_size == 40 {
+            12
+        } else {
+            0
+        }
     } else {
         bi_clr_used * 4
     };
@@ -228,7 +233,7 @@ pub fn read_native_clipboard_item() -> Result<Option<NativeClipboardItem>, Strin
 pub fn write_native_image_to_clipboard(data_url: &str) -> Result<(), String> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::DataExchange::{
-        CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
+        CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
     };
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 
@@ -240,14 +245,19 @@ pub fn write_native_image_to_clipboard(data_url: &str) -> Result<(), String> {
         data_url
     };
 
-    // Decode base64
     let bytes = base64_decode(base64_str).ok_or("Invalid base64 image data")?;
-    // A BMP file starts with 14 bytes BITMAPFILEHEADER.
-    // CF_DIB expects BITMAPINFO (starting at byte 14).
-    if bytes.len() <= 14 || &bytes[0..2] != b"BM" {
-        return Err("Not a valid BMP image".into());
+    if bytes.len() < 8 {
+        return Err("Image payload too small".into());
     }
-    let dib_bytes = &bytes[14..];
+
+    let is_png = bytes.len() >= 8 && &bytes[0..8] == b"\x89PNG\r\n\x1a\n";
+    let is_bmp = bytes.len() > 14 && &bytes[0..2] == b"BM";
+    let is_dib =
+        bytes.len() >= 40 && (bytes[0..4] == [40, 0, 0, 0] || bytes[0..4] == [124, 0, 0, 0]);
+
+    if !is_png && !is_bmp && !is_dib {
+        return Err("Unsupported image format (expected BMP or PNG)".into());
+    }
 
     unsafe {
         OpenClipboard(Some(HWND(std::ptr::null_mut())))
@@ -263,17 +273,48 @@ pub fn write_native_image_to_clipboard(data_url: &str) -> Result<(), String> {
         let _guard = ClipGuard;
 
         EmptyClipboard().map_err(|e| format!("Cannot empty clipboard: {e}"))?;
-        let hglobal = GlobalAlloc(GMEM_MOVEABLE, dib_bytes.len())
-            .map_err(|e| format!("GlobalAlloc failed: {e}"))?;
-        let ptr = GlobalLock(hglobal);
-        if ptr.is_null() {
-            return Err("GlobalLock failed".into());
-        }
-        std::ptr::copy_nonoverlapping(dib_bytes.as_ptr(), ptr as *mut u8, dib_bytes.len());
-        let _ = GlobalUnlock(hglobal);
 
-        SetClipboardData(CF_DIB, Some(windows::Win32::Foundation::HANDLE(hglobal.0)))
-            .map_err(|e| format!("SetClipboardData failed: {e}"))?;
+        // 1. If PNG, write registered PNG format
+        if is_png {
+            let cf_png = RegisterClipboardFormatW(windows::core::w!("PNG"));
+            if cf_png != 0 {
+                let hglobal = GlobalAlloc(GMEM_MOVEABLE, bytes.len())
+                    .map_err(|e| format!("GlobalAlloc for PNG failed: {e}"))?;
+                let ptr = GlobalLock(hglobal);
+                if !ptr.is_null() {
+                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr as *mut u8, bytes.len());
+                    let _ = GlobalUnlock(hglobal);
+                    let _ = SetClipboardData(
+                        cf_png,
+                        Some(windows::Win32::Foundation::HANDLE(hglobal.0)),
+                    );
+                }
+            }
+        }
+
+        // 2. If BMP or DIB, write CF_DIB for Paint and legacy apps
+        let dib_slice = if is_bmp {
+            &bytes[14..]
+        } else if is_dib {
+            &bytes[..]
+        } else {
+            &[]
+        };
+
+        if !dib_slice.is_empty() {
+            let hglobal = GlobalAlloc(GMEM_MOVEABLE, dib_slice.len())
+                .map_err(|e| format!("GlobalAlloc for DIB failed: {e}"))?;
+            let ptr = GlobalLock(hglobal);
+            if ptr.is_null() {
+                return Err("GlobalLock failed".into());
+            }
+            std::ptr::copy_nonoverlapping(dib_slice.as_ptr(), ptr as *mut u8, dib_slice.len());
+            let _ = GlobalUnlock(hglobal);
+
+            SetClipboardData(CF_DIB, Some(windows::Win32::Foundation::HANDLE(hglobal.0)))
+                .map_err(|e| format!("SetClipboardData failed: {e}"))?;
+        }
+
         Ok(())
     }
 }

@@ -177,6 +177,159 @@ fn save_file_to_downloads(
 }
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DroppedFilePayload {
+    name: String,
+    size_bytes: u64,
+    data_url: Option<String>,
+    text_preview: Option<String>,
+    category: String,
+    extension: String,
+}
+
+#[tauri::command]
+fn read_dropped_file(path: String) -> Result<DroppedFilePayload, String> {
+    let p = Path::new(&path);
+    if !p.is_absolute() || !p.exists() {
+        return Err("File path does not exist".into());
+    }
+    let metadata = fs::symlink_metadata(p).map_err(|e| format!("Cannot inspect file: {e}"))?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err("Only regular files can be dropped".into());
+    }
+    let size_bytes = metadata.len();
+    if size_bytes > 50 * 1024 * 1024 {
+        return Err("File exceeds 50 MB limit".into());
+    }
+    let name = p
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "file".to_string());
+    let extension = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    let is_img = ["png", "jpg", "jpeg", "webp", "bmp", "gif"].contains(&extension.as_str());
+    let is_text = [
+        "txt", "md", "json", "js", "ts", "rs", "html", "css", "toml", "yaml", "yml",
+    ]
+    .contains(&extension.as_str());
+
+    let (data_url, text_preview) = if is_img {
+        let bytes = fs::read(p).map_err(|e| format!("Cannot read image: {e}"))?;
+        let mime = match extension.as_str() {
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "webp" => "image/webp",
+            "bmp" => "image/bmp",
+            "gif" => "image/gif",
+            _ => "application/octet-stream",
+        };
+        let b64 = clipboard::simple_base64_encode(&bytes);
+        (Some(format!("data:{mime};base64,{b64}")), None)
+    } else if is_text && size_bytes <= 100_000 {
+        let text = fs::read_to_string(p).ok();
+        (None, text.map(|t| t.chars().take(500).collect()))
+    } else {
+        (None, None)
+    };
+
+    let category = if is_img {
+        "image"
+    } else if is_text {
+        "code"
+    } else {
+        "document"
+    };
+
+    Ok(DroppedFilePayload {
+        name,
+        size_bytes,
+        data_url,
+        text_preview,
+        category: category.into(),
+        extension,
+    })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeAiPayload {
+    url: String,
+    method: String,
+    headers: std::collections::HashMap<String, String>,
+    body: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeAiResponse {
+    status: u16,
+    body: String,
+    ok: bool,
+}
+
+#[tauri::command]
+fn native_ai_request(payload: NativeAiPayload) -> Result<NativeAiResponse, String> {
+    if !payload.url.starts_with("http://") && !payload.url.starts_with("https://") {
+        return Err("Invalid URL scheme".into());
+    }
+    let is_local = payload.url.starts_with("http://127.0.0.1:")
+        || payload.url.starts_with("http://localhost:");
+    let is_allowed_remote = payload.url.starts_with("https://api.openai.com/")
+        || payload.url.starts_with("https://api.anthropic.com/")
+        || payload
+            .url
+            .starts_with("https://generativelanguage.googleapis.com/")
+        || payload.url.starts_with("https://openrouter.ai/");
+
+    if !is_local && !is_allowed_remote {
+        return Err("Destination host not in authorized AI provider registry".into());
+    }
+
+    let mut cmd = std::process::Command::new("curl.exe");
+    cmd.arg("-s").arg("-i");
+    cmd.arg("-X").arg(&payload.method);
+
+    for (k, v) in &payload.headers {
+        cmd.arg("-H").arg(format!("{k}: {v}"));
+    }
+
+    if let Some(body) = &payload.body {
+        cmd.arg("-d").arg(body);
+    }
+
+    cmd.arg(&payload.url);
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to execute native transport: {e}"))?;
+    let raw = String::from_utf8_lossy(&output.stdout);
+
+    let mut lines = raw.lines();
+    let status = lines
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|code| code.parse::<u16>().ok())
+        .unwrap_or(if output.status.success() { 200 } else { 500 });
+
+    let body = if let Some(idx) = raw.find("\r\n\r\n") {
+        raw[idx + 4..].to_string()
+    } else if let Some(idx) = raw.find("\n\n") {
+        raw[idx + 2..].to_string()
+    } else {
+        raw.to_string()
+    };
+
+    Ok(NativeAiResponse {
+        status,
+        ok: (200..300).contains(&status),
+        body,
+    })
+}
+
+#[derive(serde::Serialize)]
 struct RunSummary {
     run_id: String,
     goal: String,
@@ -355,6 +508,8 @@ pub fn run() {
             read_native_clipboard,
             write_native_image,
             save_file_to_downloads,
+            read_dropped_file,
+            native_ai_request,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");
