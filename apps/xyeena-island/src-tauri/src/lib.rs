@@ -553,11 +553,27 @@ fn execute_native_ai_request(
 
 #[tauri::command]
 async fn native_ai_request(
-    payload: NativeAiPayload,
+    request_id: Option<String>,
+    url: Option<String>,
+    method: Option<String>,
+    headers: Option<std::collections::HashMap<String, String>>,
+    body: Option<String>,
+    payload: Option<NativeAiPayload>,
     registry: tauri::State<'_, AiProcessRegistry>,
 ) -> Result<NativeAiResponse, String> {
+    let resolved_payload = if let Some(p) = payload {
+        p
+    } else {
+        NativeAiPayload {
+            request_id,
+            url: url.unwrap_or_default(),
+            method: method.unwrap_or_else(|| "POST".to_string()),
+            headers: headers.unwrap_or_default(),
+            body,
+        }
+    };
     let reg = registry.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || execute_native_ai_request(payload, reg))
+    tauri::async_runtime::spawn_blocking(move || execute_native_ai_request(resolved_payload, reg))
         .await
         .map_err(|e| format!("Task execution error: {e}"))?
 }

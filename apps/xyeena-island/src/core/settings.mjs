@@ -28,7 +28,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   theme: 'dark',
   notifyRunChanges: false,
   showMedia: true,
-  language: 'en',
+  language: 'id',
   gazeEnabled: true,
   soundEnabled: true,
   soundVolume: 70,

@@ -31,15 +31,21 @@ if(!root)throw new Error('Island container is missing');
 const isTauri='__TAURI_INTERNALS__' in window;
 function icon(name:string,size=18){
  const glyphs:Record<string,string>={
-  logo:'M12 2 3.5 12l8.5 10 8.5-10L12 2zM12 7v10M8 12h8',
-  chevron:'m7 10 5 5 5-5',pin:'m16 3 5 5-4 2-4 6-3 3-5-5 3-3 5-2zM11 17l-6 5',
-  music:'M9 18V5l12-2v13M9 18c0 4-7 4-7 1s7-4 7-1m12-2c0 4-7 4-7 1s7-4 7-1',
+  logo:'M12 2L4 6v6c0 5.5 3.8 10.7 8 12 4.2-1.3 8-6.5 8-12V6l-8-4z',
+  shield:'M12 2L4 6v6c0 5.5 3.8 10.7 8 12 4.2-1.3 8-6.5 8-12V6l-8-4z',
+  search:'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm10 2-4.35-4.35',
+  chevron:'m6 9 6 6 6-6',
+  pin:'M12 17v5M5 17h14l-2-7H7l-2 7zM9 10V3h6v7',
+  music:'M9 18V5l12-2v13M9 18c0 2.2-2.7 4-6 4s-6-1.8-6-4 2.7-4 6-4m12-2c0 2.2-2.7 4-6 4s-6-1.8-6-4 2.7-4 6-4',
   play:'m9 6 10 6-10 6z',pause:'M8 5v14M16 5v14',prev:'M6 5v14M19 5 8 12l11 7V5z',next:'M18 5v14M5 5l11 7-11 7V5z',
-  bell:'M18 8a6 6 0 0 0-12 0c0 8-3 8-3 10h18c0-2-3-2-3-10M10 21h4',
+  bell:'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
   sliders:'M4 7h9m4 0h3M4 17h3m4 0h9M13 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0M7 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0',
   activity:'M3 12h4l3-6 4 12 3-6h4',clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7v5l4 3',
   folder:'M3 6h7l2 2h9v12H3V6z',refresh:'M20 7v5h-5M4 17v-5h5M5.6 9A7 7 0 0 1 18 7l2 5M4 12l2 5a7 7 0 0 0 12.3-2',
-  alert:'M12 9v4m0 4h.01M12 2 2 21h20L12 2z',copy:'M8 4H19V17H8zM5 7H3V20h12v-2',volume:'M4 9h4l5-4v14l-5-4H4zM17 8a6 6 0 0 1 0 8',mute:'M4 9h4l5-4v14l-5-4H4zM17 9l5 6m0-6-5 6',headset:'M4 15v-3a8 8 0 0 1 16 0v3M4 15h3v6H5a2 2 0 0 1-2-2v-2a2 2 0 0 1 1-2M20 15h-3v6h2a2 2 0 0 0 2-2v-2a2 2 0 0 0-1-2',
+  alert:'M12 9v4m0 4h.01M12 2 2 21h20L12 2z',copy:'M9 9h10v12H9z M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1',
+  volume:'M4 9h4l5-4v14l-5-4H4zM17 8a6 6 0 0 1 0 8',mute:'M4 9h4l5-4v14l-5-4H4zM17 9l5 6m0-6-5 6',
+  headset:'M4 15v-3a8 8 0 0 1 16 0v3M4 15h3v6H5a2 2 0 0 1-2-2v-2a2 2 0 0 1 1-2M20 15h-3v6h2a2 2 0 0 0 2-2v-2a2 2 0 0 0-1-2',
+  send:'M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z',check:'m5 12 5 5L20 7',
  };
  return `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"><path d="${glyphs[name]||glyphs.logo}"/></svg>`;
 }
@@ -154,7 +160,7 @@ root.innerHTML=`
       <div class="section-heading"><div><span class="kicker" id="clip-kicker">ON-DEVICE CLIPBOARD</span><h1 id="clip-heading">Clipboard History</h1></div><div class="clip-actions"><button id="clip-clear-unpinned" class="minor-btn" type="button">Clear unpinned</button><button id="clip-clear" class="minor-btn" type="button">Clear all</button></div></div>
       <p class="explain clip-warning" id="clip-explain">In-memory history for text, images, and file lists. Sensitive tokens are best-effort filtered. Clears on exit for privacy.</p>
       <div class="clip-controls"><button id="clip-toggle" class="meeting-button" aria-pressed="false" type="button">Enable capture</button><button id="clip-read" class="minor-btn" type="button">Read once</button><span id="clip-state" role="status">Capture off</span></div>
-      <div class="clip-search-bar">${icon('logo',13)}<input id="clip-search" type="search" placeholder="Search clipboard history..." aria-label="Search clips"></div>
+      <div class="clip-search-bar">${icon('search',14)}<input id="clip-search" type="search" placeholder="Search clipboard history..." aria-label="Search clips"></div>
       <div id="clip-list" class="clip-list" aria-label="Clipboard history"></div>
     </section>
     <section class="page" id="page-activity" role="tabpanel" hidden>
@@ -357,15 +363,17 @@ const I18N = {
   chatPlaceholder:'Ask Xyn anything (Enter to send, Shift+Enter for new line)...',
   clipHeading:'Clipboard History',clipExplain:'In-memory history for text, images, and file lists. Clears on exit for privacy.',
   pauseCapture:'Pause capture',enableCapture:'Enable capture',monitoringActive:'Monitoring active',captureOff:'Capture off',
-  actHeading:'Activity & Agents',setHeading:'Settings'
+  actHeading:'Activity & Agents',setHeading:'Settings',
+  chatWelcome:'<strong>Xyn (Golden Lion Guardian)</strong><br>Hello! I am Xyn, your desktop companion on Xyeena Island. What can I help you with across your project, code, or tasks today?'
  },
  id: {
-  now:'Sekarang',clips:'Klip',activity:'Aktivitas',chat:'Obrolan',settings:'Pengaturan',
-  chatTitle:'Obrolan bersama Xyn',chatKicker:'TEMAN AI NOTCH',chatStatus:'Menjaga ruang kerja Anda · Siaga',
-  chatPlaceholder:'Tanya Xyn apa saja (Enter kirim, Shift+Enter baris baru)...',
-  clipHeading:'Riwayat Papan Klip',clipExplain:'Riwayat sesi lokal untuk teks, gambar, dan file. Dihapus saat keluar demi privasi.',
-  pauseCapture:'Jeda pantau',enableCapture:'Aktifkan pantau',monitoringActive:'Pantauan aktif',captureOff:'Pantauan mati',
-  actHeading:'Aktivitas & Agen',setHeading:'Pengaturan'
+  now:'Sekarang',clips:'Klip',activity:'Aktivitas',chat:'Chat',settings:'Pengaturan',
+  chatTitle:'Ngobrol bareng Xyn',chatKicker:'COMPANION CHAT',chatStatus:'Memantau workspace lu · Siaga mendampingi',
+  chatPlaceholder:'Tanya apa saja ke Xyn (Enter untuk kirim, Shift+Enter untuk baris baru)...',
+  clipHeading:'Riwayat Clipboard',clipExplain:'Riwayat sesi lokal untuk teks, gambar, dan file. Dihapus saat keluar demi privasi.',
+  pauseCapture:'Jeda pantauan',enableCapture:'Aktifkan pantauan',monitoringActive:'Pantauan aktif',captureOff:'Pantauan nonaktif',
+  actHeading:'Aktivitas & Agen',setHeading:'Pengaturan',
+  chatWelcome:'<strong>Xyn (Golden Lion Guardian)</strong><br>Halo! Gue Xyn, penjaga desktop lu di Xyeena Island. Ada yang bisa gue bantu seputar project, coding, atau tugas lu hari ini?'
  }
 };
 
@@ -1177,6 +1185,7 @@ q<HTMLButtonElement>('.disconnect').addEventListener('click',()=>{
 
 // AI Companion Chat and Agent Session Integration
 const chat=new ChatEngine();
+chat.systemPrompt = `Kamu adalah Xyn, maskot Golden Lion Guardian dari Xyeena Island — penjaga desktop yang sigap, cerdas, bersahabat, dan tanggap mendampingi pengguna di Windows notch. Karaktermu hangat, pragmatis, solutif, dan analitis (gaya Xyeena). Jawab dengan Bahasa Indonesia yang natural, santai tapi cerdas dan lugas (tidak kaku seperti robot/birokrasi, tidak lebay/klise). Berikan bantuan teknis, kode, ringkasan, atau saran yang konkret, jujur, akurat, dan tanpa gimik.`;
 let activeApprovalSession:ReturnType<typeof normalizeSessionSnapshot>|null=null;
 let chatAbortController:AbortController|null=null;
 let sessionApiKey='';
@@ -1188,27 +1197,27 @@ function setXynChatState(state:'idle'|'thinking'|'speaking'|'error'){
  if(state==='thinking'){
   chatMascotState='thinking';
   syncGuardian();
-  if(sub)sub.textContent='Xyn is thinking & reading context...';
+  if(sub)sub.textContent=prefs.language==='id'?'Xyn lagi mikir & membaca konteks...':'Xyn is thinking & reading context...';
   if(stopBtn)stopBtn.hidden=false;
   if(sendBtn)sendBtn.disabled=true;
   playFeedbackSound('tap');
  }else if(state==='speaking'){
   chatMascotState='working';
   syncGuardian();
-  if(sub)sub.textContent='Xyn is responding...';
+  if(sub)sub.textContent=prefs.language==='id'?'Xyn lagi merespons...':'Xyn is responding...';
   if(stopBtn)stopBtn.hidden=false;
   if(sendBtn)sendBtn.disabled=true;
  }else if(state==='error'){
   chatMascotState='error';
   syncGuardian();
-  if(sub)sub.textContent='Xyn encountered an issue';
+  if(sub)sub.textContent=prefs.language==='id'?'Xyn mengalami kendala':'Xyn encountered an issue';
   if(stopBtn)stopBtn.hidden=true;
   if(sendBtn)sendBtn.disabled=false;
   playFeedbackSound('error');
  }else{
   chatMascotState=null;
   syncGuardian();
-  if(sub)sub.textContent=I18N[prefs.language]?.chatStatus||I18N.en.chatStatus;
+  if(sub)sub.textContent=I18N[prefs.language]?.chatStatus||I18N.id.chatStatus;
   if(stopBtn)stopBtn.hidden=true;
   if(sendBtn)sendBtn.disabled=false;
  }
@@ -1229,7 +1238,7 @@ function renderChatMessages(){
  if(!chat.messages.length){
   const welcome=document.createElement('div');
   welcome.className='chat-bubble chat-bubble-assistant';
-  welcome.innerHTML='<strong>Xyn (Golden Lion Guardian)</strong><br>I am your top-screen companion. Ask me anything about your project, code, or local tasks.';
+  welcome.innerHTML=I18N[prefs.language]?.chatWelcome||I18N.id.chatWelcome;
   viewport.append(welcome);
   return;
  }

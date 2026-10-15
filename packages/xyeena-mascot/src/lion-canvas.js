@@ -46,6 +46,21 @@ function oval(ctx, x, y, rx, ry, fill, stroke = null, strokeWidth = 1) {
   }
 }
 
+function drawSuperellipse(ctx, cx, cy, rx, ry, exponent = 2.8, steps = 64) {
+  const n = Math.max(2, Math.min(6, exponent));
+  ctx.beginPath();
+  for (let i = 0; i <= steps; i++) {
+    const a = (i * Math.PI * 2) / steps;
+    const co = Math.cos(a);
+    const si = Math.sin(a);
+    const x = cx + rx * Math.sign(co) * Math.abs(co) ** (2 / n);
+    const y = cy + ry * Math.sign(si) * Math.abs(si) ** (2 / n);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
 function path(ctx, commands, fill, stroke = null, strokeWidth = 1) {
   ctx.beginPath();
   for (const [op, ...args] of commands) {
@@ -303,15 +318,14 @@ export class LivingLionRig {
     const ctx = this.ctx;
     if (!ctx) return;
 
-    const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
     const w = this.canvas.width;
     const h = this.canvas.height;
     ctx.clearRect(0, 0, w, h);
 
     ctx.save();
-    // Scale coordinate system to canonical 320x320 design space
-    const scale = (Math.min(w, h)) / 320;
-    ctx.translate((w - 320 * scale) / 2, (h - 320 * scale) / 2);
+    // Scale coordinate system to canonical 360x320 design space
+    const scale = Math.min(w / 360, h / 320);
+    ctx.translate((w - 360 * scale) / 2, (h - 320 * scale) / 2);
     ctx.scale(scale, scale);
 
     const time = this.reducedMotion ? 0 : this.time;
@@ -327,177 +341,145 @@ export class LivingLionRig {
     const breathing = this.reducedMotion ? 0 : 1.4 * Math.sin(time * breathRate);
     const blinking = isSleeping || (this.isBlinking && !this.reducedMotion);
 
-    // 1. Ground contact ambient glow (soft blue-tinged shadow)
-    ctx.save();
-    if (typeof ctx.filter !== 'undefined') ctx.filter = 'blur(10px)';
-    oval(ctx, 160, 287, 108, 14, 'rgba(64, 97, 180, 0.22)');
-    ctx.restore();
+    // 1. Ambient contact shadow
+    oval(ctx, 180, 284, 78, 10, 'rgba(17, 21, 34, 0.25)');
 
-    // 2. Body & Mane anchored to notch
+    // 2. Body & Mane anchored to notch with breathing
     ctx.save();
     ctx.translate(0, breathing);
 
-    // Radial gold silhouette gradient
+    // Ears behind mane
+    for (const [side, ex] of [[-1, 91], [1, 269]]) {
+      oval(ctx, ex, 87, 27, 27, '#EDAA61');
+      oval(ctx, ex, 87, 17, 17, '#F6D5C1');
+    }
+
+    // Main golden mane shell (superellipse)
     let goldGrad;
     try {
-      goldGrad = ctx.createRadialGradient(112, 80, 8, 164, 190, 171);
-      goldGrad.addColorStop(0, '#FFF0C3');
-      goldGrad.addColorStop(0.44, '#F3C17B');
-      goldGrad.addColorStop(0.8, '#D58E4F');
-      goldGrad.addColorStop(1, '#AE6846');
+      goldGrad = ctx.createRadialGradient(130, 38, 10, 180, 176, 210);
+      goldGrad.addColorStop(0, '#FFEAC1');
+      goldGrad.addColorStop(0.36, '#F9C779');
+      goldGrad.addColorStop(0.75, '#ECAA58');
+      goldGrad.addColorStop(1, '#C67B3C');
     } catch {
-      goldGrad = '#ECA957';
+      goldGrad = '#ECAA58';
     }
+    drawSuperellipse(ctx, 180, 176, 133, 112, 2.7, 64);
+    ctx.fillStyle = goldGrad;
+    ctx.fill();
+    ctx.strokeStyle = '#FFD4A1';
+    ctx.lineWidth = 2;
+    ctx.stroke();
 
-    // Main rounded lion silhouette
-    oval(ctx, 160, 186, 127, 109, goldGrad);
+    // Cheek mane depth shadows
+    path(ctx, [
+      ['M', 96, 101],
+      ['C', 80, 149, 86, 200, 119, 237],
+      ['Q', 81, 224, 62, 190],
+      ['Q', 49, 141, 91, 108],
+      ['Z']
+    ], 'rgba(217, 146, 80, 0.43)');
 
-    // Left and right mane cheeks
-    const leftCheekGrad = gradient(ctx, 38, 111, 112, 256, [
-      [0, '#FFEBC0'],
-      [0.6, '#DEA05F'],
-      [1, '#AA6547']
+    path(ctx, [
+      ['M', 264, 101],
+      ['C', 281, 149, 275, 200, 241, 237],
+      ['Q', 285, 226, 299, 190],
+      ['Q', 315, 147, 264, 101],
+      ['Z']
+    ], 'rgba(231, 164, 94, 0.62)');
+
+    // Top mane arch
+    const topManeGrad = gradient(ctx, 96, 50, 265, 110, [
+      [0, '#FFE5AD'],
+      [0.49, '#FFC879'],
+      [1, '#DC9352']
     ]);
-    oval(ctx, 70, 190, 51, 86, leftCheekGrad);
+    path(ctx, [
+      ['M', 96, 108],
+      ['C', 120, 67, 154, 50, 181, 43],
+      ['C', 205, 53, 243, 72, 265, 109],
+      ['L', 244, 119],
+      ['Q', 213, 89, 180, 81],
+      ['Q', 147, 89, 116, 120],
+      ['Z']
+    ], topManeGrad, '#FFE2B1', 1.5);
 
-    const rightCheekGrad = gradient(ctx, 275, 101, 208, 263, [
-      [0, '#FFF0CA'],
-      [0.6, '#E7A961'],
-      [1, '#AD6747']
-    ]);
-    oval(ctx, 250, 190, 51, 86, rightCheekGrad);
+    // Central mane tuft
+    path(ctx, [
+      ['M', 159, 59],
+      ['L', 180, 28],
+      ['L', 202, 58],
+      ['L', 181, 91],
+      ['Z']
+    ], goldGrad);
 
-    // Rounded ears behind forelock (with warm pink interior)
-    for (const side of [-1, 1]) {
-      const earX = 160 + side * 73;
-      const earGrad = gradient(ctx, earX - 22, 76, earX + 20, 151, [
-        [0, '#FFF4D2'],
-        [1, '#D9975B']
-      ]);
-      oval(ctx, earX, 111, 41, 43, earGrad);
-      oval(ctx, earX, 114, 25, 27, LION_PALETTE.innerEar);
-      oval(ctx, earX, 121, 18, 18, LION_PALETTE.innerEarDeep);
-    }
-
-    // 3. Articulated Head & Face Rig (Rotates/tilts subtly with head lag)
+    // 3. Articulated Head & Face Rig
     ctx.save();
-    ctx.translate(160, 176);
+    ctx.translate(180, 164);
     if (!this.reducedMotion) {
-      if (typeof ctx.rotate === 'function') ctx.rotate(this.headYaw * 0.065);
-      if (typeof ctx.transform === 'function') ctx.transform(1, this.headPitch * 0.026, 0, 1, 0, 0);
+      if (typeof ctx.rotate === 'function') ctx.rotate(this.headYaw * 0.055);
+      if (typeof ctx.transform === 'function') ctx.transform(1, this.headPitch * 0.022, 0, 1, 0, 0);
     }
-    ctx.translate(-160, -176);
+    ctx.translate(-180, -164);
 
-    // Curved side mane plates framing the face
-    const leftSideGold = gradient(ctx, 34, 96, 122, 257, [
-      [0, '#FFE1A1'],
-      [0.7, '#DEA05B'],
-      [1, '#AD6948']
-    ]);
-    path(ctx, [
-      ['M', 89, 83],
-      ['C', 30, 111, 35, 232, 63, 253],
-      ['Q', 87, 261, 115, 238],
-      ['L', 115, 122],
-      ['Z']
-    ], leftSideGold);
-
-    const rightSideGold = gradient(ctx, 282, 96, 198, 257, [
-      [0, '#FFE1A1'],
-      [0.7, '#DEA05B'],
-      [1, '#AD6948']
-    ]);
-    path(ctx, [
-      ['M', 231, 83],
-      ['C', 290, 111, 285, 232, 257, 253],
-      ['Q', 233, 261, 205, 238],
-      ['L', 205, 122],
-      ['Z']
-    ], rightSideGold);
-
-    // Large Ivory Face Mask
-    let ivoryMask;
+    // Face mask: Ivory superellipse
+    let faceGrad;
     try {
-      ivoryMask = ctx.createRadialGradient(125, 148, 14, 167, 199, 151);
-      ivoryMask.addColorStop(0, '#FFFFFF');
-      ivoryMask.addColorStop(0.56, '#FFF9EF');
-      ivoryMask.addColorStop(0.86, '#F5E7D6');
-      ivoryMask.addColorStop(1, '#E7D3BE');
+      faceGrad = ctx.createRadialGradient(145, 130, 15, 180, 164, 110);
+      faceGrad.addColorStop(0, '#FFFFFF');
+      faceGrad.addColorStop(0.6, '#FFF9F1');
+      faceGrad.addColorStop(1, '#DFDFEC');
     } catch {
-      ivoryMask = LION_PALETTE.ivory;
+      faceGrad = '#FFF7EB';
     }
-    oval(ctx, 160, 189, 91, 78, ivoryMask);
+    drawSuperellipse(ctx, 180, 164, 105, 83, 2.8, 64);
+    ctx.fillStyle = faceGrad;
+    ctx.fill();
 
-    // Distinctive Central Downward Forelock with curved mane plates
-    const forelockGrad = gradient(ctx, 162, 52, 156, 135, [
-      [0, '#FFE9AF'],
-      [0.62, '#F3BE76'],
-      [1, '#CE8A4F']
-    ]);
-    path(ctx, [
-      ['M', 72, 124],
-      ['Q', 90, 75, 134, 72],
-      ['Q', 144, 51, 160, 55],
-      ['Q', 175, 53, 187, 72],
-      ['Q', 233, 76, 248, 124],
-      ['Q', 215, 103, 187, 103],
-      ['L', 160, 120],
-      ['L', 133, 103],
-      ['Q', 104, 103, 72, 124],
-      ['Z']
-    ], forelockGrad);
+    // Blush cheeks
+    oval(ctx, 122, 182, 16, 8, 'rgba(242, 168, 174, 0.22)');
+    oval(ctx, 239, 182, 16, 8, 'rgba(242, 168, 174, 0.22)');
 
-    const forelockHighlight = gradient(ctx, 155, 53, 165, 121, [
-      [0, 'rgba(255, 252, 226, 0.82)'],
-      [1, 'rgba(211, 138, 78, 0.28)']
-    ]);
-    path(ctx, [
-      ['M', 119, 75],
-      ['Q', 143, 78, 160, 117],
-      ['Q', 176, 79, 201, 75],
-      ['Q', 180, 63, 160, 55],
-      ['Q', 139, 61, 119, 75],
-      ['Z']
-    ], forelockHighlight);
+    // Eyes with gaze offset
+    const ex = this.eyeGazeX * 5.2;
+    const ey = this.eyeGazeY * 3.6;
 
-    // Two simple black oval eyes with smooth gaze tracking
-    const ex = this.eyeGazeX * 5.8;
-    const ey = this.eyeGazeY * 4.0;
-
-    for (const baseX of [122, 198]) {
+    for (const baseX of [151, 208]) {
       if (blinking) {
-        // Closed / resting eyelid
+        // Fast natural blink arc
         ctx.beginPath();
-        ctx.moveTo(baseX - 10, 189 + ey);
-        ctx.quadraticCurveTo(baseX, 194 + ey, baseX + 10, 189 + ey);
-        ctx.strokeStyle = '#32252C';
-        ctx.lineWidth = 5;
+        ctx.moveTo(baseX - 8 + ex, 163 + ey);
+        ctx.quadraticCurveTo(baseX + ex, 168 + ey, baseX + 8 + ex, 163 + ey);
+        ctx.strokeStyle = '#18151C';
+        ctx.lineWidth = 4;
         ctx.lineCap = 'round';
         ctx.stroke();
-      } else if (isFinished || state === 'dancing') {
-        // Joyous inverted arc
+      } else if (isFinished || state === 'dancing' || this.emoteName === 'salute') {
+        // Joyous happy eyes
         ctx.beginPath();
-        ctx.moveTo(baseX - 11 + ex, 193 + ey);
-        ctx.quadraticCurveTo(baseX + ex, 178 + ey, baseX + 11 + ex, 193 + ey);
-        ctx.strokeStyle = '#252129';
-        ctx.lineWidth = 5.5;
+        ctx.moveTo(baseX - 9 + ex, 165 + ey);
+        ctx.quadraticCurveTo(baseX + ex, 152 + ey, baseX + 9 + ex, 165 + ey);
+        ctx.strokeStyle = '#18151C';
+        ctx.lineWidth = 4.5;
         ctx.lineCap = 'round';
         ctx.stroke();
       } else if (isError) {
-        // Slanted determined brow / eye
+        // Alert open eyes with slight concerned brow
+        oval(ctx, baseX + ex, 164 + ey, 7.5, 9.5, '#18151C');
+        oval(ctx, baseX + ex - 2, 161 + ey, 2.2, 3.0, '#FFFFFF');
         ctx.beginPath();
-        const slant = (baseX === 122 ? 3 : -3);
-        ctx.moveTo(baseX - 9 + ex, 186 + ey - slant);
-        ctx.lineTo(baseX + 9 + ex, 192 + ey + slant);
-        ctx.strokeStyle = '#252129';
-        ctx.lineWidth = 5.5;
+        const slant = baseX === 151 ? 2.5 : -2.5;
+        ctx.moveTo(baseX - 7 + ex, 151 + ey + slant);
+        ctx.lineTo(baseX + 7 + ex, 151 + ey - slant);
+        ctx.strokeStyle = '#18151C';
+        ctx.lineWidth = 3;
         ctx.lineCap = 'round';
         ctx.stroke();
       } else {
-        // Clean authentic oval eye
-        oval(ctx, baseX + ex, 189 + ey, 9.4, 13.2, LION_PALETTE.ink);
-        // Specular glint
-        oval(ctx, baseX + ex - 2.8, 186 + ey, 2.8, 3.8, 'rgba(255, 255, 255, 0.88)');
+        // Canonical glossy black oval eyes
+        oval(ctx, baseX + ex, 163 + ey, 8, 10.8, '#18151C');
+        oval(ctx, baseX + ex - 2.5, 160 + ey, 2.6, 3.5, '#FFFFFF');
       }
     }
 
@@ -524,67 +506,56 @@ export class LivingLionRig {
       ctx.strokeStyle = '#5DA8FF';
       ctx.lineWidth = 3.5;
       ctx.beginPath();
-      ctx.roundRect(102, 168, 116, 42, 20);
+      ctx.roundRect(118, 134, 124, 53, 25);
       ctx.fill();
       ctx.stroke();
       ctx.restore();
     } else if (this.variant === 'headset') {
       ctx.beginPath();
-      ctx.arc(160, 152, 92, Math.PI, 0);
+      ctx.arc(180, 140, 95, Math.PI, 0);
       ctx.strokeStyle = '#203C73';
       ctx.lineWidth = 10;
       ctx.stroke();
-      oval(ctx, 68, 160, 12, 28, '#192641', '#79BBFF', 3);
-      oval(ctx, 252, 160, 12, 28, '#192641', '#79BBFF', 3);
+      oval(ctx, 84, 150, 12, 28, '#192641', '#79BBFF', 3);
+      oval(ctx, 276, 150, 12, 28, '#192641', '#79BBFF', 3);
     }
 
     ctx.restore(); // end head transform
 
-    // 4. Central Symmetric Shield (Metallic gold/silver border with pale blue enamel)
-    const shieldGoldGrad = gradient(ctx, 131, 246, 188, 309, [
-      [0, '#FFF4CE'],
-      [0.4, '#DFA559'],
-      [0.8, '#BF7C42'],
-      [1, '#FBE0A4']
-    ]);
-    path(ctx, [
-      ['M', 160, 240],
-      ['L', 188, 254],
-      ['L', 186, 281],
-      ['Q', 179, 298, 160, 308],
-      ['Q', 141, 298, 134, 281],
-      ['L', 132, 254],
-      ['Z']
-    ], shieldGoldGrad);
+    // Paws
+    oval(ctx, 87, 232, 19, 17, '#FFF6E6', '#F3C682', 3);
+    oval(ctx, 274, 230, 18, 17, '#FFF6E6', '#F3C682', 3);
 
-    // Inner pale blue / silver enamel inlay
-    const shieldBlueGrad = gradient(ctx, 144, 251, 181, 299, [
-      [0, '#FAFBFF'],
-      [0.5, '#DBE8F9'],
-      [1, '#7898C5']
+    // 4. Central Symmetrical Ward Shield
+    const wardShieldGrad = gradient(ctx, 160, 213, 200, 279, [
+      [0, '#FFFDF3'],
+      [0.6, '#E3EFFF'],
+      [1, '#879AE6']
     ]);
     path(ctx, [
-      ['M', 160, 249],
-      ['L', 180, 259],
-      ['L', 177, 282],
-      ['Q', 173, 291, 160, 297],
-      ['Q', 147, 291, 143, 282],
-      ['L', 140, 259],
+      ['M', 180, 213],
+      ['L', 207, 226],
+      ['L', 204, 254],
+      ['Q', 195, 272, 180, 279],
+      ['Q', 165, 273, 155, 254],
+      ['L', 153, 226],
       ['Z']
-    ], shieldBlueGrad);
+    ], wardShieldGrad, '#FFF1CA', 3);
 
-    // Pale blue central highlight crest
-    const shieldHighlight = gradient(ctx, 159, 255, 176, 295, [
-      [0, 'rgba(255, 255, 255, 0.88)'],
-      [1, 'rgba(100, 148, 220, 0.15)']
-    ]);
     path(ctx, [
-      ['M', 160, 254],
-      ['L', 175, 263],
-      ['L', 173, 282],
-      ['Q', 169, 290, 160, 295],
+      ['M', 180, 221],
+      ['L', 199, 231],
+      ['L', 196, 252],
+      ['Q', 190, 265, 180, 270],
+      ['Q', 170, 266, 164, 252],
+      ['L', 162, 231],
       ['Z']
-    ], shieldHighlight);
+    ], null, '#BD9B69', 2);
+
+    path(ctx, [
+      ['M', 180, 231],
+      ['L', 180, 259]
+    ], null, '#E2C99A', 2);
 
     ctx.restore(); // end breathing body transform
     ctx.restore(); // end canonical space transform

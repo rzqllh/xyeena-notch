@@ -529,7 +529,12 @@ export function createTransport({ nativeInvoker, nativeListen, fetchImpl } = {})
     if (signal?.aborted) { if (isNative) cancelNative(requestId)(); throw abortError(); }
     if (isNative) {
       try {
-        const res = await raceAbort(nativeInvoker('native_ai_request', { requestId, url, method, headers, body }), signal, cancelNative(requestId));
+        const payload = { requestId, url, method, headers, body };
+        const res = await raceAbort(
+          nativeInvoker('native_ai_request', { ...payload, payload }),
+          signal,
+          cancelNative(requestId)
+        );
         return { status: res.status, headers: headersToObject(res.headers), text: res.body ?? '' };
       } catch (err) { throw normalizeNativeError(err, label); }
     }
