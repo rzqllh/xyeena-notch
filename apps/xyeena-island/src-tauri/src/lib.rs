@@ -374,10 +374,7 @@ struct NativeAiResponse {
 // Validate the actual URL authority, not a string prefix. In particular,
 // http://localhost:11434@untrusted.example is NOT a localhost request.
 fn is_authorized_ai_destination(value: &str) -> bool {
-    if value.len() > 2048
-        || value.bytes().any(|b| b <= 0x20 || b == 0x7f)
-        || value.contains('\\')
-    {
+    if value.len() > 2048 || value.bytes().any(|b| b <= 0x20 || b == 0x7f) || value.contains('\\') {
         return false;
     }
     let Some((scheme, rest)) = value.split_once("://") else {
@@ -421,7 +418,11 @@ fn validate_ai_payload(payload: &NativeAiPayload) -> Result<(), String> {
     if payload.method != "POST" {
         return Err("Only POST requests are supported by AI transport".into());
     }
-    if payload.body.as_ref().is_some_and(|body| body.len() > 1_048_576) {
+    if payload
+        .body
+        .as_ref()
+        .is_some_and(|body| body.len() > 1_048_576)
+    {
         return Err("AI request exceeds permitted size".into());
     }
     if payload.headers.len() > 12 {
@@ -439,8 +440,13 @@ fn validate_ai_payload(payload: &NativeAiPayload) -> Result<(), String> {
     for (name, value) in &payload.headers {
         let allowed = matches!(
             name.to_ascii_lowercase().as_str(),
-            "content-type" | "authorization" | "x-api-key" | "anthropic-version"
-                | "http-referer" | "x-title" | "accept"
+            "content-type"
+                | "authorization"
+                | "x-api-key"
+                | "anthropic-version"
+                | "http-referer"
+                | "x-title"
+                | "accept"
         );
         if !allowed || value.len() > 8192 || value.chars().any(char::is_control) {
             return Err("Invalid AI request headers".into());
@@ -810,7 +816,9 @@ mod tests {
         assert!(allowed("http://localhost:1234/v1/chat/completions"));
         assert!(allowed("https://api.openai.com/v1/chat/completions"));
         assert!(allowed("https://api.anthropic.com/v1/messages"));
-        assert!(allowed("https://generativelanguage.googleapis.com/v1beta/models/gemini"));
+        assert!(allowed(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini"
+        ));
         assert!(allowed("https://openrouter.ai/api/v1/chat/completions"));
         for rejected in [
             "http://localhost:11434@evil.example/chat",
@@ -848,9 +856,10 @@ mod tests {
         payload.method = "GET".into();
         assert!(validate_ai_payload(&payload).is_err());
         payload.method = "POST".into();
-        payload
-            .headers
-            .insert("Authorization".into(), "Bearer secret\r\nInjected: value".into());
+        payload.headers.insert(
+            "Authorization".into(),
+            "Bearer secret\r\nInjected: value".into(),
+        );
         assert!(validate_ai_payload(&payload).is_err());
         payload.headers.clear();
         payload.body = Some("x".repeat(1_048_577));
