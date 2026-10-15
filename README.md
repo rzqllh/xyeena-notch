@@ -1,11 +1,11 @@
 # Xyeena Notch
 
-A Windows-first Xyeena desktop companion and its **original Lion Guardian mascot**, kept separate from the `xyeena-agent` CLI/harness package. This is a **Windows smoke-test candidate for `1.0.0-alpha.1`**; changes to native gaze and window lifecycle are unverified on a physical Windows machine. It is not a stable release.
+A Windows-first Xyeena desktop companion and its original mascot **Xyn — the Lion Guardian**, kept separate from the `xyeena-agent` CLI/harness package. This is a **Windows smoke-test candidate for `1.0.0-alpha.1`**; changes to native gaze and window lifecycle are unverified on a physical Windows machine. It is not a stable release.
 
 ## Canonical layout
 
-- `apps/xyeena-island/`: the production Tauri 2 Island alpha application (top-center Island, system tray, Windows GSMTC media, master volume, in-memory clipboard, opt-in notifications, and integrated Xyeena Guardian mascot).
-- `packages/xyeena-mascot/`: the canonical Lion Guardian custom element (`<xyeena-guardian>`), motion controller, and state mapping package consumed via npm workspaces.
+- `apps/xyeena-island/`: the production Tauri 2 Island alpha application (top-center Island, system tray, Windows GSMTC media, master volume, in-memory clipboard, opt-in notifications, and integrated Xyn (formerly Golden Lion / Xyeena Guardian) mascot).
+- `packages/xyeena-mascot/`: the canonical Xyn Lion Guardian custom element (`<xyeena-guardian>`), motion controller, and state mapping package consumed via npm workspaces.
 - `examples/guardian-playground/`: browser-only development harness for testing Guardian states, accessories, and emotes. Approvals and agent cards in this harness are simulated.
 - `docs/`: architecture specifications, feature status truth table, release gates, and manual smoke test procedures.
 
@@ -27,7 +27,7 @@ npm run desktop                 # Run native Tauri dev instance
 
 Manual smoke test procedures and verification checklist are documented in [`docs/SMOKE-TEST-WINDOWS.md`](docs/SMOKE-TEST-WINDOWS.md).
 
-See also [`docs/FEATURE_STATUS.md`](docs/FEATURE_STATUS.md) and [`docs/RELEASE_GATES.md`](docs/RELEASE_GATES.md).
+See also [`docs/XYN.md`](docs/XYN.md) for Xyn's mascot source/integration contract, [`docs/FEATURE_STATUS.md`](docs/FEATURE_STATUS.md), and [`docs/RELEASE_GATES.md`](docs/RELEASE_GATES.md).
 
 ## Upstream and licensing
 

@@ -6,7 +6,7 @@ This table is the user-facing source of truth. **Implemented** means source exis
 |---|---|---|
 | Top-edge Island / tray / topmost | Implemented (adaptive dormant 184x8, compact 400x92, glance 480x144, focused 620x396; interaction-safe auto-collapse), Windows acceptance pending | Native build, DPI/fullscreen/focus/restart QA |
 | Coucou-style spring geometry | Implemented; performance unverified | 60/120Hz frame capture and pointer hit testing |
-| Xyeena Guardian (notch-first lion) | Canvas 2D eye/head rig in Island; native Windows cursor-sampling candidate, no desktop placement | Visual identity and global gaze outside Island still need Windows QA |
+| Xyn — the Lion Guardian (original notch-first mascot) | Canvas 2D eye/head rig in Island; native Windows cursor-sampling candidate, no desktop placement | Visual identity and global gaze outside Island still need Windows QA |
 | Windows media playback + transport | Implemented; input debouncing and real-time volume feedback added, acceptance pending | Browser/Spotify supported-session tests |
 | Seek, shuffle and repeat | Implemented, player-dependent | Player capability tests; accurate status labels |
 | Windows default-output volume/mute | Implemented with debounced input feedback, acceptance pending | Windows Core Audio device tests |

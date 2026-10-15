@@ -123,7 +123,7 @@ export class XyeenaGuardian extends BaseElement {
     this._badge.setAttribute('aria-hidden','true');
     const variant=isVariant(this.variant)?this.variant:'standard';
     this._accessory.innerHTML=accessoryMarkup(variant,this._id);
-    this._svg.querySelector('title').textContent=`Xyeena lion guardian: ${cfg.label}. ${cfg.message}`;
+    this._svg.querySelector('title').textContent=`Xyn — the Lion Guardian: ${cfg.label}. ${cfg.message}`;
   }
   _cancelTimeline(){this._token++;caf(this._raf);this._raf=0;this.dataset.greeting='false';this.dataset.uploading='false';
     for(const prop of ['--intro-rise','--intro-tilt','--paw','--crest','--ring','--gateway','--document','--charge'])this.style.removeProperty(prop);
