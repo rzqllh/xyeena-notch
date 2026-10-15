@@ -1,5 +1,5 @@
 //! Xyeena Island MVP: transparent top-edge companion, tray, and opt-in read-only run summaries.
-//! No hooks, agent approvals, autostart, sockets, or network endpoints.
+//! No cursor hooks, agent approval RPC, or autostart. AI requests use opt-in, bounded transport.
 mod clipboard;
 mod media;
 mod volume;
@@ -253,71 +253,70 @@ fn read_dropped_file(path: String) -> Result<DroppedFilePayload, String> {
     })
 }
 
-#[derive(Clone, Default)]
-pub struct AiProcessRegistry {
-    active: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u32>>>,
-    cancelled: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+#[derive(Default)]
+struct AiProcessState {
+    active: std::collections::HashMap<String, u32>,
+    cancelled: std::collections::HashSet<String>,
 }
+
+#[derive(Clone, Default)]
+pub struct AiProcessRegistry(std::sync::Arc<std::sync::Mutex<AiProcessState>>);
 
 impl AiProcessRegistry {
     pub fn new() -> Self {
-        Self {
-            active: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-            cancelled: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
-        }
+        Self::default()
     }
 
     pub fn is_cancelled(&self, request_id: &str) -> bool {
-        self.cancelled
+        self.0
             .lock()
-            .map(|c| c.contains(request_id))
-            .unwrap_or(false)
+            .map(|state| state.cancelled.contains(request_id))
+            .unwrap_or(true)
     }
 
+    // Register/cancel are atomic with respect to each other. Never check the
+    // cancellation set and insert into the active map under separate locks.
     pub fn register_or_kill(&self, request_id: &str, pid: u32) -> bool {
-        let is_pre_cancelled = self
-            .cancelled
-            .lock()
-            .map(|mut c| c.remove(request_id))
-            .unwrap_or(false);
-
-        if is_pre_cancelled {
+        let registered = match self.0.lock() {
+            Ok(mut state) => {
+                if state.cancelled.remove(request_id) {
+                    false
+                } else {
+                    state.active.insert(request_id.to_string(), pid);
+                    true
+                }
+            }
+            Err(_) => false,
+        };
+        if !registered {
             Self::kill_pid(pid);
-            return false;
         }
-
-        if let Ok(mut active) = self.active.lock() {
-            active.insert(request_id.to_string(), pid);
-        }
-        true
+        registered
     }
 
     pub fn unregister(&self, request_id: &str) {
-        if let Ok(mut active) = self.active.lock() {
-            active.remove(request_id);
-        }
-        if let Ok(mut cancelled) = self.cancelled.lock() {
-            cancelled.remove(request_id);
+        if let Ok(mut state) = self.0.lock() {
+            state.active.remove(request_id);
+            state.cancelled.remove(request_id);
         }
     }
 
     pub fn cancel(&self, request_id: &str) -> bool {
-        if let Ok(mut cancelled) = self.cancelled.lock() {
-            cancelled.insert(request_id.to_string());
-        }
-
-        let pid = if let Ok(mut active) = self.active.lock() {
-            active.remove(request_id)
-        } else {
-            None
+        let pid = match self.0.lock() {
+            Ok(mut state) => {
+                // An early cancel must remain pending until register_or_kill.
+                if state.cancelled.len() >= 512 && !state.cancelled.contains(request_id) {
+                    return false;
+                }
+                state.cancelled.insert(request_id.to_string());
+                state.active.remove(request_id)
+            }
+            Err(_) => return false,
         };
-
         if let Some(pid) = pid {
             Self::kill_pid(pid);
-            true
-        } else {
-            true
         }
+        true
     }
 
     fn kill_pid(pid: u32) {
@@ -372,25 +371,89 @@ struct NativeAiResponse {
     ok: bool,
 }
 
+// Validate the actual URL authority, not a string prefix. In particular,
+// http://localhost:11434@untrusted.example is NOT a localhost request.
+fn is_authorized_ai_destination(value: &str) -> bool {
+    if value.len() > 2048
+        || value.bytes().any(|b| b <= 0x20 || b == 0x7f)
+        || value.contains('\\')
+    {
+        return false;
+    }
+    let Some((scheme, rest)) = value.split_once("://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.is_empty()
+        || authority.contains('@')
+        || authority.contains('%')
+        || authority.contains('[')
+        || authority.contains(']')
+    {
+        return false;
+    }
+
+    match scheme {
+        "https" => matches!(
+            authority,
+            "api.openai.com"
+                | "api.anthropic.com"
+                | "generativelanguage.googleapis.com"
+                | "openrouter.ai"
+        ),
+        "http" => {
+            let Some((host, port)) = authority.rsplit_once(':') else {
+                return false;
+            };
+            (host == "localhost" || host == "127.0.0.1")
+                && !port.is_empty()
+                && port.bytes().all(|b| b.is_ascii_digit())
+                && port.parse::<u16>().is_ok_and(|p| p > 0)
+        }
+        _ => false,
+    }
+}
+
+fn validate_ai_payload(payload: &NativeAiPayload) -> Result<(), String> {
+    if !is_authorized_ai_destination(&payload.url) {
+        return Err("Destination host not in authorized AI provider registry".into());
+    }
+    if payload.method != "POST" {
+        return Err("Only POST requests are supported by AI transport".into());
+    }
+    if payload.body.as_ref().is_some_and(|body| body.len() > 1_048_576) {
+        return Err("AI request exceeds permitted size".into());
+    }
+    if payload.headers.len() > 12 {
+        return Err("Too many AI request headers".into());
+    }
+    if payload.request_id.as_ref().is_some_and(|id| {
+        id.is_empty()
+            || id.len() > 128
+            || !id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    }) {
+        return Err("Invalid AI request ID".into());
+    }
+    for (name, value) in &payload.headers {
+        let allowed = matches!(
+            name.to_ascii_lowercase().as_str(),
+            "content-type" | "authorization" | "x-api-key" | "anthropic-version"
+                | "http-referer" | "x-title" | "accept"
+        );
+        if !allowed || value.len() > 8192 || value.chars().any(char::is_control) {
+            return Err("Invalid AI request headers".into());
+        }
+    }
+    Ok(())
+}
+
 fn execute_native_ai_request(
     payload: NativeAiPayload,
     registry: AiProcessRegistry,
 ) -> Result<NativeAiResponse, String> {
-    if !payload.url.starts_with("http://") && !payload.url.starts_with("https://") {
-        return Err("Invalid URL scheme".into());
-    }
-    let is_local = payload.url.starts_with("http://127.0.0.1:")
-        || payload.url.starts_with("http://localhost:");
-    let is_allowed_remote = payload.url.starts_with("https://api.openai.com/")
-        || payload.url.starts_with("https://api.anthropic.com/")
-        || payload
-            .url
-            .starts_with("https://generativelanguage.googleapis.com/")
-        || payload.url.starts_with("https://openrouter.ai/");
-
-    if !is_local && !is_allowed_remote {
-        return Err("Destination host not in authorized AI provider registry".into());
-    }
+    validate_ai_payload(&payload)?;
 
     let req_id = payload.request_id.clone().unwrap_or_default();
     if !req_id.is_empty() && registry.is_cancelled(&req_id) {
@@ -410,6 +473,7 @@ fn execute_native_ai_request(
         escape_curl_config_str(&payload.method)
     ));
     config.push_str("max-time = 60\n");
+    config.push_str("max-filesize = 2097152\n");
     for (k, v) in &payload.headers {
         config.push_str(&format!(
             "header = \"{}: {}\"\n",
@@ -738,6 +802,59 @@ mod tests {
         // Registration with non-existent dummy PID should detect pre-cancel and return false
         let registered = registry.register_or_kill("req-race-1", 999999);
         assert!(!registered, "Pre-cancelled request must not register");
+    }
+    #[test]
+    fn ai_transport_rejects_authority_spoofing_and_invalid_ports() {
+        use super::is_authorized_ai_destination as allowed;
+        assert!(allowed("http://127.0.0.1:11434/api/chat"));
+        assert!(allowed("http://localhost:1234/v1/chat/completions"));
+        assert!(allowed("https://api.openai.com/v1/chat/completions"));
+        assert!(allowed("https://api.anthropic.com/v1/messages"));
+        assert!(allowed("https://generativelanguage.googleapis.com/v1beta/models/gemini"));
+        assert!(allowed("https://openrouter.ai/api/v1/chat/completions"));
+        for rejected in [
+            "http://localhost:11434@evil.example/chat",
+            "http://127.0.0.1:80@evil.example/",
+            "http://127.0.0.1:0/chat",
+            "http://localhost:65536/chat",
+            "http://localhost:abc/chat",
+            "http://127.0.0.1:11434\\@evil.example/",
+            "http://localhost:11434%40evil.example/",
+            "https://api.openai.com.evil.example/v1/chat",
+            "http://api.openai.com/v1/chat",
+            "https://api.openai.com@evil.example/v1/chat",
+            "file:///etc/passwd",
+            "https://evil.example/v1/chat",
+            "http://localhost:11434/\r\nheader = \"Injected\"",
+        ] {
+            assert!(!allowed(rejected), "must reject: {rejected}");
+        }
+    }
+
+    #[test]
+    fn ai_transport_rejects_untrusted_methods_headers_and_oversize_payloads() {
+        use super::{validate_ai_payload, NativeAiPayload};
+        let mut payload = NativeAiPayload {
+            request_id: Some("req-ok-1".into()),
+            url: "https://api.openai.com/v1/chat/completions".into(),
+            method: "POST".into(),
+            headers: std::collections::HashMap::from([(
+                "Authorization".into(),
+                "Bearer secret".into(),
+            )]),
+            body: Some("{}".into()),
+        };
+        assert!(validate_ai_payload(&payload).is_ok());
+        payload.method = "GET".into();
+        assert!(validate_ai_payload(&payload).is_err());
+        payload.method = "POST".into();
+        payload
+            .headers
+            .insert("Authorization".into(), "Bearer secret\r\nInjected: value".into());
+        assert!(validate_ai_payload(&payload).is_err());
+        payload.headers.clear();
+        payload.body = Some("x".repeat(1_048_577));
+        assert!(validate_ai_payload(&payload).is_err());
     }
     #[test]
     fn ai_registry_normal_lifecycle() {
