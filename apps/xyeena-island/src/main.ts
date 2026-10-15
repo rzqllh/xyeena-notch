@@ -184,9 +184,9 @@ root.innerHTML=`
         </div>
         <div class="chat-provider-badge-wrap">
           <select id="chat-provider-select" aria-label="AI Provider" class="chat-provider-dropdown" title="Select AI Provider">
-            <option value="gemini">Google Gemini 2.0</option>
+            <option value="gemini">Google Gemini</option>
             <option value="anthropic">Anthropic Claude</option>
-            <option value="openai">OpenAI GPT-4o</option>
+            <option value="openai">OpenAI</option>
             <option value="openrouter">OpenRouter</option>
             <option value="ollama">Ollama (Local)</option>
             <option value="lmstudio">LM Studio (Local)</option>
@@ -1513,14 +1513,18 @@ q<HTMLButtonElement>('#recap-generate-btn').addEventListener('click',()=>{
    eventId:`run-start-${run.runId}`
   });
 
-  if(['DONE','SUCCESS','FINISHED','CLOSE'].includes(run.state)){
-   realEvents.push({
-    type:'task_finish',
-    at:isoAt,
-    agent:'other',
-    sessionId:run.runId,
-    eventId:`run-fin-${run.runId}`
-   });
+  // Authentic completion timestamp: ONLY if genuine finishedAt is available
+  if(['DONE','SUCCESS','FINISHED','CLOSE'].includes(run.state)&&run.finishedAt){
+   const finMs=Date.parse(run.finishedAt);
+   if(Number.isFinite(finMs)&&finMs>=sevenDaysAgo){
+    realEvents.push({
+     type:'task_finish',
+     at:new Date(finMs).toISOString(),
+     agent:'other',
+     sessionId:run.runId,
+     eventId:`run-fin-${run.runId}`
+    });
+   }
   }
  }
 

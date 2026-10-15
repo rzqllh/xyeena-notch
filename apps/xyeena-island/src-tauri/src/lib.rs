@@ -254,45 +254,104 @@ fn read_dropped_file(path: String) -> Result<DroppedFilePayload, String> {
 }
 
 #[derive(Clone, Default)]
-pub struct AiProcessRegistry(std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u32>>>);
+pub struct AiProcessRegistry {
+    active: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u32>>>,
+    cancelled: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+}
 
 impl AiProcessRegistry {
     pub fn new() -> Self {
-        Self(std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())))
-    }
-    pub fn register(&self, request_id: String, pid: u32) {
-        if let Ok(mut map) = self.0.lock() {
-            map.insert(request_id, pid);
+        Self {
+            active: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            cancelled: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         }
     }
+
+    pub fn is_cancelled(&self, request_id: &str) -> bool {
+        self.cancelled
+            .lock()
+            .map(|c| c.contains(request_id))
+            .unwrap_or(false)
+    }
+
+    pub fn register_or_kill(&self, request_id: &str, pid: u32) -> bool {
+        let is_pre_cancelled = self
+            .cancelled
+            .lock()
+            .map(|mut c| c.remove(request_id))
+            .unwrap_or(false);
+
+        if is_pre_cancelled {
+            Self::kill_pid(pid);
+            return false;
+        }
+
+        if let Ok(mut active) = self.active.lock() {
+            active.insert(request_id.to_string(), pid);
+        }
+        true
+    }
+
     pub fn unregister(&self, request_id: &str) {
-        if let Ok(mut map) = self.0.lock() {
-            map.remove(request_id);
+        if let Ok(mut active) = self.active.lock() {
+            active.remove(request_id);
+        }
+        if let Ok(mut cancelled) = self.cancelled.lock() {
+            cancelled.remove(request_id);
         }
     }
+
     pub fn cancel(&self, request_id: &str) -> bool {
-        if let Ok(mut map) = self.0.lock() {
-            if let Some(pid) = map.remove(request_id) {
-                #[cfg(windows)]
-                {
-                    use std::os::windows::process::CommandExt;
-                    const CREATE_NO_WINDOW: u32 = 0x08000000;
-                    let _ = std::process::Command::new("taskkill")
-                        .args(["/F", "/T", "/PID", &pid.to_string()])
-                        .creation_flags(CREATE_NO_WINDOW)
-                        .output();
-                }
-                #[cfg(not(windows))]
-                {
-                    let _ = std::process::Command::new("kill")
-                        .args(["-9", &pid.to_string()])
-                        .output();
-                }
-                return true;
-            }
+        if let Ok(mut cancelled) = self.cancelled.lock() {
+            cancelled.insert(request_id.to_string());
         }
-        false
+
+        let pid = if let Ok(mut active) = self.active.lock() {
+            active.remove(request_id)
+        } else {
+            None
+        };
+
+        if let Some(pid) = pid {
+            Self::kill_pid(pid);
+            true
+        } else {
+            true
+        }
     }
+
+    fn kill_pid(pid: u32) {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = std::process::Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .output();
+        }
+    }
+}
+
+pub fn escape_curl_config_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 16);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 #[derive(serde::Deserialize)]
@@ -313,10 +372,9 @@ struct NativeAiResponse {
     ok: bool,
 }
 
-#[tauri::command]
-fn native_ai_request(
+fn execute_native_ai_request(
     payload: NativeAiPayload,
-    registry: tauri::State<AiProcessRegistry>,
+    registry: AiProcessRegistry,
 ) -> Result<NativeAiResponse, String> {
     if !payload.url.starts_with("http://") && !payload.url.starts_with("https://") {
         return Err("Invalid URL scheme".into());
@@ -334,9 +392,40 @@ fn native_ai_request(
         return Err("Destination host not in authorized AI provider registry".into());
     }
 
+    let req_id = payload.request_id.clone().unwrap_or_default();
+    if !req_id.is_empty() && registry.is_cancelled(&req_id) {
+        registry.unregister(&req_id);
+        return Err("Request was cancelled before process creation".into());
+    }
+
+    // Pass all headers, url, method, and prompt body via stdin config.
+    // Zero credentials or prompt contents are exposed in OS process command-line arguments.
+    let mut config = String::new();
+    config.push_str(&format!(
+        "url = \"{}\"\n",
+        escape_curl_config_str(&payload.url)
+    ));
+    config.push_str(&format!(
+        "request = \"{}\"\n",
+        escape_curl_config_str(&payload.method)
+    ));
+    config.push_str("max-time = 60\n");
+    for (k, v) in &payload.headers {
+        config.push_str(&format!(
+            "header = \"{}: {}\"\n",
+            escape_curl_config_str(k),
+            escape_curl_config_str(v)
+        ));
+    }
+    if let Some(body) = &payload.body {
+        config.push_str(&format!("data = \"{}\"\n", escape_curl_config_str(body)));
+    }
+
     let mut cmd = std::process::Command::new("curl.exe");
-    cmd.arg("-s").arg("-i");
-    cmd.arg("-X").arg(&payload.method);
+    cmd.args(["-s", "-i", "--config", "-"]);
+    cmd.stdin(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
 
     #[cfg(windows)]
     {
@@ -345,24 +434,20 @@ fn native_ai_request(
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    for (k, v) in &payload.headers {
-        cmd.arg("-H").arg(format!("{k}: {v}"));
-    }
-
-    if let Some(body) = &payload.body {
-        cmd.arg("-d").arg(body);
-    }
-
-    cmd.arg(&payload.url);
-
-    let req_id = payload.request_id.clone().unwrap_or_default();
-    let child = cmd
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to execute native transport: {e}"))?;
 
     let pid = child.id();
-    if !req_id.is_empty() {
-        registry.register(req_id.clone(), pid);
+    if !req_id.is_empty() && !registry.register_or_kill(&req_id, pid) {
+        return Err("Request was cancelled during startup".into());
+    }
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(config.as_bytes());
+        let _ = stdin.flush();
+        drop(stdin);
     }
 
     let output = child.wait_with_output();
@@ -370,7 +455,8 @@ fn native_ai_request(
         registry.unregister(&req_id);
     }
 
-    let output = output.map_err(|e| format!("Native transport process failed or was terminated: {e}"))?;
+    let output =
+        output.map_err(|e| format!("Native transport process failed or was terminated: {e}"))?;
     let raw = String::from_utf8_lossy(&output.stdout);
 
     let mut lines = raw.lines();
@@ -396,9 +482,20 @@ fn native_ai_request(
 }
 
 #[tauri::command]
+async fn native_ai_request(
+    payload: NativeAiPayload,
+    registry: tauri::State<'_, AiProcessRegistry>,
+) -> Result<NativeAiResponse, String> {
+    let reg = registry.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || execute_native_ai_request(payload, reg))
+        .await
+        .map_err(|e| format!("Task execution error: {e}"))?
+}
+
+#[tauri::command]
 fn cancel_native_ai_request(
     request_id: String,
-    registry: tauri::State<AiProcessRegistry>,
+    registry: tauri::State<'_, AiProcessRegistry>,
 ) -> Result<bool, String> {
     Ok(registry.cancel(&request_id))
 }
@@ -409,6 +506,7 @@ struct RunSummary {
     goal: String,
     state: String,
     created_at: String,
+    finished_at: Option<String>,
 }
 
 fn bounded_text(value: Option<&serde_json::Value>, max_chars: usize) -> String {
@@ -482,11 +580,23 @@ fn read_xyeena_runs(project_root: String) -> Result<Vec<RunSummary>, String> {
         if run_id.is_empty() {
             continue;
         }
+        let finished_at_raw = bounded_text(
+            value
+                .get("finished_at")
+                .or_else(|| value.get("completed_at")),
+            48,
+        );
+        let finished_at = if finished_at_raw.is_empty() {
+            None
+        } else {
+            Some(finished_at_raw)
+        };
         result.push(RunSummary {
             run_id,
             goal: bounded_text(value.get("goal"), 160),
             state: bounded_text(value.get("workflow_state"), 24),
             created_at: bounded_text(value.get("created_at"), 48),
+            finished_at,
         });
         if result.len() >= 8 {
             break;
@@ -610,5 +720,33 @@ mod tests {
     fn summary_fields_are_truncated() {
         let value = serde_json::json!("123456789");
         assert_eq!(bounded_text(Some(&value), 4), "1234");
+    }
+    #[test]
+    fn curl_config_escaping_protects_delimiters() {
+        use super::escape_curl_config_str;
+        let raw = "hello \"world\"\nline 2\\backslash";
+        let escaped = escape_curl_config_str(raw);
+        assert_eq!(escaped, "hello \\\"world\\\"\\nline 2\\\\backslash");
+    }
+    #[test]
+    fn ai_registry_early_cancellation_race_fails_registration() {
+        use super::AiProcessRegistry;
+        let registry = AiProcessRegistry::new();
+        // Cancel before register
+        assert!(registry.cancel("req-race-1"));
+        assert!(registry.is_cancelled("req-race-1"));
+        // Registration with non-existent dummy PID should detect pre-cancel and return false
+        let registered = registry.register_or_kill("req-race-1", 999999);
+        assert!(!registered, "Pre-cancelled request must not register");
+    }
+    #[test]
+    fn ai_registry_normal_lifecycle() {
+        use super::AiProcessRegistry;
+        let registry = AiProcessRegistry::new();
+        assert!(!registry.is_cancelled("req-normal"));
+        let registered = registry.register_or_kill("req-normal", 999998);
+        assert!(registered);
+        registry.unregister("req-normal");
+        assert!(!registry.is_cancelled("req-normal"));
     }
 }

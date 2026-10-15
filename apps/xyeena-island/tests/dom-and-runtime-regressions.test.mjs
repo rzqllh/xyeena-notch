@@ -51,28 +51,28 @@ test('P0 DOM Integrity: All q<T>(selector) queries in main.ts exist in root.inne
 
 test('P1.1 AI Chat Cancellation and Provider Sync: AbortSignal is honored and models sync', async () => {
   const chat = new ChatEngine();
-  // Dropdown default option is 'gemini' with 'gemini-2.0-flash'
+  // Dropdown default option is 'gemini' with 'gemini-flash-latest'
   assert.equal(chat.activeProvider, 'gemini', 'Initial provider must default to gemini to match UI dropdown');
-  assert.equal(chat.activeModel, 'gemini-2.0-flash', 'Initial model must match gemini default model');
+  assert.equal(chat.activeModel, 'gemini-flash-latest', 'Initial model must match gemini default model');
 
   // Verify provider catalog
   assert.ok(AI_PROVIDERS.length >= 6);
   const geminiProvider = AI_PROVIDERS.find(p => p.id === 'gemini');
   assert.ok(geminiProvider);
-  assert.equal(geminiProvider.defaultModel, 'gemini-2.0-flash');
+  assert.equal(geminiProvider.defaultModel, 'gemini-flash-latest');
 
   // Test provider switching synchronization
   chat.setProvider('anthropic');
   assert.equal(chat.activeProvider, 'anthropic');
-  assert.equal(chat.activeModel, 'claude-3-7-sonnet-latest');
+  assert.equal(chat.activeModel, 'claude-sonnet-5-5');
 
   chat.setProvider('openai');
   assert.equal(chat.activeProvider, 'openai');
-  assert.equal(chat.activeModel, 'gpt-4o');
+  assert.equal(chat.activeModel, 'gpt-6.1-sol');
 
   chat.setProvider('gemini');
   assert.equal(chat.activeProvider, 'gemini');
-  assert.equal(chat.activeModel, 'gemini-2.0-flash');
+  assert.equal(chat.activeModel, 'gemini-flash-latest');
 
   // Test cancellation via pre-aborted signal dispatches cancel_native_ai_request
   const nativeCalls = [];
@@ -123,6 +123,7 @@ test('P1.1 AI Chat Cancellation and Provider Sync: AbortSignal is honored and mo
     provider: 'ollama',
     nativeInvoker: firstInvoker
   });
+  firstPromise.catch(() => {});
   // Start second request
   const secondPromise = chat.requestCompletion({
     provider: 'ollama',
@@ -216,3 +217,75 @@ test('P1.6 Settings: Preferred Media and Recap Toggle are recognized and sanitiz
   const disabledRecap = sanitizeSettings({ recapEnabled: false });
   assert.equal(disabledRecap.recapEnabled, false);
 });
+
+test('P1.7 Run Normalization & Recap: Authentic finishedAt timestamps, zero createdAt cloning', async () => {
+  const { normalizeRuns } = await import('../src/core/run-summaries.mjs');
+  const rawRuns = [
+    {
+      run_id: 'run-complete',
+      goal: 'Complete task',
+      state: 'DONE',
+      created_at: '2026-10-14T08:00:00Z',
+      finished_at: '2026-10-14T08:35:00Z'
+    },
+    {
+      run_id: 'run-running',
+      goal: 'Ongoing task',
+      state: 'EXECUTE',
+      created_at: '2026-10-14T09:00:00Z'
+    },
+    {
+      run_id: 'run-done-no-time',
+      goal: 'Done task missing finished_at',
+      state: 'DONE',
+      created_at: '2026-10-14T10:00:00Z'
+    }
+  ];
+
+  const normalized = normalizeRuns(rawRuns);
+  assert.equal(normalized.length, 3);
+  assert.equal(normalized[0].finishedAt, '2026-10-14T08:35:00Z');
+  assert.equal(normalized[1].finishedAt, undefined);
+  assert.equal(normalized[2].finishedAt, undefined);
+
+  // Simulate main.ts recap builder behavior
+  const sevenDaysAgo = Date.parse('2026-10-10T00:00:00Z');
+  const events = [];
+  for (const run of normalized) {
+    if (!run.createdAt) continue;
+    const runMs = Date.parse(run.createdAt);
+    if (!Number.isFinite(runMs) || runMs < sevenDaysAgo) continue;
+    events.push({
+      type: 'session_start',
+      at: new Date(runMs).toISOString(),
+      agent: 'other',
+      sessionId: run.runId,
+      eventId: `run-start-${run.runId}`
+    });
+
+    if (['DONE', 'SUCCESS', 'FINISHED', 'CLOSE'].includes(run.state) && run.finishedAt) {
+      const finMs = Date.parse(run.finishedAt);
+      if (Number.isFinite(finMs) && finMs >= sevenDaysAgo) {
+        events.push({
+          type: 'task_finish',
+          at: new Date(finMs).toISOString(),
+          agent: 'other',
+          sessionId: run.runId,
+          eventId: `run-fin-${run.runId}`
+        });
+      }
+    }
+  }
+
+  // 3 session_starts generated
+  const startEvents = events.filter(e => e.type === 'session_start');
+  assert.equal(startEvents.length, 3);
+
+  // Exactly 1 task_finish generated (only for run-complete with authentic finishedAt)
+  const finishEvents = events.filter(e => e.type === 'task_finish');
+  assert.equal(finishEvents.length, 1);
+  assert.equal(finishEvents[0].sessionId, 'run-complete');
+  assert.equal(finishEvents[0].at, new Date(Date.parse(normalized[0].finishedAt)).toISOString());
+  assert.notEqual(finishEvents[0].at, new Date(Date.parse(normalized[0].createdAt)).toISOString(), 'task_finish must NOT use createdAt');
+});
+
