@@ -23,8 +23,21 @@ export const AI_PROVIDERS = Object.freeze([
 export class ChatEngine {
   /** @type {ChatMessage[]} */ messages = [];
   maxMessages = 20;
-  activeProvider = 'anthropic';
-  activeModel = 'claude-3-7-sonnet-latest';
+  activeProvider = 'gemini';
+  activeModel = AI_PROVIDERS.find(p => p.id === 'gemini')?.defaultModel || 'gemini-2.0-flash';
+  /** @type {string | null} */ activeRequestId = null;
+
+  /**
+   * Sets active provider and updates activeModel to provider default.
+   * @param {string} providerId
+   */
+  setProvider(providerId) {
+    const match = AI_PROVIDERS.find(p => p.id === providerId);
+    if (match) {
+      this.activeProvider = match.id;
+      this.activeModel = match.defaultModel;
+    }
+  }
 
   /**
    * @param {string} text
@@ -78,6 +91,7 @@ export class ChatEngine {
    * Executes a real AI completion via privileged native transport (Tauri) or fallback fetch.
    * Handles local models (Ollama, LM Studio) and remote BYOK providers (Anthropic, OpenAI, Gemini, OpenRouter).
    * @param {object} params
+   * @param {string} [params.requestId]
    * @param {string} [params.provider]
    * @param {string} [params.model]
    * @param {string} [params.localUrl]
@@ -93,6 +107,8 @@ export class ChatEngine {
     const apiKey = (params.apiKey || '').trim();
     const nativeInvoker = params.nativeInvoker;
     const signal = params.signal;
+    const requestId = params.requestId || `req-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    this.activeRequestId = requestId;
 
     const isLocal = provider === 'ollama' || provider === 'lmstudio';
     if (!isLocal && !apiKey) {
@@ -164,6 +180,9 @@ export class ChatEngine {
     }
 
     if (signal?.aborted) {
+      if (typeof nativeInvoker === 'function') {
+        void nativeInvoker('cancel_native_ai_request', { requestId }).catch(() => { });
+      }
       const err = new Error('Chat completion aborted');
       err.name = 'AbortError';
       throw err;
@@ -175,6 +194,7 @@ export class ChatEngine {
     if (typeof nativeInvoker === 'function') {
       try {
         const invokePromise = nativeInvoker('native_ai_request', {
+          requestId,
           url,
           method: 'POST',
           headers,
@@ -184,11 +204,13 @@ export class ChatEngine {
           invokePromise,
           new Promise((_, reject) => {
             if (signal.aborted) {
+              void nativeInvoker('cancel_native_ai_request', { requestId }).catch(() => { });
               const err = new Error('Chat completion aborted');
               err.name = 'AbortError';
               reject(err);
             } else {
               signal.addEventListener('abort', () => {
+                void nativeInvoker('cancel_native_ai_request', { requestId }).catch(() => { });
                 const err = new Error('Chat completion aborted');
                 err.name = 'AbortError';
                 reject(err);
@@ -220,6 +242,12 @@ export class ChatEngine {
       }
     }
 
+    if (signal?.aborted || this.activeRequestId !== requestId) {
+      const err = new Error('Chat completion aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
+
     if (status === 401) {
       throw new Error(`Authentication failed (401 Unauthorized) for ${provider}. Please verify your API key.`);
     }
@@ -231,7 +259,7 @@ export class ChatEngine {
       try {
         const parsedErr = JSON.parse(responseText);
         errDetail = parsedErr.error?.message || parsedErr.message || errDetail;
-      } catch {}
+      } catch { }
       throw new Error(`Provider error (${status}) from ${provider}: ${errDetail}`);
     }
 

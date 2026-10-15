@@ -51,8 +51,9 @@ test('P0 DOM Integrity: All q<T>(selector) queries in main.ts exist in root.inne
 
 test('P1.1 AI Chat Cancellation and Provider Sync: AbortSignal is honored and models sync', async () => {
   const chat = new ChatEngine();
-  assert.equal(chat.activeProvider, 'anthropic');
-  assert.equal(chat.activeModel, 'claude-3-7-sonnet-latest');
+  // Dropdown default option is 'gemini' with 'gemini-2.0-flash'
+  assert.equal(chat.activeProvider, 'gemini', 'Initial provider must default to gemini to match UI dropdown');
+  assert.equal(chat.activeModel, 'gemini-2.0-flash', 'Initial model must match gemini default model');
 
   // Verify provider catalog
   assert.ok(AI_PROVIDERS.length >= 6);
@@ -60,25 +61,46 @@ test('P1.1 AI Chat Cancellation and Provider Sync: AbortSignal is honored and mo
   assert.ok(geminiProvider);
   assert.equal(geminiProvider.defaultModel, 'gemini-2.0-flash');
 
-  // Test cancellation via pre-aborted signal
+  // Test provider switching synchronization
+  chat.setProvider('anthropic');
+  assert.equal(chat.activeProvider, 'anthropic');
+  assert.equal(chat.activeModel, 'claude-3-7-sonnet-latest');
+
+  chat.setProvider('openai');
+  assert.equal(chat.activeProvider, 'openai');
+  assert.equal(chat.activeModel, 'gpt-4o');
+
+  chat.setProvider('gemini');
+  assert.equal(chat.activeProvider, 'gemini');
+  assert.equal(chat.activeModel, 'gemini-2.0-flash');
+
+  // Test cancellation via pre-aborted signal dispatches cancel_native_ai_request
+  const nativeCalls = [];
+  const fakeInvoker = (cmd, payload) => {
+    nativeCalls.push({ cmd, payload });
+    if (cmd === 'cancel_native_ai_request') return Promise.resolve(true);
+    return new Promise(() => {}); // never resolves
+  };
+
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(
     async () => {
       await chat.requestCompletion({
         provider: 'ollama',
+        nativeInvoker: fakeInvoker,
         signal: controller.signal
       });
     },
     (err) => err.name === 'AbortError'
   );
+  assert.ok(nativeCalls.some(c => c.cmd === 'cancel_native_ai_request'), 'Native cancel command must be dispatched on abort');
 
-  // Test cancellation during in-flight promise race
+  // Test cancellation during in-flight promise race dispatches cancel_native_ai_request with matching requestId
   const activeController = new AbortController();
-  const hangingInvoker = () => new Promise(() => {}); // never resolves
   const completionPromise = chat.requestCompletion({
     provider: 'ollama',
-    nativeInvoker: hangingInvoker,
+    nativeInvoker: fakeInvoker,
     signal: activeController.signal
   });
   activeController.abort();
@@ -86,6 +108,33 @@ test('P1.1 AI Chat Cancellation and Provider Sync: AbortSignal is honored and mo
     completionPromise,
     (err) => err.name === 'AbortError'
   );
+  const cancelCall = nativeCalls.find(c => c.cmd === 'cancel_native_ai_request' && c.payload?.requestId);
+  assert.ok(cancelCall, 'cancel_native_ai_request must include requestId');
+
+  // Test stale response protection: request resolving after another has started does not mutate chat history
+  let resolveFirst;
+  const firstInvoker = (cmd) => {
+    if (cmd === 'native_ai_request') {
+      return new Promise((resolve) => { resolveFirst = resolve; });
+    }
+    return Promise.resolve(true);
+  };
+  const firstPromise = chat.requestCompletion({
+    provider: 'ollama',
+    nativeInvoker: firstInvoker
+  });
+  // Start second request
+  const secondPromise = chat.requestCompletion({
+    provider: 'ollama',
+    nativeInvoker: async () => ({ status: 200, body: JSON.stringify({ message: { content: 'Second response' } }) })
+  });
+  await secondPromise;
+  assert.equal(chat.messages[chat.messages.length - 1].content, 'Second response');
+
+  // Now resolve first hanging request - it must be rejected as stale and not overwrite history
+  resolveFirst({ status: 200, body: JSON.stringify({ message: { content: 'Stale first response' } }) });
+  await assert.rejects(firstPromise, (err) => err.name === 'AbortError');
+  assert.equal(chat.messages[chat.messages.length - 1].content, 'Second response');
 });
 
 test('P1.2 Mascot Visual State: Guardian maps thinking, working, error, and idle cleanly', () => {

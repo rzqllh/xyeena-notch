@@ -253,9 +253,52 @@ fn read_dropped_file(path: String) -> Result<DroppedFilePayload, String> {
     })
 }
 
+#[derive(Clone, Default)]
+pub struct AiProcessRegistry(std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u32>>>);
+
+impl AiProcessRegistry {
+    pub fn new() -> Self {
+        Self(std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())))
+    }
+    pub fn register(&self, request_id: String, pid: u32) {
+        if let Ok(mut map) = self.0.lock() {
+            map.insert(request_id, pid);
+        }
+    }
+    pub fn unregister(&self, request_id: &str) {
+        if let Ok(mut map) = self.0.lock() {
+            map.remove(request_id);
+        }
+    }
+    pub fn cancel(&self, request_id: &str) -> bool {
+        if let Ok(mut map) = self.0.lock() {
+            if let Some(pid) = map.remove(request_id) {
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    const CREATE_NO_WINDOW: u32 = 0x08000000;
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/F", "/T", "/PID", &pid.to_string()])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .output();
+                }
+                #[cfg(not(windows))]
+                {
+                    let _ = std::process::Command::new("kill")
+                        .args(["-9", &pid.to_string()])
+                        .output();
+                }
+                return true;
+            }
+        }
+        false
+    }
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeAiPayload {
+    request_id: Option<String>,
     url: String,
     method: String,
     headers: std::collections::HashMap<String, String>,
@@ -271,7 +314,10 @@ struct NativeAiResponse {
 }
 
 #[tauri::command]
-fn native_ai_request(payload: NativeAiPayload) -> Result<NativeAiResponse, String> {
+fn native_ai_request(
+    payload: NativeAiPayload,
+    registry: tauri::State<AiProcessRegistry>,
+) -> Result<NativeAiResponse, String> {
     if !payload.url.starts_with("http://") && !payload.url.starts_with("https://") {
         return Err("Invalid URL scheme".into());
     }
@@ -292,6 +338,13 @@ fn native_ai_request(payload: NativeAiPayload) -> Result<NativeAiResponse, Strin
     cmd.arg("-s").arg("-i");
     cmd.arg("-X").arg(&payload.method);
 
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
     for (k, v) in &payload.headers {
         cmd.arg("-H").arg(format!("{k}: {v}"));
     }
@@ -302,9 +355,22 @@ fn native_ai_request(payload: NativeAiPayload) -> Result<NativeAiResponse, Strin
 
     cmd.arg(&payload.url);
 
-    let output = cmd
-        .output()
+    let req_id = payload.request_id.clone().unwrap_or_default();
+    let child = cmd
+        .spawn()
         .map_err(|e| format!("Failed to execute native transport: {e}"))?;
+
+    let pid = child.id();
+    if !req_id.is_empty() {
+        registry.register(req_id.clone(), pid);
+    }
+
+    let output = child.wait_with_output();
+    if !req_id.is_empty() {
+        registry.unregister(&req_id);
+    }
+
+    let output = output.map_err(|e| format!("Native transport process failed or was terminated: {e}"))?;
     let raw = String::from_utf8_lossy(&output.stdout);
 
     let mut lines = raw.lines();
@@ -327,6 +393,14 @@ fn native_ai_request(payload: NativeAiPayload) -> Result<NativeAiResponse, Strin
         ok: (200..300).contains(&status),
         body,
     })
+}
+
+#[tauri::command]
+fn cancel_native_ai_request(
+    request_id: String,
+    registry: tauri::State<AiProcessRegistry>,
+) -> Result<bool, String> {
+    Ok(registry.cancel(&request_id))
 }
 
 #[derive(serde::Serialize)]
@@ -435,6 +509,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .manage(AiProcessRegistry::default())
         .setup(|app| {
             let window = app
                 .get_webview_window("main")
@@ -510,6 +585,7 @@ pub fn run() {
             save_file_to_downloads,
             read_dropped_file,
             native_ai_request,
+            cancel_native_ai_request,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");

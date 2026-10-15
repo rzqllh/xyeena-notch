@@ -161,12 +161,8 @@ root.innerHTML=`
      <div class="section-heading"><div><span class="kicker" id="act-kicker">ON-DEVICE HISTORY</span><h1 id="act-heading">Activity & Agents</h1></div><button class="minor-btn" id="refresh-activity-btn" type="button">Refresh</button></div>
      <div class="agent-pills-row" id="agent-pills" aria-label="Detected agent sessions"></div>
      <div id="agent-approval" class="agent-approval-box" hidden>
-       <strong id="approval-title">Approval Request</strong>
-       <p class="explain" id="approval-prompt">Allow action?</p>
-       <div class="agent-approval-actions">
-         <button class="action-btn" id="approval-allow" type="button">Allow</button>
-         <button class="minor-btn" id="approval-deny" type="button">Deny</button>
-       </div>
+       <strong id="approval-title">Agent Approval Notice</strong>
+       <p class="explain" id="approval-prompt">Live agent consent interception requires an authenticated host bridge. External agents execute permissions in their own terminal sessions.</p>
      </div>
      <p class="explain" id="alerts-explain">Real local events, agent sessions, and Xyeena run changes appear here.</p>
      <div class="history alert-history" id="alerts"></div>
@@ -1297,7 +1293,10 @@ inlineInput?.addEventListener('keydown',e=>{
  }
 });
 
+let chatReqSeq=0;
+
 q<HTMLButtonElement>('#chat-stop')?.addEventListener('click',()=>{
+ ++chatReqSeq;
  if(chatAbortController){
   chatAbortController.abort();
   chatAbortController=null;
@@ -1325,6 +1324,11 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
  input.value='';
  input.style.height='auto';
 
+ // Strictly sync provider from active dropdown before submission
+ const chosenProvider=q<HTMLSelectElement>('#chat-provider-select').value;
+ onProviderChange(chosenProvider);
+
+ const thisReqSeq=++chatReqSeq;
  chat.addUserMessage(text);
  renderChatMessages();
 
@@ -1343,20 +1347,27 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
 
   // Remove the temporary placeholder before running completion
   chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
+  if(thisReqSeq!==chatReqSeq)return;
+
   setXynChatState('speaking');
 
   await chat.requestCompletion({
    provider:chat.activeProvider,
+   model:chat.activeModel,
    localUrl,
    apiKey:key,
    nativeInvoker:isTauri?native:undefined,
    signal:chatAbortController.signal,
   });
+
+  if(thisReqSeq!==chatReqSeq)return;
+
   renderChatMessages();
   playFeedbackSound('chime');
   triggerMascotSalute();
   setXynChatState('idle');
  }catch(err:any){
+  if(thisReqSeq!==chatReqSeq)return;
   chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
   if(err?.name==='AbortError'){
    chat.addAssistantReply('*Response generation cancelled.*');
@@ -1365,9 +1376,11 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
   }
   renderChatMessages();
   setXynChatState('error');
-  setTimeout(()=>setXynChatState('idle'),4000);
+  setTimeout(()=>{if(thisReqSeq===chatReqSeq)setXynChatState('idle');},4000);
  }finally{
-  chatAbortController=null;
+  if(thisReqSeq===chatReqSeq){
+   chatAbortController=null;
+  }
  }
 });
 
@@ -1378,7 +1391,7 @@ function renderAgentPills(){
  if(!activeSessions.length){
   const empty=document.createElement('p');
   empty.className='empty-copy';
-  empty.textContent='No active agent sessions connected. Sessions will appear here when listening.';
+  empty.textContent='No active agent sessions connected. CLI or IDE agents will appear when listening.';
   row.append(empty);
  }else{
   for(const sess of activeSessions){
@@ -1394,65 +1407,12 @@ function renderAgentPills(){
  if(activeApprovalSession?.pendingApproval&&activeApprovalSession.pendingApproval.expiresAt>Date.now()){
   approvalCard.hidden=false;
   const adapterName=getAdapter(activeApprovalSession.provider)?.name||activeApprovalSession.provider;
-  q<HTMLElement>('#approval-title').textContent=`${adapterName}: Approval Request`;
-  q<HTMLElement>('#approval-prompt').textContent=activeApprovalSession.pendingApproval.prompt;
-  q<HTMLButtonElement>('#approval-allow').disabled=false;
-  q<HTMLButtonElement>('#approval-deny').disabled=false;
+  q<HTMLElement>('#approval-title').textContent=`${adapterName}: Approval Required in Host Session`;
+  q<HTMLElement>('#approval-prompt').textContent=`${activeApprovalSession.pendingApproval.prompt} (Respond in the active agent terminal; Island maintains read-only session boundary).`;
  }else{
   approvalCard.hidden=true;
  }
 }
-
-q<HTMLButtonElement>('#approval-allow').addEventListener('click',()=>{
- if(activeApprovalSession&&activeApprovalSession.pendingApproval){
-  const waiting={
-   status:'pending',
-   sessionId:activeApprovalSession.sessionId,
-   requestId:activeApprovalSession.pendingApproval.requestId,
-   provider:activeApprovalSession.provider,
-   expiresAt:activeApprovalSession.pendingApproval.expiresAt
-  };
-  const action={
-   sessionId:activeApprovalSession.sessionId,
-   requestId:activeApprovalSession.pendingApproval.requestId,
-   provider:activeApprovalSession.provider,
-   decision:'allow',
-   explicitUserAction:true
-  };
-  if(mayForwardDecision(waiting,action)){
-   feed.recordEvent('Approval acknowledged',`Decision validated for ${activeApprovalSession.provider}`,'ACTION');
-   activeApprovalSession=null;
-   renderAgentPills();
-   renderAlerts();
-   triggerMascotSalute();
-  }
- }
-});
-
-q<HTMLButtonElement>('#approval-deny').addEventListener('click',()=>{
- if(activeApprovalSession&&activeApprovalSession.pendingApproval){
-  const waiting={
-   status:'pending',
-   sessionId:activeApprovalSession.sessionId,
-   requestId:activeApprovalSession.pendingApproval.requestId,
-   provider:activeApprovalSession.provider,
-   expiresAt:activeApprovalSession.pendingApproval.expiresAt
-  };
-  const action={
-   sessionId:activeApprovalSession.sessionId,
-   requestId:activeApprovalSession.pendingApproval.requestId,
-   provider:activeApprovalSession.provider,
-   decision:'deny',
-   explicitUserAction:true
-  };
-  if(mayForwardDecision(waiting,action)){
-   feed.recordEvent('Approval denied',`Action denied for ${activeApprovalSession.provider}`,'ACTION');
-   activeApprovalSession=null;
-   renderAgentPills();
-   renderAlerts();
-  }
- }
-});
 
 q<HTMLInputElement>('#always-top').addEventListener('change',async e=>{
  const old=prefs.alwaysOnTop,value=(e.target as HTMLInputElement).checked;updatePrefs({alwaysOnTop:value});
@@ -1537,34 +1497,61 @@ q<HTMLButtonElement>('#recap-generate-btn').addEventListener('click',()=>{
  }
  const sevenDaysAgo=Date.now()-7*86400000;
  const realEvents:any[]=[];
- for(const item of feed.items){
-  if((item.timestamp||0)<sevenDaysAgo)continue;
-  const lowerTitle=item.title.toLowerCase();
-  const lowerBody=item.body.toLowerCase();
-  const at=new Date(item.timestamp||Date.now()).toISOString();
-  if(lowerTitle.includes('approval')||lowerBody.includes('decision')){
-   const decision=lowerTitle.includes('denied')||lowerBody.includes('denied')?'deny':'allow';
-   realEvents.push({type:'approval',at,agent:'other',eventId:`evt-${item.id}`,decision});
-  }else if(item.state==='FILE'||lowerTitle.includes('file')){
-   realEvents.push({type:'edit',at,agent:'other',eventId:`evt-${item.id}`});
-  }else if(lowerTitle.includes('chat')){
-   realEvents.push({type:'question',at,agent:'other',eventId:`evt-${item.id}`});
-  }else{
-   realEvents.push({type:'command',at,agent:'other',eventId:`evt-${item.id}`});
-  }
- }
+
+ // 1. Genuine CLI runs from project snapshots using their authentic creation timestamps
  for(const run of runs){
-  const at=new Date(Date.now()).toISOString();
-  if(run.state==='DONE'||run.state==='SUCCESS'||run.state==='FINISHED'){
-   realEvents.push({type:'task_finish',at,agent:'other',sessionId:run.runId,eventId:`run-fin-${run.runId}`});
-  }else{
-   realEvents.push({type:'session_start',at,agent:'other',sessionId:run.runId,eventId:`run-start-${run.runId}`});
+  if(!run.createdAt)continue;
+  const runMs=Date.parse(run.createdAt);
+  if(!Number.isFinite(runMs)||runMs<sevenDaysAgo)continue;
+  const isoAt=new Date(runMs).toISOString();
+
+  realEvents.push({
+   type:'session_start',
+   at:isoAt,
+   agent:'other',
+   sessionId:run.runId,
+   eventId:`run-start-${run.runId}`
+  });
+
+  if(['DONE','SUCCESS','FINISHED','CLOSE'].includes(run.state)){
+   realEvents.push({
+    type:'task_finish',
+    at:isoAt,
+    agent:'other',
+    sessionId:run.runId,
+    eventId:`run-fin-${run.runId}`
+   });
   }
  }
+
+ // 2. Genuine on-device feed events using their authentic occurrence timestamps
+ for(const item of feed.items){
+  const ts=item.timestamp||0;
+  if(ts<sevenDaysAgo)continue;
+  const isoAt=new Date(ts).toISOString();
+
+  if(item.state==='FILE'){
+   realEvents.push({
+    type:'edit',
+    at:isoAt,
+    agent:'other',
+    eventId:`file-${item.id}`
+   });
+  }else if(item.state==='ACTION'&&item.title==='Chat message submitted'){
+   realEvents.push({
+    type:'question',
+    at:isoAt,
+    agent:'other',
+    eventId:`chat-${item.id}`
+   });
+  }
+  // No synthetic approvals or fabricated file counts are inferred from label text
+ }
+
  if(!realEvents.length){
   activeRecapData=null;
   q<HTMLElement>('#recap-preview-box').hidden=false;
-  q<HTMLElement>('#recap-text').textContent='No recorded activity in the past 7 days.\nGenuine activity from file inspections, approvals, or CLI runs will appear here.';
+  q<HTMLElement>('#recap-text').textContent='No recorded activity in the past 7 days.\nGenuine activity from file inspections, questions, or CLI runs will appear here.';
   return;
  }
  try{
@@ -1643,6 +1630,8 @@ q<HTMLButtonElement>('#btn-export-diagnostics').addEventListener('click',async()
 });
 
 async function initialize(){
+ const startupProv=q<HTMLSelectElement>('#chat-provider-select')?.value||'gemini';
+ onProviderChange(startupProv);
  setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentPills();renderChatMessages();
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
