@@ -19,6 +19,7 @@ import {ChatEngine,AI_PROVIDERS,renderSafeMarkdown} from './core/ai-chat.mjs';
 import {KNOWN_ADAPTERS,getAdapter,normalizeSessionSnapshot} from './core/agent-adapters.mjs';
 import {mayForwardDecision} from './core/agent-events.mjs';
 import {buildWeeklyRecap,recapText,recapSvg} from '@xyeena/recap';
+import {icon} from './core/icons.mjs';
 import './style.css';
 
 defineXyeenaGuardian();
@@ -38,26 +39,7 @@ type Media=ReturnType<typeof pickSession>;
 const root=document.querySelector<HTMLElement>('#app')!;
 const isTauri='__TAURI_INTERNALS__' in window;
 document.body.dataset.tauri=String(isTauri);
-function icon(name:string,size=18){
- const glyphs:Record<string,string>={
-  logo:'M12 2L4 6v6c0 5.5 3.8 10.7 8 12 4.2-1.3 8-6.5 8-12V6l-8-4z',
-  shield:'M12 2L4 6v6c0 5.5 3.8 10.7 8 12 4.2-1.3 8-6.5 8-12V6l-8-4z',
-  search:'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm10 2-4.35-4.35',
-  chevron:'m6 9 6 6 6-6',
-  pin:'M12 17v5M5 17h14l-2-7H7l-2 7zM9 10V3h6v7',
-  music:'M9 18V5l12-2v13M9 18c0 2.2-2.7 4-6 4s-6-1.8-6-4 2.7-4 6-4m12-2c0 2.2-2.7 4-6 4s-6-1.8-6-4 2.7-4 6-4',
-  play:'m9 6 10 6-10 6z',pause:'M8 5v14M16 5v14',prev:'M6 5v14M19 5 8 12l11 7V5z',next:'M18 5v14M5 5l11 7-11 7V5z',
-  bell:'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
-  sliders:'M4 7h9m4 0h3M4 17h3m4 0h9M13 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0M7 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0',
-  activity:'M3 12h4l3-6 4 12 3-6h4',clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7v5l4 3',
-  folder:'M3 6h7l2 2h9v12H3V6z',refresh:'M20 7v5h-5M4 17v-5h5M5.6 9A7 7 0 0 1 18 7l2 5M4 12l2 5a7 7 0 0 0 12.3-2',
-  alert:'M12 9v4m0 4h.01M12 2 2 21h20L12 2z',copy:'M9 9h10v12H9z M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1',
-  volume:'M4 9h4l5-4v14l-5-4H4zM17 8a6 6 0 0 1 0 8',mute:'M4 9h4l5-4v14l-5-4H4zM17 9l5 6m0-6-5 6',
-  headset:'M4 15v-3a8 8 0 0 1 16 0v3M4 15h3v6H5a2 2 0 0 1-2-2v-2a2 2 0 0 1 1-2M20 15h-3v6h2a2 2 0 0 0 2-2v-2a2 2 0 0 0-1-2',
-  send:'M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z',check:'m5 12 5 5L20 7',
- };
- return `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"><path d="${glyphs[name]||glyphs.logo}"/></svg>`;
-}
+
 
 root.innerHTML=`
 <div class="island" data-mode="compact" data-panel="now" role="region" aria-label="Xyeena Island">
