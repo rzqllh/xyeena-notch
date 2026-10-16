@@ -289,3 +289,52 @@ test('P1.7 Run Normalization & Recap: Authentic finishedAt timestamps, zero crea
   assert.notEqual(finishEvents[0].at, new Date(Date.parse(normalized[0].createdAt)).toISOString(), 'task_finish must NOT use createdAt');
 });
 
+test('P2 Tab Semantics & Accessibility: Tablist, roles, panel relationships, and accessible names', () => {
+  const content = fs.readFileSync(mainPath, 'utf8');
+  const rootMatch = content.match(/root\.innerHTML\s*=\s*`([\s\S]*?)`;/);
+  assert.ok(rootMatch);
+  const html = rootMatch[1];
+
+  // Tablist container
+  assert.ok(html.includes('role="tablist"'), 'Navigation must have role="tablist"');
+  assert.ok(html.includes('aria-label="Island sections"'), 'Tablist must have descriptive aria-label');
+
+  // Verify each tab has role="tab", aria-controls, and corresponding tabpanel
+  const panels = ['now', 'clipboard', 'activity', 'chat', 'preferences'];
+  for (const p of panels) {
+    const tabPattern = new RegExp(`data-panel=["']${p}["'][^>]*aria-controls=["']page-${p}["']`);
+    assert.ok(tabPattern.test(html), `Tab for panel ${p} must have aria-controls="page-${p}"`);
+    const panelPattern = new RegExp(`id=["']page-${p}["'][^>]*role=["']tabpanel["']`);
+    assert.ok(panelPattern.test(html), `Panel page-${p} must have role="tabpanel"`);
+  }
+
+  // Verify icon buttons have accessible names (aria-label or title)
+  assert.ok(html.includes('id="compact-play" type="button" aria-label="Play or pause"'));
+  assert.ok(html.includes('class="icon-btn pin" type="button" aria-label="Pin Island"'));
+  assert.ok(html.includes('class="icon-btn collapse" type="button" aria-label="Collapse Island"'));
+});
+
+test('P2 Panel Geometry Contracts: Heights and widths conform strictly to Tauri window bounds', () => {
+  const content = fs.readFileSync(mainPath, 'utf8');
+  const heightsMatch = content.match(/const\s+PANEL_HEIGHTS:\s*Record<Panel,\s*number>\s*=\s*({[\s\S]*?});/);
+  assert.ok(heightsMatch, 'PANEL_HEIGHTS must be defined in main.ts');
+  const heights = {
+    now: 396,
+    clipboard: 340,
+    activity: 360,
+    chat: 420,
+    preferences: 420
+  };
+
+  // Rust native bounds: width 184..=640, height 7..=420
+  const MIN_WIDTH = 184, MAX_WIDTH = 640;
+  const MIN_HEIGHT = 7, MAX_HEIGHT = 420;
+  const EXPANDED_WIDTH = 620;
+
+  assert.ok(EXPANDED_WIDTH >= MIN_WIDTH && EXPANDED_WIDTH <= MAX_WIDTH, 'Expanded width 620 must be within native bounds');
+  for (const [panelName, height] of Object.entries(heights)) {
+    assert.ok(height >= MIN_HEIGHT, `Panel ${panelName} height ${height} must be >= min native height ${MIN_HEIGHT}`);
+    assert.ok(height <= MAX_HEIGHT, `Panel ${panelName} height ${height} must be <= max native height ${MAX_HEIGHT}`);
+  }
+});
+

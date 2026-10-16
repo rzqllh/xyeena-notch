@@ -2,7 +2,7 @@ import { STATES, isState, isVariant } from './states.js';
 import { mascotArt, eyeMarkup, badgeMarkup, accessoryMarkup } from './art.js';
 import { greetingFrame, uploadFrame, clamp01 } from './motion.js';
 import { guardianStyles } from './guardian-styles.js';
-import { ReferenceLionRig } from './reference-lion.js';
+import { LivingLionRig } from './lion-canvas.js';
 let sequence=0;
 const tag='xyeena-guardian';
 const raf=typeof requestAnimationFrame==='function'?requestAnimationFrame.bind(globalThis):()=>0;
@@ -24,12 +24,11 @@ export class XyeenaGuardian extends BaseElement {
       this._accessory=this.shadowRoot.querySelector('[data-accessory]');
       this._svg=this.shadowRoot.querySelector('svg');
       if(this._canvas&&typeof this._canvas.getContext==='function'){
-        this._rig=new ReferenceLionRig(this._canvas,{size:this._getSize(),state:'idle',reducedMotion:this._reduce});
-
+        this._rig=new LivingLionRig(this._canvas,{size:this._getSize(),state:'idle',reducedMotion:this._reduce});
+        this.dataset.canvas='true';
       }
     }
     this._reduce=typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this._rig?.setReducedMotion(this._reduce);
     this._onPointer=e=>{
       if(this._reduce||!this.hasAttribute('interactive'))return;
       const r=this.getBoundingClientRect();const dx=((e.clientX-r.left)/Math.max(1,r.width)-.5)*5;
@@ -45,7 +44,6 @@ export class XyeenaGuardian extends BaseElement {
   }
   _getSize(){const n=Number(this.getAttribute('size'));return Number.isFinite(n)&&n>=24&&n<=1200?n:96;}
   connectedCallback(){
-    if(this._rig?.ctx)this.dataset.canvas='true';
     if(!this.hasAttribute('state'))this.setAttribute('state','idle');
     if(!this.hasAttribute('variant'))this.setAttribute('variant','standard');
     this._paint();this._onSize();
@@ -53,23 +51,25 @@ export class XyeenaGuardian extends BaseElement {
     this.addEventListener('pointerleave',this._onLeave,{passive:true});
     if(typeof window!=='undefined'){
       this._onWinPointer=e=>{
-        if(this._reduce||!this.hasAttribute('interactive'))return;
+        if(this._reduce||!this.hasAttribute('interactive')||!this._rig?.active)return;
         this._rig?.setGazeFromClient(e.clientX,e.clientY);
       };
       window.addEventListener('pointermove',this._onWinPointer,{passive:true});
     }
-    this._onVisibility=()=>{if(document.hidden)this._rig?.stop();else this._rig?.start();};
-    document.addEventListener('visibilitychange',this._onVisibility);
     this._rig?.start();
+    if(typeof IntersectionObserver==='function'){
+      this._io=new IntersectionObserver(([e])=>{if(!this._rig)return;if(e.isIntersecting)this._rig.start();else this._rig.stop();});
+      this._io.observe(this);
+    }
   }
   disconnectedCallback(){
+    this._io?.disconnect();this._io=null;
     this._cancelTimeline();
     this.removeEventListener('pointermove',this._onPointer);
     this.removeEventListener('pointerleave',this._onLeave);
     if(typeof window!=='undefined'&&this._onWinPointer){
       window.removeEventListener('pointermove',this._onWinPointer);
     }
-    if(this._onVisibility)document.removeEventListener('visibilitychange',this._onVisibility);
     this._rig?.stop();
   }
   attributeChangedCallback(name,oldValue,newValue){
@@ -80,7 +80,6 @@ export class XyeenaGuardian extends BaseElement {
       this._rig?.setReducedMotion(!this.animated||this._reduce);
       return;
     }
-    if(name==='variant'&&isVariant(newValue))this._rig?.setVariant(newValue);
     if(name==='state'&&isState(newValue)){
       if(this.dataset.greeting==='true'&&newValue!=='greeting')this._cancelTimeline();
       if(this.dataset.uploading==='true'&&newValue!=='upload')this._cancelTimeline();
@@ -107,6 +106,8 @@ export class XyeenaGuardian extends BaseElement {
   _onSize(){const n=this._getSize();this.style.setProperty('--mascot-size',`${n}px`);this._rig?.resize(n);}
   setGaze(x,y){this._rig?.setGaze(x,y);}
   setGazeFromClient(clientX,clientY){this._rig?.setGazeFromClient(clientX,clientY);}
+  start(){this._rig?.start();}
+  stop(){this._rig?.stop();}
   _paint(){
     const name=isState(this.state)?this.state:'idle',cfg=STATES[name];
     this.style.setProperty('--accent',cfg.color);
@@ -129,9 +130,11 @@ export class XyeenaGuardian extends BaseElement {
     this._badge.setAttribute('aria-hidden','true');
     const variant=isVariant(this.variant)?this.variant:'standard';
     this._accessory.innerHTML=accessoryMarkup(variant,this._id);
+    this._rig?.setVariant(variant);
     this._svg.querySelector('title').textContent=`Xyeena lion guardian: ${cfg.label}. ${cfg.message}`;
   }
   _cancelTimeline(){this._token++;caf(this._raf);this._raf=0;this.dataset.greeting='false';this.dataset.uploading='false';
+    this._rig?.setTimeline({rise:1,tilt:0,crest:0,ring:0,gateway:0,document:0,charge:0});
     for(const prop of ['--intro-rise','--intro-tilt','--paw','--crest','--ring','--gateway','--document','--charge'])this.style.removeProperty(prop);
   }
   _tone(freq=600){
@@ -156,6 +159,7 @@ export class XyeenaGuardian extends BaseElement {
       const f=greetingFrame((now-start)/1000,this._reduce||!this.animated);
       this.style.setProperty('--intro-rise',String(f.rise));this.style.setProperty('--intro-tilt',`${f.tilt}rad`);
       this.style.setProperty('--paw',String(f.paw));this.style.setProperty('--crest',String(f.crest));this.style.setProperty('--ring',String(f.ring));
+      this._rig?.setTimeline({rise:f.rise,tilt:f.tilt,crest:f.crest,ring:f.ring});
       if(f.done){this._cancelTimeline();if(this.state==='greeting')this.setState(isState(oldState)?oldState:'idle');
         this.dispatchEvent(new CustomEvent('xyeena-greeting-complete',{bubbles:true,composed:true}));return;}
       this._raf=raf(step);
@@ -170,6 +174,7 @@ export class XyeenaGuardian extends BaseElement {
       if(token!==this._token||!this.isConnected)return;
       const f=uploadFrame((now-start)/1000,this._progress,this._reduce||!this.animated);
       this.style.setProperty('--gateway',String(f.gateway));this.style.setProperty('--document',String(f.document));this.style.setProperty('--charge',String(f.charge));
+      this._rig?.setTimeline({gateway:f.gateway,document:f.document,charge:f.charge});
       if(f.done&&now-start>=1150){this._cancelTimeline();this.setState('finished');
         this.dispatchEvent(new CustomEvent('xyeena-upload-complete',{bubbles:true,composed:true}));return;}
       this._raf=raf(step);

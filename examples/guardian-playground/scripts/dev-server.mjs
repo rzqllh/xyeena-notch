@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const web = resolve(app, 'web');
-const mascot = resolve(app, '../../packages/xyeena-mascot/src');
+const mascot = resolve(app, '../../packages/xyn/src');
 const mime = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png'};
 const port = Number(process.env.PORT || 4181);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT is invalid');

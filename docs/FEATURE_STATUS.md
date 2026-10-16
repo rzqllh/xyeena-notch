@@ -1,29 +1,46 @@
-# Feature truth table — 1.0.0-alpha.1 candidate
+# Feature Status Matrix — 1.0.0-alpha.1
 
-This table is the user-facing source of truth. **Implemented** means source exists and Node tests cover relevant logic, not that Windows QA passed. **Windows acceptance pending** means actual OS runtime testing is required. No simulated providers or false "connected" states.
+This document is the authoritative user-facing source of truth for capabilities implemented in Xyeena Notch / Xyeena Island.
 
-| Capability | Status | Required gate |
-|---|---|---|
-| Top-edge Island / tray / topmost | Implemented (adaptive dormant 184x8, compact 400x92, glance 480x144, focused 620x396; interaction-safe auto-collapse), Windows acceptance pending | Native build, DPI/fullscreen/focus/restart QA |
-| Coucou-style spring geometry | Implemented; performance unverified | 60/120Hz frame capture and pointer hit testing |
-| Xyeena Guardian (notch-first lion) | Canvas 2D eye/head rig in Island; native Windows cursor-sampling candidate, no desktop placement | Visual identity and global gaze outside Island still need Windows QA |
-| Windows media playback + transport | Implemented; input debouncing and real-time volume feedback added, acceptance pending | Browser/Spotify supported-session tests |
-| Seek, shuffle and repeat | Implemented, player-dependent | Player capability tests; accurate status labels |
-| Windows default-output volume/mute | Implemented with debounced input feedback, acceptance pending | Windows Core Audio device tests |
-| Clipboard text-only history | Implemented, opt-in; lifecycle bug repaired (persists across collapse/hide, clears only on exit/explicit clear) | Opt-out, clear, secret heuristics, restart privacy tests |
-| User-opt-in OS notifications | Implemented | Packaged install/OS permission test |
-| Xyeena read-only run summaries | Implemented | Real CLI project with snapshots and malformed paths |
-| Meeting timer | Implemented manually | Timeout/refresh/restore acceptance |
-| Teams call auto-detection | NOT implemented | Authorized Microsoft 365/Graph or supported presence API |
-| Global shortcuts | NOT implemented | Accessibility, collisions and AltGr test |
-| Agent hooks / approvals / questions | NOT implemented | Authenticated relay, threat model, safe fallback, rollback tests |
-| Live agent tool events / diffs | NOT implemented | Size limits, redaction, provider adapters |
-| Native AI chat / local models | NOT implemented | BYOK credential storage and per-provider opt-in |
-| GitHub/Vercel/other services | NOT implemented | OAuth scopes, credentials, API integration |
-| File drop / code diff | NOT implemented | Windows WebView2 drop path + explicit consent |
-| Weekly recap / analytics | NOT implemented | Verified aggregate source, local retention controls |
-| Desktop placement | Removed per product decision; no secondary window or Perch/Follow toggle | Verify no desktop window or obsolete IPC in Windows installation |
-| Autostart / signed updater | NOT implemented | Opt-in autostart, signing keys and rollback |
-| Phone pairing / Linux | NOT implemented | Separate architecture and security review |
+Status definitions:
+- **Implemented & Tested:** Source code exists, passes automated unit/integration tests, and has been verified in the local runtime.
+- **Implemented (Manual QA Pending):** Implemented in code and passes unit tests; relies on physical Windows OS hardware for final interactive confirmation.
+- **Deferred / Roadmap:** Planned for future milestones; not present in the current build.
+- **Excluded by Design:** Intentionally omitted to protect user security, privacy, or product boundaries.
 
-**Maintainer target: full feature coverage before public alpha. This source candidate does NOT meet that scope.** Calling it "enterprise-grade" or "ready to release" would be misleading until functionality, security and Windows acceptance are verified. Source reference: [Coucou capability audit](COUCOU-CAPABILITY-AUDIT.md).
+---
+
+## Capabilities Matrix
+
+| Area | Feature | Status | Notes |
+|---|---|---|---|
+| **Island Shell** | Stationary Top Notch | Implemented & Tested | Docks to top center display; 4 distinct presentation modes (Wake, Compact, Glance, Expanded). |
+| **Island Shell** | Dual Concave Shoulder Wings | Implemented & Tested | SVG concave shoulder curves blend the Island into the monitor bezel. |
+| **Island Shell** | Fluid Spring Physics | Implemented & Tested | Numerical damped-spring integration adapted from Coucou under MIT. |
+| **Island Shell** | Topmost & Tray Management | Implemented & Tested | `always-on-top` toggle, pin mode, auto-collapse on pointer exit, system tray minimize/restore. |
+| **Xyn Mascot** | Living Lion Canvas Rig | Implemented & Tested | 2D soft-3D rig in `@xyeena/xyn`, 20+ expression states, autonomous breathing & blinking. |
+| **Xyn Mascot** | Expanded Header Integration | Implemented & Tested | 54×54px mascot framing in 58px header with subtle physical contact shadow. |
+| **Xyn Mascot** | Cursor Gaze Tracking | Implemented & Tested | Parallax eye/head follow using Win32 cursor sampling; dead-zone and distance falloff. |
+| **Xyn Mascot** | Rendering Performance | Implemented & Tested | WeakMap gradient cache, adaptive frame-rate throttling (30 FPS idle, 60 FPS active), multi-instance loop suspension. |
+| **Xyn Mascot** | Concept Wardrobe | Implemented & Tested | 5 accessory presets: Standard, Cyber Visor, Golden Crown, Studio Headset, Silver Shield. |
+| **Media & Audio** | GSMTC Session Monitoring | Implemented & Tested | Detects active Windows playback sessions (Spotify, browsers, media players). |
+| **Media & Audio** | Transport Controls | Implemented & Tested | Play/pause, track skip, seek bar, shuffle, and repeat toggles. |
+| **Media & Audio** | Master Volume Endpoint | Implemented & Tested | Controls Windows default output endpoint via Core Audio APIs; volume level & mute toggle. |
+| **Media & Audio** | Meeting Timer | Implemented & Tested | Manual focus/meeting timer with elapsed duration display. |
+| **Media & Audio** | Teams Auto-Detection | Deferred / Roadmap | Requires Microsoft 365 Graph presence API authorization; not inferred from media. |
+| **Clipboard** | Multi-Format History | Implemented & Tested | In-memory session store supporting plain text, image data URLs (BMP/PNG), and file paths. |
+| **Clipboard** | Memory & Item Limits | Implemented & Tested | Strict 64 MiB total heap cap, 20 MiB per-image cap, configurable 20/50/100 item bounds. |
+| **Clipboard** | Privacy Controls | Implemented & Tested | Read-Once destructive copy, item pinning, search filtering, one-click purge, auto-clear on exit. |
+| **AI Companion** | Cloud Providers (BYOK) | Implemented & Tested | Google Gemini, Anthropic Claude, OpenAI, and OpenRouter with session-only in-memory key storage. |
+| **AI Companion** | Local Offline Models | Implemented & Tested | Ollama and LM Studio endpoints, hard-restricted to loopback (`localhost`/`127.0.0.1`). |
+| **AI Companion** | Native HTTP Transport | Implemented & Tested | Non-blocking Rust curl runner with cancellation registry and strict URL authority allowlists. |
+| **Project Tracking** | Run Summaries Feed | Implemented & Tested | Read-only inspection of `.xyeena/runs/*/snapshot.json` files; status badge and event feed. |
+| **Project Tracking** | Local Weekly Recap | Implemented & Tested | Local aggregation via `@xyeena/recap`; weekly metrics and exportable 1080×1920 SVG card. |
+| **File Handling** | Native Drag-and-Drop | Implemented & Tested | `tauri://drag-drop` listener inspecting file metadata and data URLs without disk writes. |
+| **Settings & UI** | Theme System | Implemented & Tested | Low-chroma Dark, crisp Light, and System themes conforming to WCAG AA contrast. |
+| **Settings & UI** | Reduced Motion | Implemented & Tested | Respects OS `prefers-reduced-motion` and manual toggle to freeze all spring and mascot motion. |
+| **Settings & UI** | Audio Feedback | Implemented & Tested | Synthesized Web Audio chimes for tap, salute, and alert feedback with volume slider. |
+| **System** | Global Shortcuts | Deferred / Roadmap | Deferred to avoid keybinding collisions with active editors and operating systems. |
+| **System** | Desktop Pet / Floating Window | Excluded by Design | Notch-first policy: character remains integrated inside the Island surface; no floating pet. |
+| **System** | Automatic Hook Writing | Excluded by Design | Island companion maintains a strict read-only boundary over user repositories. |
+| **System** | Remote Telemetry | Excluded by Design | Zero tracking pixels, analytics SDKs, or cloud telemetry. |

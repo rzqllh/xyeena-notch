@@ -30,12 +30,17 @@ export declare class XyeenaGuardian extends HTMLElement {
 export declare function defineXyeenaGuardian():CustomElementConstructor;
 
 export declare class LivingLionRig {
-  constructor(canvas:HTMLCanvasElement,options?:{size?:number,state?:string,reducedMotion?:boolean});
+  constructor(canvas:HTMLCanvasElement,options?:{size?:number,state?:string,variant?:string,reducedMotion?:boolean});
   size:number;
   state:string;
   reducedMotion:boolean;
   resize(size:number):void;
+  variant:string;
   setState(state:string):void;
+  setVariant(variant:string):void;
+  setTimeline(frame:Partial<{rise:number;tilt:number;paw:number;crest:number;ring:number;gateway:number;document:number;charge:number}>):void;
+  squash(strength?:number):void;
+  hop(power?:number):void;
   setReducedMotion(reduced:boolean):void;
   setGaze(x:number,y:number):void;
   setGazeFromClient(clientX:number,clientY:number):void;
@@ -56,6 +61,3 @@ export declare class GuardianController {
   tick():void;
   reset():void;
 }
-
-/** Visual rig based on user-provided layered-reference illustration. */
-export declare class ReferenceLionRig extends LivingLionRig { readonly imageReady:boolean; readonly imageFailed:boolean; }

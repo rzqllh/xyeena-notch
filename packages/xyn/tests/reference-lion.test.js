@@ -6,7 +6,7 @@ const fakeContext = () => {
   let drawCalls=0;
   const g={addColorStop(){}};
   const ctx={
-    clearRect(){},save(){},restore(){},scale(){},translate(){},rotate(){},
+    clearRect(){},save(){},restore(){},scale(){},translate(){},rotate(){},clip(){},
     beginPath(){},ellipse(){},fill(){},stroke(){},moveTo(){},lineTo(){},closePath(){},
     quadraticCurveTo(){},bezierCurveTo(){},arc(){},roundRect(){},transform(){},
     createLinearGradient(){return g;},createRadialGradient(){return g;},

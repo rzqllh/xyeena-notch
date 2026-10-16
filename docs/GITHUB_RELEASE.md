@@ -1,27 +1,103 @@
-# GitHub alpha release procedure
+# GitHub Prerelease Publication Guide
 
-1. Create a **separate** repository (suggested `rzqllh/xyeena-desktop`). Do not push this project into `rzqllh/xyeena` or change the Agentic package version.
-2. Commit this source including genuine npm `package-lock.json` and Rust `src-tauri/Cargo.lock`. Never commit `node_modules`, `dist`, `src-tauri/target`, local settings, provider tokens or generated logs.
-3. Enable GitHub Actions with Windows runner and run `ci.yml`. Fix failures *before* tagging. Confirm native app GUI acceptance locally.
-4. Run `npm run release:audit` and review `docs/RELEASE_GATES.md`; only then create an annotated `v1.0.0-alpha.1` tag on the verified commit.
-5. Push the tag to trigger `release.yml`. It builds an **unsigned** NSIS installer, writes SHA-256, and uploads to a **draft prerelease**. Review checksum and binaries; publish the draft only with maintainer approval.
-6. Do not announce enterprise production readiness or change release to stable 1.0 based only on this alpha.
+This document describes the exact procedure for packaging, verifying, and publishing an unsigned experimental Windows prerelease (`v1.0.0-alpha.1`) for `rzqllh/xyeena-notch`.
 
-CI is intentionally designed to fail before release if the two lockfiles are absent.
+---
 
-Example commands after initial GitHub repository creation:
+## 1. Release Architecture & Contracts
+
+- **Target Repository:** `https://github.com/rzqllh/xyeena-notch`
+- **Default Branch:** `main`
+- **Release Version:** `1.0.0-alpha.1` (Tag: `v1.0.0-alpha.1`)
+- **Workflow Trigger Contract:**
+  The release workflow (`.github/workflows/release.yml`) operates exclusively via **`workflow_dispatch`** with an explicit `tag` input.
+  > [!IMPORTANT]
+  > Pushing a Git tag does **not** automatically trigger the release build. An annotated tag must first be pushed to GitHub, after which the maintainer triggers the release workflow manually.
+
+---
+
+## 2. Release Prerequisites Checklist
+
+Before creating a release tag:
+
+1. [x] Working tree is clean (`git status` shows no unstaged or unintended changes).
+2. [x] All 105 monorepo JS/TS tests pass (`npm test`).
+3. [x] All 10 Rust backend tests pass (`cargo test --locked`).
+4. [x] Rust linter and formatter pass (`cargo fmt --all -- --check`, `cargo clippy --locked --all-targets -- -D warnings`).
+5. [x] Release audit script succeeds (`npm run release:audit`).
+6. [x] Web client builds with zero warnings (`npm run build`).
+7. [x] Monorepo full verification check passes (`npm run check`).
+
+---
+
+## 3. Step-by-Step Publication Procedure
+
+### Step 1: Commit and Push to `main`
+Ensure all verified changes are committed cleanly to the `main` branch:
 
 ```powershell
-npm install
-# Ensure src-tauri/Cargo.lock exists from a native cargo check/test.
-node .\scripts\release-audit.mjs
-git status --short
-git add -A
-git commit -m "chore: prepare Xyeena Island 1.0 alpha candidate"
-git push -u origin main
-# ONLY AFTER every automated and manual gate is green:
-git tag -a v1.0.0-alpha.1 -m "Xyeena Island 1.0 alpha.1"
+# Verify diff
+git status
+git diff --check
+
+# Push to origin main
+git push origin main
+```
+
+### Step 2: Create and Push an Annotated Tag
+Create an annotated Git tag matching the version defined in `package.json` (`1.0.0-alpha.1`):
+
+```powershell
+# Create annotated tag
+git tag -a v1.0.0-alpha.1 -m "Xyeena Island v1.0.0-alpha.1 (experimental Windows prerelease)"
+
+# Push tag to GitHub
 git push origin v1.0.0-alpha.1
 ```
 
-Avoid `--force`, don't overwrite unknown repos, and never commit a generated installer inside source control.
+### Step 3: Trigger the GitHub Release Workflow
+Invoke the release workflow via the GitHub CLI or GitHub web interface:
+
+```powershell
+gh workflow run release.yml -f tag=v1.0.0-alpha.1
+```
+
+### Step 4: Monitor the Build & Verify Draft Release
+The workflow will:
+1. Validate the tag format (`^v1\.0\.0-alpha\.[0-9]+$`).
+2. Run `npm ci`, `npm run check`, `cargo test --locked`, and `cargo clippy`.
+3. Build the native Windows NSIS installer using `npm run tauri -- build --bundles nsis`.
+4. Generate `SHA256SUMS.txt`.
+5. Create a **Draft Prerelease** on GitHub containing the `.exe` installer and `SHA256SUMS.txt`.
+
+Check workflow progress:
+```powershell
+gh run list --workflow=release.yml
+gh run watch
+```
+
+### Step 5: Verify the Draft Prerelease
+Inspect the generated draft release:
+```powershell
+gh release view v1.0.0-alpha.1
+```
+Verify that:
+- The installer executable `xyeena-island_1.0.0-alpha.1_x64-setup.exe` is attached.
+- `SHA256SUMS.txt` is attached and the checksum matches the binary.
+
+### Step 6: Make Repository Public (Maintainer Action)
+Using authenticated GitHub administration:
+```powershell
+gh repo edit rzqllh/xyeena-notch --visibility public
+```
+
+### Step 7: Publish the Prerelease
+Publish the draft release as a public prerelease:
+```powershell
+gh release edit v1.0.0-alpha.1 --draft=false --prerelease
+```
+
+Verify public accessibility:
+```powershell
+gh release view v1.0.0-alpha.1 --web
+```

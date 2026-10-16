@@ -3,6 +3,7 @@ import {listen} from '@tauri-apps/api/event';
 import {isPermissionGranted,requestPermission,sendNotification} from '@tauri-apps/plugin-notification';
 import {readText,writeText} from '@tauri-apps/plugin-clipboard-manager';
 import {ClipboardHistory} from './core/clipboard.mjs';
+import {providerCredentials} from './core/provider-credentials.mjs';
 import {timeLabel} from './core/media.mjs';
 import {transition,shellDimensions} from './core/island-machine.mjs';
 import type {IslandMode,IslandEvent} from './core/island-machine.mjs';
@@ -23,6 +24,14 @@ import './style.css';
 defineXyeenaGuardian();
 
 type Panel='now'|'clipboard'|'activity'|'chat'|'preferences';
+const PANEL_HEIGHTS: Record<Panel, number> = {
+ now: 396,
+ clipboard: 340,
+ activity: 360,
+ chat: 420,
+ preferences: 420
+};
+let lastPrimaryPanel: Panel = 'now';
 type Prefs=ReturnType<typeof sanitizeSettings>;
 type MediaOverview=ReturnType<typeof normalizeSessions>;
 type Media=ReturnType<typeof pickSession>;
@@ -105,7 +114,7 @@ root.innerHTML=`
  <div class="expanded">
   <header class="header">
     <span class="mascot-slot mascot-header" id="header-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
-      <xyeena-guardian id="header-guardian" size="56" interactive animated></xyeena-guardian>
+      <xyeena-guardian id="header-guardian" size="54" interactive animated></xyeena-guardian>
     </span>
     <div class="header-titles"><strong>Xyeena Island</strong><span class="header-status" id="header-status">On device</span></div>
     <button class="icon-btn pin" type="button" aria-label="Pin Island" aria-pressed="false" title="Keep expanded">${icon('pin',16)}</button>
@@ -301,7 +310,7 @@ root.innerHTML=`
         <div class="setting"><span><strong>Test notification</strong><small>Verify native Windows toast alerts</small></span><button class="minor-btn test-notification" type="button">Send Test Toast</button></div>
         <div class="setting"><span><strong>Diagnostic logs</strong><small>Local inspection without credentials</small></span><button class="minor-btn" id="btn-export-diagnostics" type="button">Export Clean Logs</button></div>
         <details class="project-details" id="about-credits" open><summary>About & credits <span>MIT source</span></summary>
-          <p class="explain">Xyeena Island 1.0.0-alpha.1 · Balanced Desktop Companion.<br>Xyn is the canonical Golden Lion mascot (@xyeena/mascot).<br>Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
+          <p class="explain">Xyeena Island 1.0.0-alpha.1 · Balanced Desktop Companion.<br>Xyn is the canonical Golden Lion mascot (@xyeena/xyn).<br>Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
           <p class="explain">Full code and asset license details: THIRD_PARTY_NOTICES.md and docs/MASCOT-ASSET-RESEARCH.md in this repository.</p>
         </details>
       </div>
@@ -322,6 +331,30 @@ let mode:IslandMode='compact',panel:Panel='now';
 const motion=new GeometryMotion(shellDimensions(mode));
 const feed=new RunChangeFeed();
 let chatMascotState: string | null = null;
+function syncActiveGuardian(targetMode:IslandMode){
+ const compactG=root.querySelector<any>('#compact-guardian');
+ const glanceG=root.querySelector<any>('#glance-guardian');
+ const headerG=root.querySelector<any>('#header-guardian');
+
+ if(targetMode==='compact'){
+  compactG?.start?.();
+  glanceG?.stop?.();
+  headerG?.stop?.();
+ }else if(targetMode==='glance'){
+  glanceG?.start?.();
+  compactG?.stop?.();
+  headerG?.stop?.();
+ }else if(targetMode==='expanded'||targetMode==='pinned'||targetMode==='focused'){
+  headerG?.start?.();
+  compactG?.stop?.();
+  glanceG?.stop?.();
+ }else{
+  compactG?.stop?.();
+  glanceG?.stop?.();
+  headerG?.stop?.();
+ }
+}
+
 function syncGuardian(){
  const activeState=chatMascotState||chooseGuardianState({meetingActive:meeting.active,mediaPlaying:selectedMedia.playing,runs,mode});
  const visualState=toMascotState(activeState);
@@ -334,6 +367,7 @@ function syncGuardian(){
   if(g.getAttribute('state')!==visualState)g.setAttribute('state',visualState);
   if(g.getAttribute('variant')!==prefs.wardrobe)g.setAttribute('variant',prefs.wardrobe);
  }
+ syncActiveGuardian(mode);
 }
 function playFeedbackSound(type:'tap'|'chime'|'error'){
  if(!prefs.soundEnabled||prefs.soundVolume<=0)return;
@@ -448,6 +482,7 @@ function syncPreferences(){
  q<HTMLSelectElement>('#setting-wardrobe').value=prefs.wardrobe;
  q<HTMLInputElement>('#setting-sound-vol').value=String(prefs.soundVolume);
  q<HTMLSelectElement>('#setting-clip-limit').value=String(prefs.clipboardLimit);
+ clipboard.setMaxItems(prefs.clipboardLimit);
  q<HTMLSelectElement>('#setting-media-pref').value=prefs.preferredMedia;
  const recapBtn=q<HTMLButtonElement>('#recap-generate-btn');
  const exportBtn=q<HTMLButtonElement>('#recap-export-svg-btn');
@@ -488,17 +523,19 @@ function tickMotion(now:number){
 function setMode(next:IslandMode,instant=false){
  if(exitTimer)clearTimeout(exitTimer);
  if(mode===next&&!instant)return;
- const closing=shellDimensions(next).width<motion.value.width||shellDimensions(next).height<motion.value.height;
+ const targetDimensions=(next==='expanded'||next==='pinned'||next==='focused')
+  ?{width:620,height:PANEL_HEIGHTS[panel]||396}
+  :shellDimensions(next);
+ const closing=targetDimensions.width<motion.value.width||targetDimensions.height<motion.value.height;
  mode=next;shell.dataset.mode=mode;
  shell.dataset.animating=closing?'collapsing':'expanding';
  q<HTMLButtonElement>('.pin').setAttribute('aria-pressed',String(mode==='pinned'));
  prefs=sanitizeSettings({...prefs,pinned:mode==='pinned'});storePrefs();
  if(raf)cancelAnimationFrame(raf);
- const target=shellDimensions(next);
- motion.target(target,{closing,reduced:instant||isReduced()||!isTauri,now:performance.now()});
+ motion.target(targetDimensions,{closing,reduced:instant||isReduced()||!isTauri,now:performance.now()});
  if(motion.animating)raf=requestAnimationFrame(tickMotion);
  else{
-  sendFrame(target);
+  sendFrame(targetDimensions);
   shell.dataset.animating='settled';
  }
  syncGuardian();
@@ -509,11 +546,27 @@ function setMode(next:IslandMode,instant=false){
 function apply(event:IslandEvent){setMode(transition(mode,event));}
 function setPanel(next:Panel){
  playFeedbackSound('tap');
+ if(panel==='preferences'&&next==='preferences'){
+  next=lastPrimaryPanel;
+ }
+ if(next!=='preferences'){
+  lastPrimaryPanel=next;
+ }
  panel=next;shell.dataset.panel=next;
  for(const button of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
   const active=button.dataset.panel===next;button.classList.toggle('current',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;
  }
  for(const page of root.querySelectorAll<HTMLElement>('.page'))page.hidden=page.id!==`page-${next}`;
+ if(mode==='expanded'||mode==='pinned'||mode==='focused'){
+  const target={width:620,height:PANEL_HEIGHTS[next]||396};
+  motion.target(target,{closing:false,reduced:isReduced()||!isTauri,now:performance.now()});
+  if(motion.animating){
+   if(raf)cancelAnimationFrame(raf);
+   raf=requestAnimationFrame(tickMotion);
+  }else{
+   sendFrame(target);
+  }
+ }
  if(next==='now'){void refreshMedia();startVolumePolling();}
  if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();renderAgentPills();}
  if(next==='clipboard')renderClipboard();
@@ -521,7 +574,19 @@ function setPanel(next:Panel){
 }
 for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
  tab.addEventListener('click',()=>setPanel(tab.dataset.panel as Panel));
- tab.addEventListener('keydown',e=>{if(!['ArrowRight','ArrowLeft'].includes(e.key))return;e.preventDefault();const tabs=[...root.querySelectorAll<HTMLButtonElement>('.nav-tab')];const index=tabs.indexOf(tab);const i=(index+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length;tabs[i].focus();tabs[i].click();});
+ tab.addEventListener('keydown',e=>{
+  const tabs=[...root.querySelectorAll<HTMLButtonElement>('.nav-tab')];
+  const index=tabs.indexOf(tab);
+  let nextIndex=index;
+  if(e.key==='ArrowRight') nextIndex=(index+1)%tabs.length;
+  else if(e.key==='ArrowLeft') nextIndex=(index+tabs.length-1)%tabs.length;
+  else if(e.key==='Home') nextIndex=0;
+  else if(e.key==='End') nextIndex=tabs.length-1;
+  else return;
+  e.preventDefault();
+  tabs[nextIndex].focus();
+  tabs[nextIndex].click();
+ });
 }
 q<HTMLButtonElement>('.wake').addEventListener('pointerenter',()=>apply('pointer-enter'));
 q<HTMLButtonElement>('.wake').addEventListener('click',()=>apply('activate'));
@@ -552,7 +617,15 @@ shell.addEventListener('pointerleave',()=>{
  if(mode==='compact'&&prefs.autoHide)exitTimer=setTimeout(()=>{if(!isInteracting())apply('pointer-leave');},3500);
  if(mode==='expanded'&&prefs.autoCollapse)exitTimer=setTimeout(()=>{if(!isInteracting())apply('collapse');},3000);
 });
-window.addEventListener('keydown',e=>{if(e.key==='Escape'&&(mode==='expanded'||mode==='pinned'))apply('collapse');});
+window.addEventListener('keydown',e=>{
+ if(e.key==='Escape'){
+  if(panel==='preferences'){
+   setPanel(lastPrimaryPanel);
+  }else if(mode==='expanded'||mode==='pinned'){
+   apply('collapse');
+  }
+ }
+});
 
 let activeFileDataUrl='';
 let activeFileName='';
@@ -733,9 +806,16 @@ type NativeCursor={x:number;y:number};
 let gazeTimer:ReturnType<typeof setTimeout>|undefined;
 let gazeGeneration=0;
 function setLionGaze(clientX:number,clientY:number){
- for(const lion of root.querySelectorAll<any>('xyeena-guardian')){
-  if(typeof lion.setGazeFromClient==='function')lion.setGazeFromClient(clientX,clientY);
- }
+ const activeId=(mode==='expanded'||mode==='pinned'||mode==='focused')
+  ?'#header-guardian'
+  :mode==='glance'
+   ?'#glance-guardian'
+   :mode==='compact'
+    ?'#compact-guardian'
+    :null;
+ if(!activeId)return;
+ const lion=root.querySelector<any>(activeId);
+ if(lion&&typeof lion.setGazeFromClient==='function')lion.setGazeFromClient(clientX,clientY);
 }
 function stopGazePolling(){
  ++gazeGeneration;
@@ -856,6 +936,8 @@ function renderMedia(){
   for(const item of overview.sessions){const option=new Option(sourceLabel(item.source),item.source);select.add(option);}
   select.disabled=overview.sessions.length<2;select.value=media.source;
  }
+ const sourceLine=root.querySelector<HTMLElement>('.source-line');
+ if(sourceLine)sourceLine.hidden=overview.sessions.length<=1;
  const seek=q<HTMLInputElement>('#media-seek');seek.disabled=!media.canSeek;
  seek.value=media.durationMs>0?String(Math.round(media.positionMs/media.durationMs*1000)):'0';
  q<HTMLElement>('#position-label').textContent=timeLabel(media.positionMs);
@@ -1042,7 +1124,13 @@ function renderClipboard(){
  const list=q<HTMLElement>('#clip-list');list.replaceChildren();
  if(!items.length){
   const empty=document.createElement('p');empty.className='empty-copy';
-  empty.textContent=query?'No matching clipboard items.':'No captured items. Enable capture or copy text/images.';
+  if(query){
+   empty.textContent='No matching clipboard items.';
+  }else if(!clipboard.enabled){
+   empty.textContent='No captured items. Enable capture or use Read once.';
+  }else{
+   empty.textContent='Clipboard history is empty. Copy text or images to capture.';
+  }
   list.append(empty);return;
  }
  for(const item of items){
@@ -1125,22 +1213,25 @@ q<HTMLButtonElement>('#clip-toggle').addEventListener('click',()=>setClipboardCa
 
 q<HTMLButtonElement>('#clip-read').addEventListener('click',async()=>{
  try{
+  let accepted=false;
   if(isTauri){
    const nativeItem=await native('read_native_clipboard') as any;
-   if(nativeItem){clipboard.accept(nativeItem);}
-   else{const val=await readText();if(val)clipboard.accept(val);}
+   if(nativeItem){accepted=clipboard.acceptOnce(nativeItem);}
+   else{const val=await readText();if(val)accepted=clipboard.acceptOnce(val);}
   }else{
-   const val=await readText();if(val)clipboard.accept(val);
+   const val=await readText();if(val)accepted=clipboard.acceptOnce(val);
   }
   renderClipboard();
-  q<HTMLElement>('#clip-state').textContent=clipboard.enabled?'Monitoring active':'Capture off (read once)';
+  q<HTMLElement>('#clip-state').textContent=accepted
+   ?'Captured one item'
+   :(clipboard.enabled?'Monitoring active':'Capture off (no new item)');
  }catch(err){q<HTMLElement>('#clip-state').textContent='Read failed: '+String(err);}
 });
 
 q<HTMLInputElement>('#clip-search').addEventListener('input',()=>renderClipboard());
 q<HTMLButtonElement>('#clip-clear-unpinned').addEventListener('click',()=>{clipboard.clear(true);renderClipboard();});
 q<HTMLButtonElement>('#clip-clear').addEventListener('click',()=>{clipboard.clear();renderClipboard();});
-window.addEventListener('beforeunload',()=>{clipboard.clear();if(clipTimer)clearInterval(clipTimer);});
+window.addEventListener('beforeunload',()=>{clipboard.clear();providerCredentials.clearKey();if(clipTimer)clearInterval(clipTimer);});
 
 function status(message:string){q<HTMLElement>('#project-status').textContent=message;}
 function renderRuns(){
@@ -1155,7 +1246,7 @@ function renderRuns(){
 }
 function renderAlerts(){
  const list=q<HTMLElement>('#alerts');list.replaceChildren();
- if(!feed.items.length){const p=document.createElement('p');p.className='empty-copy';p.textContent='No run changes yet. Use Test toast to verify Windows notifications.';list.append(p);return;}
+ if(!feed.items.length){const p=document.createElement('p');p.className='empty-copy';p.textContent='No recent activity or notifications recorded.';list.append(p);return;}
  for(const item of feed.items){const row=document.createElement('div');row.className='history-row';
  const left=document.createElement('div');const title=document.createElement('strong');title.textContent=item.title;
  const body=document.createElement('small');body.textContent=item.body;left.append(title,body);row.append(left);list.append(row);}
@@ -1205,7 +1296,6 @@ const chat=new ChatEngine();
 chat.systemPrompt = `Kamu adalah Xyn, maskot Golden Lion Guardian dari Xyeena Island — penjaga desktop yang sigap, cerdas, bersahabat, dan tanggap mendampingi pengguna di Windows notch. Karaktermu hangat, pragmatis, solutif, dan analitis (gaya Xyeena). Jawab dengan Bahasa Indonesia yang natural, santai tapi cerdas dan lugas (tidak kaku seperti robot/birokrasi, tidak lebay/klise). Berikan bantuan teknis, kode, ringkasan, atau saran yang konkret, jujur, akurat, dan tanpa gimik.`;
 let activeApprovalSession:ReturnType<typeof normalizeSessionSnapshot>|null=null;
 let chatAbortController:AbortController|null=null;
-let sessionApiKey='';
 
 function setXynChatState(state:'idle'|'thinking'|'speaking'|'error'){
  const sub=q<HTMLElement>('#chat-xyn-status');
@@ -1245,7 +1335,7 @@ function checkChatInlineSetup(){
  if(!box)return;
  const prov=chat.activeProvider;
  const needsKey=['gemini','openai','anthropic','openrouter'].includes(prov);
- const hasKey=!!(sessionApiKey||q<HTMLInputElement>('#setting-ai-api-key')?.value?.trim());
+ const hasKey=providerCredentials.hasKey(prov);
  box.hidden=!needsKey||hasKey;
 }
 
@@ -1290,6 +1380,17 @@ function onProviderChange(prov:string){
  if(setSelect&&setSelect.value!==prov)setSelect.value=prov;
  const chatSelect=q<HTMLSelectElement>('#chat-provider-select');
  if(chatSelect&&chatSelect.value!==prov)chatSelect.value=prov;
+ const badge=q<HTMLElement>('#badge-ai-creds');
+ const isLocal=prov==='ollama'||prov==='lmstudio';
+ if(badge){
+  badge.textContent=isLocal?'Local Loopback':(providerCredentials.hasKey(prov)?'Key Set (In-Memory)':'No Key Set');
+ }
+ const setInput=q<HTMLInputElement>('#setting-ai-api-key');
+ if(setInput){
+  setInput.value='';
+  setInput.disabled=isLocal;
+  setInput.placeholder=isLocal?'Not required for local provider':(providerCredentials.hasKey(prov)?'•••••••• (Session Key Set)':'Enter API key');
+ }
  checkChatInlineSetup();
 }
 q<HTMLSelectElement>('#chat-provider-select').addEventListener('change',e=>{
@@ -1301,12 +1402,9 @@ const saveInlineBtn=q<HTMLButtonElement>('#btn-save-inline-key');
 function saveInlineKey(){
  const val=inlineInput?.value?.trim()||'';
  if(val){
-  sessionApiKey=val;
-  const setInput=q<HTMLInputElement>('#setting-ai-api-key');
-  if(setInput)setInput.value=val;
-  const badge=q<HTMLElement>('#badge-ai-creds');
-  if(badge)badge.textContent='Key Set (In-Memory)';
-  checkChatInlineSetup();
+  providerCredentials.setKey(chat.activeProvider,val);
+  if(inlineInput)inlineInput.value='';
+  onProviderChange(chat.activeProvider);
   playFeedbackSound('chime');
   triggerMascotSalute();
  }
@@ -1369,7 +1467,7 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
  try{
   chatAbortController=new AbortController();
   const localUrl=q<HTMLInputElement>('#setting-ai-local-url')?.value||'';
-  const key=sessionApiKey||q<HTMLInputElement>('#setting-ai-api-key')?.value||'';
+  const key=providerCredentials.getKey(chat.activeProvider);
 
   // Remove the temporary placeholder before running completion
   chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
@@ -1415,11 +1513,9 @@ function renderAgentPills(){
  row.replaceChildren();
  const activeSessions: NonNullable<ReturnType<typeof normalizeSessionSnapshot>>[] = activeApprovalSession ? [activeApprovalSession] : [];
  if(!activeSessions.length){
-  const empty=document.createElement('p');
-  empty.className='empty-copy';
-  empty.textContent='No active agent sessions connected. CLI or IDE agents will appear when listening.';
-  row.append(empty);
+  row.hidden=true;
  }else{
+  row.hidden=false;
   for(const sess of activeSessions){
    const pill=document.createElement('span');
    pill.className='agent-pill active';
@@ -1486,7 +1582,8 @@ q<HTMLInputElement>('#setting-clip-capture').addEventListener('change',e=>setCli
 q<HTMLSelectElement>('#setting-clip-limit').addEventListener('change',e=>{
  const limit=Number((e.target as HTMLSelectElement).value);
  updatePrefs({clipboardLimit:limit});
- clipboard.maxItems=limit;
+ clipboard.setMaxItems(limit);
+ renderClipboard();
 });
 q<HTMLButtonElement>('#setting-clip-clear').addEventListener('click',()=>{clipboard.clear();renderClipboard();});
 q<HTMLSelectElement>('#setting-media-pref').addEventListener('change',e=>{
@@ -1506,11 +1603,14 @@ q<HTMLInputElement>('#setting-recap-enable').addEventListener('change',e=>{
 q<HTMLSelectElement>('#setting-ai-provider')?.addEventListener('change',e=>{
  onProviderChange((e.target as HTMLSelectElement).value);
 });
-q<HTMLInputElement>('#setting-ai-api-key')?.addEventListener('input',e=>{
- sessionApiKey=(e.target as HTMLInputElement).value.trim();
- const badge=q<HTMLElement>('#badge-ai-creds');
- if(badge)badge.textContent=sessionApiKey?'Key Set (In-Memory)':'Session Memory';
- checkChatInlineSetup();
+q<HTMLInputElement>('#setting-ai-api-key')?.addEventListener('change',e=>{
+ const val=(e.target as HTMLInputElement).value.trim();
+ if(val){
+  providerCredentials.setKey(chat.activeProvider,val);
+ }else{
+  providerCredentials.clearKey(chat.activeProvider);
+ }
+ onProviderChange(chat.activeProvider);
 });
 
 // Weekly Recap Generation and SVG Export using PR #2 engine (@xyeena/recap)

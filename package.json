@@ -9,7 +9,7 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "npm run test --workspace @xyeena/island && npm run test --workspace @xyeena/mascot && npm run test --workspace @xyeena/recap && node --test examples/guardian-playground/tests/*.test.mjs",
+    "test": "npm run test --workspace @xyeena/island && npm run test --workspace @xyeena/xyn && npm run test --workspace @xyeena/recap && node --test examples/guardian-playground/tests/*.test.mjs",
     "build": "npm run build --workspace @xyeena/island && npm run build:guardian",
     "build:guardian": "node examples/guardian-playground/scripts/build.mjs",
     "preview:guardian": "node examples/guardian-playground/scripts/dev-server.mjs",

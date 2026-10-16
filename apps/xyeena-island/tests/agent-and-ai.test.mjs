@@ -132,3 +132,44 @@ test('ChatEngine handles HTTP 401 and 429 without synthetic fallbacks', async ()
     /Rate limit exceeded \(429 Too Many Requests\)/
   );
 });
+
+test('providerCredentials manages session-only, provider-scoped keys with local provider rejection', async () => {
+  const { ProviderCredentialStore } = await import('../src/core/provider-credentials.mjs');
+  const store = new ProviderCredentialStore();
+
+  // 1. Sets and gets key for cloud provider
+  assert.equal(store.hasKey('openai'), false);
+  assert.equal(store.setKey('openai', 'sk-openai-secret-123'), true);
+  assert.equal(store.hasKey('openai'), true);
+  assert.equal(store.getKey('openai'), 'sk-openai-secret-123');
+
+  // 2. Strict provider isolation: key not shared with anthropic or gemini
+  assert.equal(store.hasKey('anthropic'), false);
+  assert.equal(store.getKey('anthropic'), '');
+  assert.equal(store.hasKey('gemini'), false);
+  assert.equal(store.getKey('gemini'), '');
+
+  // 3. Local providers (Ollama & LM Studio) MUST reject cloud credentials
+  assert.equal(store.setKey('ollama', 'sk-leaked-key'), false);
+  assert.equal(store.hasKey('ollama'), false);
+  assert.equal(store.getKey('ollama'), '');
+
+  assert.equal(store.setKey('lmstudio', 'sk-leaked-key'), false);
+  assert.equal(store.hasKey('lmstudio'), false);
+  assert.equal(store.getKey('lmstudio'), '');
+
+  // 4. Clear key for specific provider
+  store.setKey('anthropic', 'sk-ant-test');
+  assert.equal(store.hasKey('anthropic'), true);
+  store.clearKey('anthropic');
+  assert.equal(store.hasKey('anthropic'), false);
+  assert.equal(store.getKey('anthropic'), '');
+  // OpenAI key remains unaffected
+  assert.equal(store.hasKey('openai'), true);
+  assert.equal(store.getKey('openai'), 'sk-openai-secret-123');
+
+  // 5. Clear all keys
+  store.clearKey();
+  assert.equal(store.hasKey('openai'), false);
+  assert.equal(store.getKey('openai'), '');
+});

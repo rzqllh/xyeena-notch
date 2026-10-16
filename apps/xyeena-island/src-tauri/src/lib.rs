@@ -353,7 +353,7 @@ pub fn escape_curl_config_str(s: &str) -> String {
     out
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeAiPayload {
     request_id: Option<String>,
@@ -371,10 +371,174 @@ struct NativeAiResponse {
     ok: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum AiProvider {
+    OpenAi,
+    OpenRouter,
+    Anthropic,
+    Gemini,
+    Ollama,
+    LmStudio,
+}
+
+fn parse_ai_destination_and_provider(
+    url: &str,
+) -> Result<(AiProvider, String, Option<String>), String> {
+    if url.len() > 2048
+        || url.bytes().any(|b| b <= 0x20 || b == 0x7f)
+        || url.contains('\\')
+        || url.contains('#')
+    {
+        return Err("Malformed URL or invalid characters in destination".into());
+    }
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return Err("Missing URL scheme".into());
+    };
+    let (authority, path_and_query) = match rest.split_once('/') {
+        Some((a, p)) => (a, format!("/{p}")),
+        None => (rest, "/".to_string()),
+    };
+    if authority.is_empty()
+        || authority.contains('@')
+        || authority.contains('%')
+        || authority.contains('[')
+        || authority.contains(']')
+    {
+        return Err("Invalid authority or userinfo in URL".into());
+    }
+    let (path, query) = match path_and_query.split_once('?') {
+        Some((p, q)) => (p.to_string(), Some(q.to_string())),
+        None => (path_and_query, None),
+    };
+
+    let (host, port) = if let Some((h, p)) = authority.rsplit_once(':') {
+        let parsed_port = p
+            .parse::<u16>()
+            .map_err(|_| "Invalid port in URL".to_string())?;
+        if parsed_port == 0 {
+            return Err("Port 0 is invalid".into());
+        }
+        (h, Some(parsed_port))
+    } else {
+        (authority, None)
+    };
+
+    let provider = match scheme {
+        "https" => {
+            if let Some(p) = port {
+                if p != 443 {
+                    return Err("Cloud AI requests must use HTTPS on port 443".into());
+                }
+            }
+            match host {
+                "api.openai.com" => {
+                    if path != "/v1/chat/completions" {
+                        return Err("Unsupported path for OpenAI endpoint".into());
+                    }
+                    if query.is_some() {
+                        return Err("Query parameters not allowed for OpenAI".into());
+                    }
+                    AiProvider::OpenAi
+                }
+                "openrouter.ai" => {
+                    if path != "/api/v1/chat/completions" {
+                        return Err("Unsupported path for OpenRouter endpoint".into());
+                    }
+                    if query.is_some() {
+                        return Err("Query parameters not allowed for OpenRouter".into());
+                    }
+                    AiProvider::OpenRouter
+                }
+                "api.anthropic.com" => {
+                    if path != "/v1/messages" {
+                        return Err("Unsupported path for Anthropic endpoint".into());
+                    }
+                    if query.is_some() {
+                        return Err("Query parameters not allowed for Anthropic".into());
+                    }
+                    AiProvider::Anthropic
+                }
+                "generativelanguage.googleapis.com" => {
+                    if !path.starts_with("/v1beta/models/") {
+                        return Err("Unsupported path for Gemini endpoint".into());
+                    }
+                    let action_part = &path["/v1beta/models/".len()..];
+                    if let Some((model, action)) = action_part.split_once(':') {
+                        if model.is_empty()
+                            || !model.bytes().all(|b| {
+                                b.is_ascii_alphanumeric() || b == b'-' || b == b'.' || b == b'_'
+                            })
+                        {
+                            return Err("Invalid Gemini model identifier".into());
+                        }
+                        match action {
+                            "generateContent" => {
+                                if query.is_some() {
+                                    return Err(
+                                        "Query parameters not allowed for Gemini generateContent"
+                                            .into(),
+                                    );
+                                }
+                            }
+                            "streamGenerateContent" => {
+                                if let Some(ref q) = query {
+                                    if q != "alt=sse" {
+                                        return Err("Only 'alt=sse' query parameter is permitted for Gemini streaming".into());
+                                    }
+                                }
+                            }
+                            _ => return Err("Unsupported action for Gemini endpoint".into()),
+                        }
+                    } else {
+                        // Allow basic model path prefix if no action specified in baseline tests
+                        if action_part.is_empty()
+                            || !action_part.bytes().all(|b| {
+                                b.is_ascii_alphanumeric() || b == b'-' || b == b'.' || b == b'_'
+                            })
+                        {
+                            return Err("Invalid Gemini model path".into());
+                        }
+                    }
+                    AiProvider::Gemini
+                }
+                _ => return Err("Destination host not in authorized AI provider registry".into()),
+            }
+        }
+        "http" => {
+            if host != "localhost" && host != "127.0.0.1" {
+                return Err(
+                    "Local AI provider must use loopback host (localhost or 127.0.0.1)".into(),
+                );
+            }
+            if port.is_none() {
+                return Err("Local AI provider must specify a port".into());
+            }
+            if query.is_some() {
+                return Err("Query parameters not allowed for local AI providers".into());
+            }
+            if path == "/api/chat" {
+                AiProvider::Ollama
+            } else if path == "/v1/chat/completions" {
+                AiProvider::LmStudio
+            } else {
+                return Err("Unsupported path for local AI provider".into());
+            }
+        }
+        _ => return Err("Only https and http schemes are permitted".into()),
+    };
+
+    Ok((provider, path, query))
+}
+
 // Validate the actual URL authority, not a string prefix. In particular,
 // http://localhost:11434@untrusted.example is NOT a localhost request.
+#[allow(dead_code)]
 fn is_authorized_ai_destination(value: &str) -> bool {
-    if value.len() > 2048 || value.bytes().any(|b| b <= 0x20 || b == 0x7f) || value.contains('\\') {
+    if value.len() > 2048
+        || value.bytes().any(|b| b <= 0x20 || b == 0x7f)
+        || value.contains('\\')
+        || value.contains('#')
+    {
         return false;
     }
     let Some((scheme, rest)) = value.split_once("://") else {
@@ -391,13 +555,23 @@ fn is_authorized_ai_destination(value: &str) -> bool {
     }
 
     match scheme {
-        "https" => matches!(
-            authority,
-            "api.openai.com"
-                | "api.anthropic.com"
-                | "generativelanguage.googleapis.com"
-                | "openrouter.ai"
-        ),
+        "https" => {
+            let (host, port) = if let Some((h, p)) = authority.rsplit_once(':') {
+                (h, p.parse::<u16>().ok())
+            } else {
+                (authority, Some(443))
+            };
+            if port != Some(443) {
+                return false;
+            }
+            matches!(
+                host,
+                "api.openai.com"
+                    | "api.anthropic.com"
+                    | "generativelanguage.googleapis.com"
+                    | "openrouter.ai"
+            )
+        }
         "http" => {
             let Some((host, port)) = authority.rsplit_once(':') else {
                 return false;
@@ -412,9 +586,8 @@ fn is_authorized_ai_destination(value: &str) -> bool {
 }
 
 fn validate_ai_payload(payload: &NativeAiPayload) -> Result<(), String> {
-    if !is_authorized_ai_destination(&payload.url) {
-        return Err("Destination host not in authorized AI provider registry".into());
-    }
+    let (provider, _path, _query) = parse_ai_destination_and_provider(&payload.url)?;
+
     if payload.method != "POST" {
         return Err("Only POST requests are supported by AI transport".into());
     }
@@ -437,21 +610,65 @@ fn validate_ai_payload(payload: &NativeAiPayload) -> Result<(), String> {
     }) {
         return Err("Invalid AI request ID".into());
     }
+
     for (name, value) in &payload.headers {
-        let allowed = matches!(
-            name.to_ascii_lowercase().as_str(),
-            "content-type"
-                | "authorization"
-                | "x-api-key"
-                | "anthropic-version"
-                | "http-referer"
-                | "x-title"
-                | "accept"
-        );
-        if !allowed || value.len() > 8192 || value.chars().any(char::is_control) {
+        if value.len() > 8192 || value.chars().any(char::is_control) {
             return Err("Invalid AI request headers".into());
         }
+        let lower = name.to_ascii_lowercase();
+        match provider {
+            AiProvider::OpenAi => {
+                let allowed = matches!(lower.as_str(), "content-type" | "authorization" | "accept");
+                if !allowed {
+                    return Err(format!("Header '{name}' not permitted for OpenAI"));
+                }
+            }
+            AiProvider::OpenRouter => {
+                let allowed = matches!(
+                    lower.as_str(),
+                    "content-type" | "authorization" | "accept" | "http-referer" | "x-title"
+                );
+                if !allowed {
+                    return Err(format!("Header '{name}' not permitted for OpenRouter"));
+                }
+            }
+            AiProvider::Anthropic => {
+                let allowed = matches!(
+                    lower.as_str(),
+                    "content-type"
+                        | "x-api-key"
+                        | "anthropic-version"
+                        | "anthropic-dangerous-direct-browser-access"
+                        | "accept"
+                );
+                if !allowed {
+                    return Err(format!("Header '{name}' not permitted for Anthropic"));
+                }
+            }
+            AiProvider::Gemini => {
+                let allowed =
+                    matches!(lower.as_str(), "content-type" | "x-goog-api-key" | "accept");
+                if !allowed {
+                    return Err(format!("Header '{name}' not permitted for Gemini"));
+                }
+            }
+            AiProvider::Ollama | AiProvider::LmStudio => {
+                if matches!(
+                    lower.as_str(),
+                    "authorization" | "x-api-key" | "x-goog-api-key"
+                ) {
+                    return Err("Cloud credentials must never be sent to local AI providers".into());
+                }
+                let allowed = matches!(lower.as_str(), "content-type" | "accept");
+                if !allowed {
+                    return Err(format!(
+                        "Header '{name}' not permitted for local AI providers"
+                    ));
+                }
+            }
+        }
     }
+
     Ok(())
 }
 
@@ -535,6 +752,12 @@ fn execute_native_ai_request(
         .and_then(|line| line.split_whitespace().nth(1))
         .and_then(|code| code.parse::<u16>().ok())
         .unwrap_or(if output.status.success() { 200 } else { 500 });
+
+    if (300..400).contains(&status) {
+        return Err(format!(
+            "Redirects are forbidden for native AI transport (status {status})"
+        ));
+    }
 
     let body = if let Some(idx) = raw.find("\r\n\r\n") {
         raw[idx + 4..].to_string()
@@ -881,6 +1104,85 @@ mod tests {
         payload.body = Some("x".repeat(1_048_577));
         assert!(validate_ai_payload(&payload).is_err());
     }
+    #[test]
+    fn ai_transport_enforces_provider_matrix_and_header_isolation() {
+        use super::{validate_ai_payload, NativeAiPayload};
+
+        // 1. Anthropic accepts x-api-key, rejects Authorization
+        let anthropic_valid = NativeAiPayload {
+            request_id: Some("req-anthropic".into()),
+            url: "https://api.anthropic.com/v1/messages".into(),
+            method: "POST".into(),
+            headers: std::collections::HashMap::from([
+                ("x-api-key".into(), "sk-ant-test".into()),
+                ("anthropic-version".into(), "2023-06-01".into()),
+                ("content-type".into(), "application/json".into()),
+            ]),
+            body: Some("{}".into()),
+        };
+        assert!(validate_ai_payload(&anthropic_valid).is_ok());
+
+        let mut anthropic_leak = anthropic_valid.clone();
+        anthropic_leak
+            .headers
+            .insert("Authorization".into(), "Bearer test".into());
+        assert!(
+            validate_ai_payload(&anthropic_leak).is_err(),
+            "Anthropic must reject Authorization"
+        );
+
+        // 2. Gemini accepts x-goog-api-key and streaming query alt=sse
+        let gemini_stream = NativeAiPayload {
+            request_id: Some("req-gemini".into()),
+            url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse".into(),
+            method: "POST".into(),
+            headers: std::collections::HashMap::from([
+                ("x-goog-api-key".into(), "AIzaTest".into()),
+                ("content-type".into(), "application/json".into()),
+            ]),
+            body: Some("{}".into()),
+        };
+        assert!(validate_ai_payload(&gemini_stream).is_ok());
+
+        let mut gemini_bad_query = gemini_stream.clone();
+        gemini_bad_query.url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=injected".into();
+        assert!(
+            validate_ai_payload(&gemini_bad_query).is_err(),
+            "Gemini must reject arbitrary query params"
+        );
+
+        // 3. Local providers (Ollama & LM Studio) must reject any cloud credentials
+        let mut ollama_leak = NativeAiPayload {
+            request_id: Some("req-ollama".into()),
+            url: "http://127.0.0.1:11434/api/chat".into(),
+            method: "POST".into(),
+            headers: std::collections::HashMap::from([
+                ("content-type".into(), "application/json".into()),
+                ("Authorization".into(), "Bearer leaked-cloud-key".into()),
+            ]),
+            body: Some("{}".into()),
+        };
+        assert!(
+            validate_ai_payload(&ollama_leak).is_err(),
+            "Local Ollama must reject Authorization header"
+        );
+
+        ollama_leak.headers.remove("Authorization");
+        assert!(validate_ai_payload(&ollama_leak).is_ok());
+
+        let lmstudio_valid = NativeAiPayload {
+            request_id: Some("req-lmstudio".into()),
+            url: "http://localhost:1234/v1/chat/completions".into(),
+            method: "POST".into(),
+            headers: std::collections::HashMap::from([(
+                "content-type".into(),
+                "application/json".into(),
+            )]),
+            body: Some("{}".into()),
+        };
+        assert!(validate_ai_payload(&lmstudio_valid).is_ok());
+    }
+
     #[test]
     fn ai_registry_normal_lifecycle() {
         use super::AiProcessRegistry;

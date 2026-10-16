@@ -47,7 +47,7 @@ test('Guardian supports bounded states and labels without false claims', () => {
   assert.match(guardianStatus('sleeping'), /resting/i);
 });
 
-test('toMascotState maps application states to valid @xyeena/mascot visual states', () => {
+test('toMascotState maps application states to valid @xyeena/xyn visual states', () => {
   assert.equal(toMascotState('listening'), 'thinking');
   assert.equal(toMascotState('playing'), 'dancing');
   assert.equal(toMascotState('attention'), 'question');

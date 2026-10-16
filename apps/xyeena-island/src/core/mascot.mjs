@@ -10,7 +10,7 @@ import {
   pickMascotState,
   GuardianController,
   defineXyeenaGuardian
-} from '@xyeena/mascot';
+} from '@xyeena/xyn';
 
 export {
   STATES,

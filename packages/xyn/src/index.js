@@ -5,4 +5,3 @@ export {superellipse} from './geometry.js';
 export {XyeenaGuardian,defineXyeenaGuardian} from './guardian.js';
 export {GuardianController} from './controller.js';
 export {LivingLionRig} from './lion-canvas.js';
-export {ReferenceLionRig} from './reference-lion.js';

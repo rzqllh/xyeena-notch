@@ -1,38 +1,173 @@
 # Xyeena Notch
 
-A Windows-first Xyeena desktop companion and its **original Lion Guardian mascot**, kept separate from the `xyeena-agent` CLI/harness package. This is a **Windows smoke-test candidate for `1.0.0-alpha.1`**; changes to native gaze and window lifecycle are unverified on a physical Windows machine. It is not a stable release.
+A privacy-first Windows desktop companion and original **Xyn Lion Guardian** mascot, built with Tauri 2, vanilla TypeScript, and Rust.
 
-## Canonical layout
+Xyeena Notch docks neatly to the top edge of your Windows display as an adaptive Island instrument panel. It combines system media session controls, default-output master volume, an in-memory unified clipboard manager, local weekly recap analytics, and an integrated multi-provider AI chat companion—all anchored by a living canvas-rendered lion guardian that responds to cursor gaze and desktop interactions.
 
-- `apps/xyeena-island/`: the production Tauri 2 Island alpha application (top-center Island, system tray, Windows GSMTC media, master volume, in-memory clipboard, opt-in notifications, and integrated Xyeena Guardian mascot).
-- `packages/xyeena-mascot/`: the canonical Lion Guardian custom element (`<xyeena-guardian>`), motion controller, and state mapping package consumed via npm workspaces.
-- `examples/guardian-playground/`: browser-only development harness for testing Guardian states, accessories, and emotes. Approvals and agent cards in this harness are simulated.
-- `docs/`: architecture specifications, feature status truth table, release gates, and manual smoke test procedures.
+---
 
-Only `apps/xyeena-island` is the authoritative desktop app host.
+## Visual Presentation
 
-## Development and Verification on Windows
+| Mode | Theme | Preview |
+|---|---|---|
+| **Expanded Panel** | Dark Theme | ![Xyeena Island Expanded Dark](docs/assets/island-expanded-dark.png) |
+| **Expanded Panel** | Light Theme | ![Xyeena Island Expanded Light](docs/assets/island-expanded-light.png) |
+| **Compact Notch** | Dark Theme | ![Xyeena Island Compact Dark](docs/assets/island-compact-dark.png) |
 
-Prerequisites: Node.js 22.14+, Rust stable (MSVC toolchain), Visual Studio Build Tools with C++ desktop workload, Windows 10/11 SDK.
+---
 
-```powershell
-npm ci                          # Install locked dependencies
-npm test                        # Run all workspace unit tests (Island, Mascot, Playground)
-npm run build                   # Build TypeScript and Vite web assets
-npm run doctor                  # Verify Windows toolchain prerequisites
-npm run release:audit           # Audit versions, licenses, and lockfiles
-.\scripts\verify-alpha.ps1      # Authoritative 11-step Windows verification and NSIS packaging
-npm run desktop                 # Run native Tauri dev instance
+## Key Capabilities
+
+### 1. Adaptive Island Window Shell
+- **Four Coherent Modes:**
+  - **Wake Strip:** Minimalist 184×8px indicator when dormant.
+  - **Compact:** 400×92px stationary top-center Notch displaying real-time playback state and mascot glance.
+  - **Glance:** 480×144px asymmetric view pairing quick media controls with contextual companion status.
+  - **Expanded / Pinned:** 620×396px (up to 420px) full instrument panel with dual concave shoulder wings, fluid spring animations, and tabbed single-scroll-owner panels.
+- **Topmost & Tray Integration:** Stays above active windows when pinned; minimizes gracefully to the Windows system notification area.
+
+### 2. Xyn Lion Living Guardian (`@xyeena/xyn`)
+- **Integrated Mascot Framing:** Dedicated 54×54px area in a balanced 58px header, anchored directly to the Island surface with a subtle physical contact shadow—no heavy halos, double shadows, or clipping.
+- **Continuous Identity & Motion:** Natural breathing, blinking, parallax eye/head gaze tracking via Windows Win32 cursor sampling, touch reactions, and autonomous emotes (salute, hop, poke).
+- **Wardrobe Customization:** Concept-art accessories including Standard (Aegis Shield), Cyber Visor, Golden Crown, Studio Headset, and Silver Shield.
+- **Resource & Memory Optimization:** WeakMap gradient caching, bounded canvas design space, adaptive frame-rate throttling (~30 FPS on low-motion idle, 60 FPS during active gestures), and multi-instance lifecycle synchronization that suspends inactive canvas render loops.
+
+### 3. Media Controls & Master Audio
+- **Windows GSMTC Integration:** Real-time monitoring of active Windows media sessions (Spotify, Chrome, Edge, etc.).
+- **Playback & Transport:** Play/pause, next/previous track, seek bar, and shuffle/repeat toggles.
+- **Master Volume Endpoint:** Debounced slider controlling the Windows default audio output endpoint, with mute toggle.
+- **Meeting Mode:** Explicit manual timer for calls and focus sessions (never accesses microphones or infers private calls).
+
+### 4. Privacy-First Unified Clipboard
+- **In-Memory Retention:** Captured clips exist exclusively in application session memory; items are never written to disk, local storage, or network endpoints.
+- **Multi-Format Support:** Captures plain text, image data URLs (BMP/PNG), and dropped file paths.
+- **Bounded Capacity:** Strict 64 MiB total memory cap, 20 MiB per image, and configurable 20/50/100 item limits.
+- **Privacy Controls:** Read-Once mode, item pinning, search filtering, one-click history purge, and automatic wipe on application exit.
+
+### 5. Multi-Provider Companion AI Chat (BYOK)
+- **Supported Providers:** Google Gemini, Anthropic Claude, OpenAI, OpenRouter, and local offline models (Ollama and LM Studio).
+- **Session-Only BYOK:** API keys reside in private in-memory stores; keys are never persisted to disk, localStorage, or exported in diagnostics.
+- **Native Non-Blocking Transport:** Curl-based native HTTP runner in Rust with atomic cancellation registry, strict URL authority allowlists, loopback-only local routing, and 3xx redirect rejection.
+
+### 6. Local Weekly Recap Engine (`@xyeena/recap`)
+- **Zero-Cloud Analytics:** Aggregates local activity from authenticated local runs.
+- **Privacy Guaranteed:** Strips sensitive strings, ignores untrusted providers, and maintains a strict rolling 12-week local archive.
+- **Exportable Artifacts:** Formats clean ASCII markdown summaries and generates standalone 1080×1920 SVG cards.
+
+### 7. Settings, Theming & Accessibility
+- **Appearance:** Low-chroma Dark, crisp Light, and automatic Windows System themes conforming to WCAG AA contrast standards.
+- **Motion Settings:** Full support for `prefers-reduced-motion` and manual toggle to disable spring transitions and lock mascot animation to static pose.
+- **Feedback:** Optional synthesized audio feedback with volume attenuation.
+- **Internationalization:** English and Bahasa Indonesia interface options.
+
+---
+
+## Privacy & Security Architecture
+
+Xyeena Notch is engineered around verifiable security boundaries:
+
+- **No Remote Telemetry or Tracking:** Zero analytics SDKs, tracking pixels, or outbound telemetry pings.
+- **In-Memory Secrets:** BYOK API credentials exist solely in heap memory and vanish when the app closes.
+- **Local Model Isolation:** Local endpoints (Ollama/LM Studio) are strictly enforced to loopback addresses (`localhost` or `127.0.0.1`) and reject cloud credentials.
+- **Read-Only Project Inspection:** Run summaries only read `.xyeena/runs/*/snapshot.json` files from explicitly selected local paths; the app has no write authority over user projects.
+- **Least-Privilege Tauri Manifest:** Tauri IPC permissions are strictly limited to core clipboard read/write and window frame geometry.
+
+See [SECURITY.md](SECURITY.md) for the complete security policy and threat model.
+
+---
+
+## Monorepo Structure
+
+```
+xyeena-notch/
+├── apps/
+│   └── xyeena-island/          # Main Tauri 2 desktop application (Vite + TypeScript + Rust)
+├── packages/
+│   ├── xyn/                   # Canonical Xyn Lion custom element (<xyeena-guardian>)
+│   └── xyeena-recap/          # Weekly recap aggregation engine and SVG generator
+├── examples/
+│   └── guardian-playground/   # Browser-only development harness for mascot testing
+├── docs/                      # Architectural specs, feature matrices, and release guides
+└── scripts/                   # Audit, verification, and packaging automation
 ```
 
-Manual smoke test procedures and verification checklist are documented in [`docs/SMOKE-TEST-WINDOWS.md`](docs/SMOKE-TEST-WINDOWS.md).
+---
 
-See also [`docs/FEATURE_STATUS.md`](docs/FEATURE_STATUS.md) and [`docs/RELEASE_GATES.md`](docs/RELEASE_GATES.md).
+## Windows Prerequisites & Installation
 
-## Upstream and licensing
+### Supported Systems
+- **OS:** Windows 10 (version 1903+) or Windows 11 (64-bit).
+- **Runtime:** Microsoft Edge WebView2 Evergreen Runtime (pre-installed on Windows 11 and updated Windows 10).
 
-Xyeena source, UI, icons, and Guardian art are original. The Island's geometry motion mathematics were adapted from Coucou MIT source, with copyright and permission notices retained in `THIRD_PARTY_NOTICES.md` and `apps/xyeena-island/licenses/COUCOU-CODE-MIT.txt`. No protected Coucou/Mochi characters, names, media, sounds, or icons are distributed.
+### Download & Install
+1. Download the latest `xyeena-island_1.0.0-alpha.1_x64-setup.exe` installer from [GitHub Releases](https://github.com/rzqllh/xyeena-notch/releases).
+2. Run the unsigned NSIS installer. It installs for the current user into `%LOCALAPPDATA%\Programs\xyeena-island` without requiring administrator privileges.
+3. Launch **Xyeena Island** from the Windows Start Menu or system tray.
 
-## Release scope
+> [!NOTE]
+> The prerelease installer is unsigned. Windows SmartScreen may display an informational prompt on initial launch. Check the published SHA-256 checksum against the release notes to verify package integrity.
 
-`1.0.0-alpha.1` is the fixed stabilization target. Multi-agent hooks/approvals, AI chat, live diff, true Teams presence, GitHub/service integrations, and global hotkeys are not implemented in this alpha and remain explicit future release gates.
+---
+
+## Local Development & Build
+
+### Prerequisites
+- [Node.js](https://nodejs.org/) 22.14.0 or newer
+- [Rust](https://rustup.rs/) stable with `x86_64-pc-windows-msvc` toolchain
+- Visual Studio 2022 Build Tools with **Desktop development with C++** workload
+- Windows 10/11 SDK
+
+### Build Commands
+
+```powershell
+# 1. Install locked dependencies across all monorepo workspaces
+npm ci
+
+# 2. Run the complete automated test suite (105 JS/TS tests + 10 Rust tests)
+npm test
+
+# 3. Compile TypeScript, bundle web assets with Vite, and build playground
+npm run build
+
+# 4. Verify toolchain prerequisites
+npm run doctor
+
+# 5. Run version, lockfile, manifest, and license audit
+npm run release:audit
+
+# 6. Run all monorepo release verification gates
+npm run check
+
+# 7. Start the local Tauri development app
+npm run desktop
+```
+
+### Rust Testing & Linting
+
+```powershell
+cd apps/xyeena-island/src-tauri
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+```
+
+---
+
+## Current Release Status & Limitations
+
+- **Release Classification:** `1.0.0-alpha.1` (Experimental Windows Prerelease).
+- **Unimplemented / Deferred Capabilities:**
+  - Automatic Microsoft Teams call detection (Microsoft 365 Graph presence API deferred).
+  - Global system hotkeys (deferred for conflict testing).
+  - Direct shell script execution / automatic agent hook mutation (by design).
+  - Linux and macOS builds (Windows-first alpha).
+
+For detailed status by component, see [docs/FEATURE_STATUS.md](docs/FEATURE_STATUS.md).
+
+---
+
+## Upstream Attribution & License
+
+- **License:** MIT License. See [LICENSE](LICENSE) for terms.
+- **Motion Mathematics Attribution:** Spring dynamics and cubic Bézier timing curves adapted from Coucou under MIT (Copyright © 2026 Louis Raillé). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [licenses/COUCOU-CODE-MIT.txt](licenses/COUCOU-CODE-MIT.txt).
+- **Original Assets:** Xyeena brand, Island interface design, icons, and Xyn Lion Guardian artwork are original works. No Coucou or Mochi proprietary assets, media, sounds, or trademarks are distributed.

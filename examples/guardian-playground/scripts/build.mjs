@@ -6,7 +6,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const app = resolve(here, '..');
 const root = resolve(app, '../..');
 const dist = resolve(app, 'dist');
-const mascot = resolve(root, 'packages/xyeena-mascot/src');
+const mascot = resolve(root, 'packages/xyn/src');
 
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
