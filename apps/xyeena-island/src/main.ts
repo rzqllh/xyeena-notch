@@ -22,6 +22,7 @@ import {mayForwardDecision} from './core/agent-events.mjs';
 import {buildWeeklyRecap,recapText,recapSvg} from '@xyeena/recap';
 import {icon} from './core/icons.mjs';
 import {SUPPORTED_INTEGRATIONS,normalizeGitHubStatus,normalizeIntegrationResult} from './core/integrations.mjs';
+import {DEFAULT_SNIPPETS,cleanDictatedText,expandSnippets,updateDictationStats,FlowDictationController} from './core/flow.mjs';
 import './style.css';
 
 defineXyeenaGuardian();
@@ -282,6 +283,7 @@ root.innerHTML=`
         <button class="settings-pill" type="button" data-section="media">Media</button>
         <button class="settings-pill" type="button" data-section="ai">AI & Agents</button>
         <button class="settings-pill" type="button" data-section="integrations">Integrations</button>
+        <button class="settings-pill" type="button" data-section="flow">Flow Dictation</button>
         <button class="settings-pill" type="button" data-section="recap">Weekly Recap</button>
         <button class="settings-pill" type="button" data-section="about">About & Hotkeys</button>
       </div>
@@ -424,6 +426,54 @@ root.innerHTML=`
         </div>
 
         <div id="integrations-list" style="display:flex;flex-direction:column;gap:4px;">
+        </div>
+      </div>
+
+      <div class="settings-section" id="setsec-flow" hidden>
+        <div class="integration-group-header" style="padding:4px 0 6px;">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">OFFLINE SPEECH &amp; SNIPPETS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">100% on-device speech processing with zero background recording and privacy-preserving text snippets.</p>
+        </div>
+
+        <div class="setting">
+          <span><strong>Offline speech dictation</strong><small>Push-to-talk voice input via Windows Native Speech</small></span>
+          <input type="checkbox" id="setting-flow-enable" aria-label="Enable Flow Dictation">
+        </div>
+        <div class="setting">
+          <span><strong>Push-to-talk mode</strong><small>Listen only while Alt+D is held down</small></span>
+          <input type="checkbox" id="setting-flow-push-to-talk" aria-label="Push to talk" checked>
+        </div>
+        <div class="setting">
+          <span><strong>Filter verbal filler words</strong><small>Remove um, uh, ah, like, and clean punctuation</small></span>
+          <input type="checkbox" id="setting-flow-filter-fillers" aria-label="Filter verbal filler words" checked>
+        </div>
+        <div class="setting">
+          <span><strong>Engine status</strong><small>On-device capability</small></span>
+          <span class="badge-tag" id="flow-engine-badge">Checking...</span>
+        </div>
+        <div class="setting">
+          <span><strong>Global hotkey</strong><small>Windows Push-to-Talk activation</small></span>
+          <span class="badge-tag" id="flow-hotkey-badge">Alt+D</span>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">USAGE STATISTICS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Authentic local session counts and word metrics (never uploaded).</p>
+        </div>
+        <div class="setting" style="justify-content:space-between;">
+          <span><strong>Dictated sessions</strong><small>Total push-to-talk sessions completed</small></span>
+          <span class="badge-tag" id="flow-stat-sessions">0 sessions</span>
+        </div>
+        <div class="setting" style="justify-content:space-between;">
+          <span><strong>Dictated words</strong><small>Total words dictated locally</small></span>
+          <span class="badge-tag" id="flow-stat-words">0 words</span>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">DICTIONARY SNIPPETS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Automatic text expansions applied after transcription.</p>
+        </div>
+        <div id="flow-snippets-list" style="display:flex;flex-direction:column;gap:4px;">
         </div>
       </div>
 
@@ -608,7 +658,10 @@ function syncPreferences(){
   ['#always-top',prefs.alwaysOnTop],['#auto-collapse',prefs.autoCollapse],['#auto-hide',prefs.autoHide],
   ['#run-notifications',prefs.notifyRunChanges],['#reduce-motion',prefs.motion==='reduced'],
   ['#setting-gaze',prefs.gazeEnabled],['#setting-sound',prefs.soundEnabled],
-  ['#setting-recap-enable',prefs.recapEnabled]
+  ['#setting-recap-enable',prefs.recapEnabled],
+  ['#setting-flow-enable',prefs.flowEnabled],
+  ['#setting-flow-push-to-talk',prefs.flowPushToTalk],
+  ['#setting-flow-filter-fillers',prefs.flowFilterFillers]
  ] as [string,boolean][])q<HTMLInputElement>(selector).checked=checked;
  q<HTMLSelectElement>('#theme').value=prefs.theme;
  q<HTMLSelectElement>('#setting-language').value=prefs.language;
@@ -2082,6 +2135,9 @@ for(const pill of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
   if(section==='integrations'){
    void refreshGitHubIntegration();
   }
+  if(section==='flow'){
+   void refreshFlowEngineStatus();
+  }
  });
 }
 
@@ -2627,10 +2683,125 @@ q<HTMLButtonElement>('#github-open-pr-btn')?.addEventListener('click', () => {
  }
 });
 
+// S12: Flow offline dictation and snippets controller
+const flowController = new FlowDictationController();
+let isDictating = false;
+let flowStats = { wordsCount: 0, charactersCount: 0, sessionsCount: 0 };
+
+async function refreshFlowEngineStatus() {
+ if (!isTauri) {
+  const badge = q<HTMLElement>('#flow-engine-badge');
+  if (badge) badge.textContent = 'Browser Simulation';
+  return;
+ }
+ try {
+  const status = await native('get_flow_engine_status') as {
+   available: boolean;
+   engine_name: string;
+   local_only: boolean;
+   hotkey: string;
+   hotkey_registered: boolean;
+  };
+  const badge = q<HTMLElement>('#flow-engine-badge');
+  if (badge) {
+   badge.textContent = status.available ? status.engine_name : 'Unavailable';
+   badge.style.borderColor = status.available ? 'var(--accent)' : '#ef4444';
+   badge.style.color = status.available ? 'var(--accent)' : '#ef4444';
+  }
+  const hk = q<HTMLElement>('#flow-hotkey-badge');
+  if (hk) hk.textContent = status.hotkey || 'Alt+D';
+ } catch (err) {
+  console.error('Failed to get flow engine status:', err);
+ }
+}
+
+function renderFlowSnippets() {
+ const list = q<HTMLElement>('#flow-snippets-list');
+ if (!list) return;
+ list.innerHTML = '';
+ for (const snip of DEFAULT_SNIPPETS) {
+  const row = document.createElement('div');
+  row.className = 'setting';
+  row.style.alignItems = 'center';
+  row.innerHTML = `
+   <span>
+    <strong><code>${snip.trigger}</code></strong>
+    <small>${snip.description || 'Snippet expansion'}</small>
+   </span>
+   <span class="badge-tag" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${snip.replacement}</span>
+  `;
+  list.appendChild(row);
+ }
+}
+
+function updateFlowStatsUI() {
+ const sessEl = q<HTMLElement>('#flow-stat-sessions');
+ if (sessEl) sessEl.textContent = `${flowStats.sessionsCount} session${flowStats.sessionsCount === 1 ? '' : 's'}`;
+ const wordsEl = q<HTMLElement>('#flow-stat-words');
+ if (wordsEl) wordsEl.textContent = `${flowStats.wordsCount} word${flowStats.wordsCount === 1 ? '' : 's'}`;
+}
+
+flowController.setEnabled(Boolean(prefs.flowEnabled));
+flowController.pushToTalk = Boolean(prefs.flowPushToTalk);
+
+const flowEnableCheck = q<HTMLInputElement>('#setting-flow-enable');
+if (flowEnableCheck) {
+ flowEnableCheck.addEventListener('change', e => {
+  const enabled = (e.target as HTMLInputElement).checked;
+  updatePrefs({ flowEnabled: enabled });
+  flowController.setEnabled(enabled);
+ });
+}
+
+const flowPttCheck = q<HTMLInputElement>('#setting-flow-push-to-talk');
+if (flowPttCheck) {
+ flowPttCheck.addEventListener('change', e => {
+  const ptt = (e.target as HTMLInputElement).checked;
+  updatePrefs({ flowPushToTalk: ptt });
+  flowController.pushToTalk = ptt;
+ });
+}
+
+const flowFilterCheck = q<HTMLInputElement>('#setting-flow-filter-fillers');
+if (flowFilterCheck) {
+ flowFilterCheck.addEventListener('change', e => {
+  const filter = (e.target as HTMLInputElement).checked;
+  updatePrefs({ flowFilterFillers: filter });
+ });
+}
+
+// Push-to-talk hotkey handling (Alt+D)
+window.addEventListener('keydown', (e: KeyboardEvent) => {
+ if (e.altKey && (e.key === 'd' || e.key === 'D')) {
+  if (flowController.enabled) {
+   e.preventDefault();
+   if (!isDictating) {
+    isDictating = true;
+    flowController.startListening();
+    playFeedbackSound('tap');
+   }
+  }
+ }
+});
+
+window.addEventListener('keyup', (e: KeyboardEvent) => {
+ if (e.key === 'Alt' || e.key === 'd' || e.key === 'D') {
+  if (flowController.enabled && flowController.pushToTalk && isDictating) {
+   e.preventDefault();
+   isDictating = false;
+   const result = flowController.stopListening('', DEFAULT_SNIPPETS);
+   if (result) {
+    flowStats = updateDictationStats(flowStats, result);
+    updateFlowStatsUI();
+   }
+  }
+ }
+});
+
 async function initialize(){
  const startupProv=q<HTMLSelectElement>('#chat-provider-select')?.value||'gemini';
  onProviderChange(startupProv);
- setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentSessions();renderChatMessages();renderConnectedServicesList();
+ setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentSessions();renderChatMessages();renderConnectedServicesList();renderFlowSnippets();updateFlowStatsUI();
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
   try{

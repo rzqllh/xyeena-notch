@@ -3,6 +3,7 @@
 pub mod agent_ipc;
 mod clipboard;
 pub mod developer;
+pub mod flow;
 pub mod github;
 pub mod integrations;
 mod media;
@@ -1236,6 +1237,7 @@ pub fn run() {
             github::get_github_status,
             integrations::list_supported_integrations,
             integrations::check_integration_status,
+            flow::get_flow_engine_status,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");
