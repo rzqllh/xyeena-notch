@@ -16,11 +16,12 @@
     "check": "npm test && npm run build && npm run release:audit"
   },
   "dependencies": {
+    "@phosphor-icons/core": "^2.1.1",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.0.0",
     "@tauri-apps/plugin-notification": "^2.0.0",
-    "@xyeena/xyn": "*",
-    "@xyeena/recap": "*"
+    "@xyeena/recap": "*",
+    "@xyeena/xyn": "*"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

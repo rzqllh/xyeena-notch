@@ -1,7 +1,14 @@
 //! Xyeena Island MVP: transparent top-edge companion, tray, and opt-in read-only run summaries.
 //! No cursor hooks, agent approval RPC, or autostart. AI requests use opt-in, bounded transport.
+pub mod agent_ipc;
 mod clipboard;
+pub mod companion;
+pub mod developer;
+pub mod flow;
+pub mod github;
+pub mod integrations;
 mod media;
+pub mod voice;
 mod volume;
 use std::fs;
 use std::path::Path;
@@ -365,10 +372,12 @@ struct NativeAiPayload {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct NativeAiResponse {
-    status: u16,
-    body: String,
-    ok: bool,
+pub struct NativeAiResponse {
+    pub status: u16,
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, String>,
+    pub body: String,
+    pub ok: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -697,6 +706,7 @@ fn execute_native_ai_request(
     ));
     config.push_str("max-time = 60\n");
     config.push_str("max-filesize = 2097152\n");
+    config.push_str("header = \"Expect:\"\n");
     for (k, v) in &payload.headers {
         config.push_str(&format!(
             "header = \"{}: {}\"\n",
@@ -745,32 +755,84 @@ fn execute_native_ai_request(
     let output =
         output.map_err(|e| format!("Native transport process failed or was terminated: {e}"))?;
     let raw = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
-    let mut lines = raw.lines();
-    let status = lines
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|code| code.parse::<u16>().ok())
-        .unwrap_or(if output.status.success() { 200 } else { 500 });
+    parse_curl_http_response(&raw, output.status.success(), &stderr)
+}
 
-    if (300..400).contains(&status) {
+pub fn parse_curl_http_response(
+    raw: &str,
+    success: bool,
+    stderr: &str,
+) -> Result<NativeAiResponse, String> {
+    if raw.trim().is_empty() {
+        let err_msg = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else {
+            "Empty response from native AI transport".to_string()
+        };
+        return Ok(NativeAiResponse {
+            status: if success { 200 } else { 500 },
+            headers: std::collections::HashMap::new(),
+            body: err_msg,
+            ok: false,
+        });
+    }
+
+    let mut remaining = raw;
+    let mut final_status = if success { 200 } else { 500 };
+    let mut final_headers = std::collections::HashMap::new();
+
+    loop {
+        let (header_part, after) = if let Some(idx) = remaining.find("\r\n\r\n") {
+            (&remaining[..idx], &remaining[idx + 4..])
+        } else if let Some(idx) = remaining.find("\n\n") {
+            (&remaining[..idx], &remaining[idx + 2..])
+        } else {
+            break;
+        };
+
+        let mut lines = header_part.lines();
+        let status_line = lines.next().unwrap_or("");
+        if let Some(status_code) = status_line
+            .split_whitespace()
+            .nth(1)
+            .and_then(|code| code.parse::<u16>().ok())
+        {
+            if (100..200).contains(&status_code) {
+                remaining = after;
+                continue;
+            }
+            final_status = status_code;
+            final_headers.clear();
+            for line in lines {
+                if let Some((k, v)) = line.split_once(':') {
+                    final_headers.insert(k.trim().to_ascii_lowercase(), v.trim().to_string());
+                }
+            }
+            remaining = after;
+            break;
+        } else {
+            break;
+        }
+    }
+
+    if (300..400).contains(&final_status) {
         return Err(format!(
-            "Redirects are forbidden for native AI transport (status {status})"
+            "Redirects are forbidden for native AI transport (status {final_status})"
         ));
     }
 
-    let body = if let Some(idx) = raw.find("\r\n\r\n") {
-        raw[idx + 4..].to_string()
-    } else if let Some(idx) = raw.find("\n\n") {
-        raw[idx + 2..].to_string()
-    } else {
-        raw.to_string()
-    };
+    let mut body = remaining.to_string();
+    if body.is_empty() && !success && !stderr.trim().is_empty() {
+        body = stderr.trim().to_string();
+    }
 
     Ok(NativeAiResponse {
-        status,
-        ok: (200..300).contains(&status),
+        status: final_status,
+        headers: final_headers,
         body,
+        ok: (200..300).contains(&final_status),
     })
 }
 
@@ -914,6 +976,147 @@ fn read_xyeena_runs(project_root: String) -> Result<Vec<RunSummary>, String> {
     Ok(result)
 }
 
+#[tauri::command]
+fn get_agent_ipc_pipe_name() -> String {
+    agent_ipc::get_pipe_name()
+}
+
+#[tauri::command]
+fn get_agent_sessions(
+    registry: tauri::State<'_, agent_ipc::SharedSessionRegistry>,
+) -> Vec<agent_ipc::AgentSession> {
+    registry.all_sessions()
+}
+
+#[tauri::command]
+fn detect_agent_providers() -> Vec<(
+    agent_ipc::provider::ProviderDef,
+    agent_ipc::provider::DetectionResult,
+)> {
+    agent_ipc::provider::known_providers()
+        .into_iter()
+        .map(|def| {
+            let res = agent_ipc::provider::detect_provider(&def);
+            (def, res)
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn preview_provider_hooks(
+    provider_id: String,
+    workspace_path: Option<String>,
+) -> Result<agent_ipc::provider::HookInstallPreview, String> {
+    if provider_id != "antigravity" {
+        return Err(format!(
+            "Provider '{provider_id}' is not yet supported for hook previews"
+        ));
+    }
+    let config_path = if let Some(ws) = workspace_path {
+        std::path::PathBuf::from(ws)
+            .join(".agents")
+            .join("hooks.json")
+    } else {
+        return Err("A workspace root path is required for workspace hook preview".into());
+    };
+    let relay_exe = agent_ipc::provider::resolve_relay_exe_path().map_err(|e| e.to_string())?;
+    agent_ipc::provider::preview_agy_install(
+        &config_path,
+        agent_ipc::provider::ConfigScope::Workspace,
+        &relay_exe.to_string_lossy(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn install_provider_hooks(
+    provider_id: String,
+    workspace_path: Option<String>,
+    confirmed: bool,
+    expected_relay_path: Option<String>,
+) -> Result<agent_ipc::provider::HookInstallOutcome, String> {
+    if !confirmed {
+        return Err("Explicit user confirmation is required before installing hooks".into());
+    }
+    if provider_id != "antigravity" {
+        return Err(format!(
+            "Provider '{provider_id}' is not yet supported for hook installation"
+        ));
+    }
+    let config_path = if let Some(ws) = workspace_path {
+        let p = std::path::PathBuf::from(ws).join(".agents");
+        let _ = std::fs::create_dir_all(&p);
+        p.join("hooks.json")
+    } else {
+        return Err("A workspace root path is required for workspace hook installation".into());
+    };
+    let relay_exe = agent_ipc::provider::resolve_relay_exe_path().map_err(|e| e.to_string())?;
+    if let Some(expected) = expected_relay_path {
+        let resolved_str = relay_exe.to_string_lossy();
+        if resolved_str != expected {
+            return Err(format!(
+                "Relay path mismatch: preview was '{expected}', resolved '{resolved_str}'"
+            ));
+        }
+    }
+    agent_ipc::provider::install_agy_hooks(&config_path, &relay_exe.to_string_lossy())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn uninstall_provider_hooks(
+    provider_id: String,
+    workspace_path: Option<String>,
+) -> Result<agent_ipc::provider::HookInstallOutcome, String> {
+    if provider_id != "antigravity" {
+        return Err(format!(
+            "Provider '{provider_id}' is not yet supported for hook uninstallation"
+        ));
+    }
+    let config_path = if let Some(ws) = workspace_path {
+        std::path::PathBuf::from(ws)
+            .join(".agents")
+            .join("hooks.json")
+    } else {
+        return Err("A workspace root path is required for workspace hook uninstallation".into());
+    };
+    agent_ipc::provider::uninstall_agy_hooks(&config_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_pending_approvals(
+    approval_registry: tauri::State<'_, agent_ipc::SharedApprovalRegistry>,
+) -> Vec<agent_ipc::ApprovalSnapshot> {
+    approval_registry.pending_snapshots()
+}
+
+#[derive(serde::Deserialize)]
+struct SubmitApprovalPayload {
+    request_id: String,
+    auth_token: String,
+    action_fingerprint: String,
+    decision: agent_ipc::ApprovalDecision,
+}
+
+#[tauri::command]
+fn submit_approval_decision(
+    payload: SubmitApprovalPayload,
+    approval_registry: tauri::State<'_, agent_ipc::SharedApprovalRegistry>,
+    app: tauri::AppHandle,
+) -> Result<agent_ipc::PendingApproval, String> {
+    let resolved = approval_registry
+        .submit_decision(
+            &payload.request_id,
+            &payload.auth_token,
+            &payload.action_fingerprint,
+            payload.decision,
+        )
+        .map_err(|e| e.to_string())?;
+
+    let _ = app.emit("island:approval-resolved", &resolved);
+    Ok(resolved)
+}
+
 fn show_island(app: &tauri::AppHandle, requested: &str) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = set_mode(&window, Mode::Compact);
@@ -929,7 +1132,23 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AiProcessRegistry::default())
+        .manage(agent_ipc::SharedSessionRegistry::new())
+        .manage(agent_ipc::SharedApprovalRegistry::new())
         .setup(|app| {
+            let registry = app
+                .state::<agent_ipc::SharedSessionRegistry>()
+                .inner()
+                .clone();
+            let approval_registry = app
+                .state::<agent_ipc::SharedApprovalRegistry>()
+                .inner()
+                .clone();
+            let server_handle = agent_ipc::start_agent_pipe_server(
+                app.handle().clone(),
+                registry,
+                approval_registry,
+            );
+            app.manage(std::sync::Mutex::new(server_handle));
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| std::io::Error::other("Main Island window missing"))?;
@@ -1001,10 +1220,36 @@ pub fn run() {
             read_island_cursor,
             read_native_clipboard,
             write_native_image,
+            clipboard::get_clipboard_sequence_number,
             save_file_to_downloads,
             read_dropped_file,
             native_ai_request,
             cancel_native_ai_request,
+            get_agent_ipc_pipe_name,
+            get_agent_sessions,
+            detect_agent_providers,
+            preview_provider_hooks,
+            install_provider_hooks,
+            uninstall_provider_hooks,
+            get_pending_approvals,
+            submit_approval_decision,
+            developer::get_workspace_diff,
+            developer::open_in_editor,
+            developer::open_in_terminal,
+            github::get_github_status,
+            integrations::list_supported_integrations,
+            integrations::check_integration_status,
+            flow::get_flow_engine_status,
+            voice::get_microphone_status,
+            voice::start_consented_recording,
+            voice::stop_consented_recording,
+            voice::parse_voice_intent,
+            companion::get_companion_state,
+            companion::request_companion_pairing,
+            companion::confirm_companion_pairing,
+            companion::revoke_companion_device,
+            companion::verify_mobile_approval_decision,
+            companion::execute_mobile_approval_decision,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");
@@ -1192,5 +1437,57 @@ mod tests {
         assert!(registered);
         registry.unregister("req-normal");
         assert!(!registry.is_cancelled("req-normal"));
+    }
+
+    #[test]
+    fn test_parse_curl_http_response_handles_100_continue_and_preserves_second_status() {
+        use super::parse_curl_http_response;
+        let raw = "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello Xyn!\"}]}}]}";
+        let res = parse_curl_http_response(raw, true, "").expect("Must parse successfully");
+        assert_eq!(res.status, 200);
+        assert!(res.ok);
+        assert_eq!(
+            res.headers.get("content-type").map(|s| s.as_str()),
+            Some("application/json")
+        );
+        assert_eq!(
+            res.body,
+            "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello Xyn!\"}]}}]}"
+        );
+    }
+
+    #[test]
+    fn test_parse_curl_http_response_429_with_retry_after_headers() {
+        use super::parse_curl_http_response;
+        let raw = "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 12\r\nContent-Type: application/json\r\n\r\n{\"error\":{\"message\":\"Rate limited\"}}";
+        let res = parse_curl_http_response(raw, true, "").expect("Must parse");
+        assert_eq!(res.status, 429);
+        assert!(!res.ok);
+        assert_eq!(
+            res.headers.get("retry-after").map(|s| s.as_str()),
+            Some("12")
+        );
+        assert!(res.body.contains("Rate limited"));
+    }
+
+    #[test]
+    fn test_parse_curl_http_response_empty_stdout_falls_back_to_stderr() {
+        use super::parse_curl_http_response;
+        let res = parse_curl_http_response(
+            "",
+            false,
+            "curl: (7) Failed to connect to 127.0.0.1 port 11434: Connection refused",
+        )
+        .expect("Must parse fallback");
+        assert_eq!(res.status, 500);
+        assert!(!res.ok);
+        assert!(res.body.contains("Connection refused"));
+    }
+
+    #[test]
+    fn test_parse_curl_http_response_rejects_redirects() {
+        use super::parse_curl_http_response;
+        let raw = "HTTP/1.1 302 Found\r\nLocation: https://malicious.example\r\n\r\n";
+        assert!(parse_curl_http_response(raw, true, "").is_err());
     }
 }

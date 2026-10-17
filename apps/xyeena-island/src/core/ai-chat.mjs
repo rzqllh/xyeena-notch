@@ -688,6 +688,7 @@ export class ChatEngine {
     let msgs = [];
     for (const m of this.messages) {
       if (m.role === 'system') { if (m.content) sys.push(m.content); continue; }
+      if (m.isError || m.role === 'error') continue;
       if (!m.content) continue;
       const role = m.role === 'assistant' ? 'assistant' : 'user';
       const last = msgs[msgs.length - 1];
@@ -703,7 +704,11 @@ export class ChatEngine {
       start = i;
     }
     msgs = msgs.slice(start);
-    while (msgs.length > 1 && msgs[0].role !== 'user') msgs.shift(); // providers expect a user-first history
+    while (msgs.length > 0 && msgs[0].role !== 'user') msgs.shift(); // providers require a user-first history
+    while (msgs.length > 0 && msgs[msgs.length - 1].role !== 'user') msgs.pop(); // providers require a user-last completion prompt
+    if (msgs.length === 0) {
+      msgs.push({ role: 'user', content: 'Hello' });
+    }
     return { system: sys.join('\n\n'), messages: msgs };
   }
 
@@ -814,6 +819,8 @@ export class ChatEngine {
       };
 
       const attempt = async () => {
+        fullText = '';
+        thinking = '';
         const req = adapter.buildRequest(ctx);
         const base = { requestId, method: 'POST', url: req.url, headers: req.headers, body: JSON.stringify(req.body), signal, label: provider };
 
@@ -847,8 +854,8 @@ export class ChatEngine {
       this.lastResult = { text: msg.content, usage: state.usage, stopReason: state.stopReason, model, provider, latencyMs: Date.now() - started, thinking };
       return msg.content;
     } catch (err) {
-      // keep what streamed in (stop / mid-stream failure) unless a newer request took over
-      if (fullText.trim() && this.activeRequestId === requestId) {
+      // keep what streamed in (stop / mid-stream failure) unless a newer request took over or aborted
+      if (fullText.trim() && this.activeRequestId === requestId && !isAbortError(err)) {
         this.addAssistantReply(fullText, { partial: true, model, provider });
       }
       throw err;

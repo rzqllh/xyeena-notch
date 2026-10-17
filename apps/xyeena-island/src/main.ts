@@ -11,14 +11,22 @@ import {GeometryMotion,validFrame} from './core/motion.mjs';
 import {DEFAULT_SETTINGS,STORAGE_KEY,sanitizeSettings} from './core/settings.mjs';
 import {normalizeRuns} from './core/run-summaries.mjs';
 import {normalizeSessions,pickSession,sourceLabel} from './core/media-sessions.mjs';
-import {normalizeMeeting,elapsedMeeting,MEETING_KEY} from './core/meeting.mjs';
+import {sessionStore} from './core/session-store.mjs';
+import type {NativeAgentEvent,NativeSessionSnapshot,MonitoredSession,ApprovalSnapshot} from './core/session-store.d.mts';
 import {RunChangeFeed} from './core/notifications.mjs';
 import {chooseGuardianState,toMascotState,guardianStatus,defineXyeenaGuardian} from './core/mascot.mjs';
 import {inspectFile,convertImageDataUrl} from './core/files.mjs';
-import {ChatEngine,AI_PROVIDERS,renderSafeMarkdown} from './core/ai-chat.mjs';
+import {ChatEngine,AI_PROVIDERS,renderSafeMarkdown,ApiError} from './core/ai-chat.mjs';
 import {KNOWN_ADAPTERS,getAdapter,normalizeSessionSnapshot} from './core/agent-adapters.mjs';
 import {mayForwardDecision} from './core/agent-events.mjs';
 import {buildWeeklyRecap,recapText,recapSvg} from '@xyeena/recap';
+import {icon} from './core/icons.mjs';
+import {SUPPORTED_INTEGRATIONS,normalizeGitHubStatus,normalizeIntegrationResult} from './core/integrations.mjs';
+import {DEFAULT_SNIPPETS,cleanDictatedText,expandSnippets,updateDictationStats,FlowDictationController} from './core/flow.mjs';
+import {NotetakerController} from './core/notetaker.mjs';
+import {CompanionController} from './core/companion.mjs';
+import {parseVoiceIntent,executeVoiceAction} from './core/voice-commands.mjs';
+import {t, getDictionary} from './core/i18n.mjs';
 import './style.css';
 
 defineXyeenaGuardian();
@@ -38,26 +46,7 @@ type Media=ReturnType<typeof pickSession>;
 const root=document.querySelector<HTMLElement>('#app')!;
 const isTauri='__TAURI_INTERNALS__' in window;
 document.body.dataset.tauri=String(isTauri);
-function icon(name:string,size=18){
- const glyphs:Record<string,string>={
-  logo:'M12 2L4 6v6c0 5.5 3.8 10.7 8 12 4.2-1.3 8-6.5 8-12V6l-8-4z',
-  shield:'M12 2L4 6v6c0 5.5 3.8 10.7 8 12 4.2-1.3 8-6.5 8-12V6l-8-4z',
-  search:'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm10 2-4.35-4.35',
-  chevron:'m6 9 6 6 6-6',
-  pin:'M12 17v5M5 17h14l-2-7H7l-2 7zM9 10V3h6v7',
-  music:'M9 18V5l12-2v13M9 18c0 2.2-2.7 4-6 4s-6-1.8-6-4 2.7-4 6-4m12-2c0 2.2-2.7 4-6 4s-6-1.8-6-4 2.7-4 6-4',
-  play:'m9 6 10 6-10 6z',pause:'M8 5v14M16 5v14',prev:'M6 5v14M19 5 8 12l11 7V5z',next:'M18 5v14M5 5l11 7-11 7V5z',
-  bell:'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
-  sliders:'M4 7h9m4 0h3M4 17h3m4 0h9M13 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0M7 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0',
-  activity:'M3 12h4l3-6 4 12 3-6h4',clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7v5l4 3',
-  folder:'M3 6h7l2 2h9v12H3V6z',refresh:'M20 7v5h-5M4 17v-5h5M5.6 9A7 7 0 0 1 18 7l2 5M4 12l2 5a7 7 0 0 0 12.3-2',
-  alert:'M12 9v4m0 4h.01M12 2 2 21h20L12 2z',copy:'M9 9h10v12H9z M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1',
-  volume:'M4 9h4l5-4v14l-5-4H4zM17 8a6 6 0 0 1 0 8',mute:'M4 9h4l5-4v14l-5-4H4zM17 9l5 6m0-6-5 6',
-  headset:'M4 15v-3a8 8 0 0 1 16 0v3M4 15h3v6H5a2 2 0 0 1-2-2v-2a2 2 0 0 1 1-2M20 15h-3v6h2a2 2 0 0 0 2-2v-2a2 2 0 0 0-1-2',
-  send:'M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z',check:'m5 12 5 5L20 7',
- };
- return `<svg aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round"><path d="${glyphs[name]||glyphs.logo}"/></svg>`;
-}
+
 
 root.innerHTML=`
 <div class="island" data-mode="compact" data-panel="now" role="region" aria-label="Xyeena Island">
@@ -80,7 +69,7 @@ root.innerHTML=`
      <xyeena-guardian id="compact-guardian" size="84" interactive animated></xyeena-guardian>
    </span>
    <div class="compact-copy">
-     <div class="compact-meta"><strong class="brand-title">XYEENA</strong><span class="compact-dot" aria-hidden="true"></span><span class="compact-tag" id="compact-status-tag">Ready</span></div>
+     <div class="compact-meta"><strong class="brand-title">XYEENA</strong><span class="compact-dot" aria-hidden="true"></span><span class="compact-tag" id="compact-status-tag">Ready</span><span class="badge-tag" id="compact-mic-indicator" style="background:#ef4444;color:#fff;font-size:9px;padding:1px 5px;margin-left:4px;" hidden>REC</span></div>
      <small id="compact-context">Desktop Companion</small>
    </div>
    <div class="compact-actions">
@@ -116,14 +105,14 @@ root.innerHTML=`
     <span class="mascot-slot mascot-header" id="header-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
       <xyeena-guardian id="header-guardian" size="54" interactive animated></xyeena-guardian>
     </span>
-    <div class="header-titles"><strong>Xyeena Island</strong><span class="header-status" id="header-status">On device</span></div>
+    <div class="header-titles"><strong>Xyeena Island</strong><span class="header-status" id="header-status">On device</span><span class="badge-tag" id="header-mic-indicator" style="background:#ef4444;color:#fff;font-size:9px;padding:1px 5px;margin-left:4px;" hidden>MIC LIVE</span></div>
     <button class="icon-btn pin" type="button" aria-label="Pin Island" aria-pressed="false" title="Keep expanded">${icon('pin',16)}</button>
     <button class="icon-btn collapse" type="button" aria-label="Collapse Island" title="Collapse">${icon('chevron',18)}</button>
   </header>
   <nav class="navigation" role="tablist" aria-label="Island sections">
    <button class="nav-tab current" role="tab" data-panel="now" aria-controls="page-now" aria-selected="true" type="button">Now</button>
    <button class="nav-tab" role="tab" data-panel="clipboard" aria-controls="page-clipboard" aria-selected="false" type="button">Clips</button>
-   <button class="nav-tab" role="tab" data-panel="activity" aria-controls="page-activity" aria-selected="false" type="button">Activity <span class="nav-unread" id="unread" hidden></span></button>
+   <button class="nav-tab" role="tab" data-panel="activity" aria-controls="page-activity" aria-selected="false" type="button">Agents <span class="nav-unread" id="unread" hidden></span></button>
    <button class="nav-tab" role="tab" data-panel="chat" aria-controls="page-chat" aria-selected="false" type="button">Chat</button>
    <button class="nav-tab nav-settings" role="tab" data-panel="preferences" aria-controls="page-preferences" aria-selected="false" type="button">${icon('sliders',15)} Settings</button>
   </nav>
@@ -149,17 +138,6 @@ root.innerHTML=`
      <div id="media-feedback" class="feedback" role="status">Volume controls Windows default output, not individual apps.</div>
     </div>
     <div class="source-line"><label for="media-choice">Playback source</label><select id="media-choice" aria-label="Windows playback source"><option value="">No compatible source</option></select></div>
-    <div class="meeting-card" id="meeting-card">
-      <div class="meeting-header">
-        <div>
-          <span class="kicker">CALLS & MEETINGS</span>
-          <strong id="meeting-summary">Not tracking a meeting</strong>
-          <span id="meeting-clock" class="clock"></span>
-        </div>
-        <button class="meeting-button" id="meeting-action" type="button">Start</button>
-      </div>
-      <p class="explain" id="meeting-explain">Manual meeting timer. Teams presence requires Microsoft 365 permission; playback APIs do not detect calls.</p>
-    </div>
     <div class="file-card" id="file-card" hidden>
      <div class="file-card-header">
        <img class="file-card-thumb" id="file-thumb" src="" alt="File preview" hidden>
@@ -173,6 +151,8 @@ root.innerHTML=`
        <button class="file-action-btn file-action-accent" id="file-convert-webp" type="button">Convert to WebP</button>
        <button class="file-action-btn" id="file-convert-png" type="button">PNG</button>
        <button class="file-action-btn" id="file-convert-jpeg" type="button">JPEG</button>
+       <button class="file-action-btn" id="file-open-editor" type="button" hidden>Open in Editor</button>
+       <button class="file-action-btn" id="file-ask-xyn" type="button">Ask Xyn</button>
        <button class="file-action-btn" id="file-copy-info" type="button">Copy Info</button>
      </div>
     </div>
@@ -180,18 +160,77 @@ root.innerHTML=`
     <section class="page" id="page-clipboard" role="tabpanel" hidden>
       <div class="section-heading"><div><span class="kicker" id="clip-kicker">ON-DEVICE CLIPBOARD</span><h1 id="clip-heading">Clipboard History</h1></div><div class="clip-actions"><button id="clip-clear-unpinned" class="minor-btn" type="button">Clear unpinned</button><button id="clip-clear" class="minor-btn" type="button">Clear all</button></div></div>
       <p class="explain clip-warning" id="clip-explain">In-memory history for text, images, and file lists. Sensitive tokens are best-effort filtered. Clears on exit for privacy.</p>
-      <div class="clip-controls"><button id="clip-toggle" class="meeting-button" aria-pressed="false" type="button">Enable capture</button><button id="clip-read" class="minor-btn" type="button">Read once</button><span id="clip-state" role="status">Capture off</span></div>
+      <div class="clip-controls"><button id="clip-toggle" class="toggle-btn" aria-pressed="false" type="button">Enable capture</button><button id="clip-read" class="minor-btn" type="button">Read once</button><span id="clip-state" role="status">Capture off</span></div>
       <div class="clip-search-bar">${icon('search',14)}<input id="clip-search" type="search" placeholder="Search clipboard history..." aria-label="Search clips"></div>
       <div id="clip-list" class="clip-list" aria-label="Clipboard history"></div>
     </section>
     <section class="page" id="page-activity" role="tabpanel" hidden>
-     <div class="section-heading"><div><span class="kicker" id="act-kicker">ON-DEVICE HISTORY</span><h1 id="act-heading">Activity & Agents</h1></div><button class="minor-btn" id="refresh-activity-btn" type="button">Refresh</button></div>
+     <div class="section-heading"><div><span class="kicker" id="act-kicker">CODING AGENTS</span><h1 id="act-heading">Agent Sessions</h1></div><button class="minor-btn" id="refresh-activity-btn" type="button">${icon('refresh',14)} Refresh</button></div>
      <div class="agent-pills-row" id="agent-pills" aria-label="Detected agent sessions"></div>
-     <div id="agent-approval" class="agent-approval-box" hidden>
-       <strong id="approval-title">Agent Approval Notice</strong>
-       <p class="explain" id="approval-prompt">Live agent consent interception requires an authenticated host bridge. External agents execute permissions in their own terminal sessions.</p>
+     <div id="session-detail-card" class="session-detail-card" hidden>
+       <div class="session-card-header">
+         <div class="session-provider-info">
+           <span id="session-provider-icon"></span>
+           <strong id="session-provider-name">Agent</strong>
+           <span id="session-status-dot" class="status-dot"></span>
+           <span id="session-status-text" class="status-text">Thinking</span>
+         </div>
+         <span id="session-workspace" class="session-workspace-badge"></span>
+       </div>
+       <div class="session-nav-actions" id="session-nav-actions">
+         <button id="btn-open-editor" class="file-action-btn" type="button" title="Open workspace in Editor">${icon('folder',13)} Editor</button>
+         <button id="btn-open-terminal" class="file-action-btn" type="button" title="Open terminal in workspace">${icon('activity',13)} Terminal</button>
+         <button id="btn-workspace-diff" class="file-action-btn" type="button" title="Preview workspace git diff">${icon('copy',13)} Diff</button>
+       </div>
+       <div id="session-telemetry-bar" class="session-telemetry-bar">
+         <span id="session-telemetry-duration" class="telemetry-pill">0s</span>
+         <span id="session-telemetry-events" class="telemetry-pill">0 events</span>
+         <span id="session-telemetry-files" class="telemetry-pill">0 files</span>
+         <span id="session-telemetry-usage" class="telemetry-pill">Telemetry: Live</span>
+       </div>
+       <div id="session-files-ticker" class="session-files-ticker" hidden>
+         <div class="ticker-header">
+           <span>${icon('folder',12)} Touched Files (<span id="session-files-count">0</span>)</span>
+         </div>
+         <div id="session-files-list" class="session-files-list"></div>
+       </div>
+       <div id="session-diff-drawer" class="session-diff-drawer" hidden>
+         <div class="diff-drawer-header">
+           <span id="diff-drawer-title">Git Diff</span>
+           <button id="btn-close-diff" class="session-file-btn" type="button">Close</button>
+         </div>
+         <div id="diff-drawer-warning" class="diff-drawer-warning" hidden></div>
+         <pre id="diff-drawer-content" class="diff-drawer-content"></pre>
+       </div>
+        <div id="session-approval-box" class="session-approval-box" hidden>
+          <div class="session-approval-header">
+            <span class="session-approval-badge">${icon('shield',14)} Approval Requested</span>
+            <span id="session-approval-time" class="clock"></span>
+          </div>
+          <div id="session-approval-question" class="session-approval-question"></div>
+          <div id="session-approval-options" class="session-approval-options" hidden></div>
+          <div class="session-approval-actions" id="session-approval-actions">
+            <button id="btn-approval-allow-once" class="file-action-btn file-action-accent" type="button">Allow Once</button>
+            <button id="btn-approval-deny" class="file-action-btn file-action-danger" type="button">Deny</button>
+          </div>
+          <p id="session-approval-status" class="session-approval-status" role="status"></p>
+        </div>
+       <div id="session-tool-box" class="session-tool-box" hidden>
+         <div class="session-tool-header">
+           <span id="session-tool-name">tool</span>
+           <span id="session-tool-time" class="clock"></span>
+         </div>
+         <div id="session-tool-command" class="session-tool-command"></div>
+       </div>
+       <div id="session-events-timeline" class="session-events-timeline"></div>
      </div>
-     <p class="explain" id="alerts-explain">Real local events, agent sessions, and Xyeena run changes appear here.</p>
+     <div id="no-sessions-card" class="no-sessions-card">
+       <span aria-hidden="true">${icon('activity', 28)}</span>
+       <strong>No Active Agent Sessions</strong>
+       <p>Waiting for events from Antigravity IDE, Claude Code, or local CLI agents over Windows Named Pipe.</p>
+       <button class="minor-btn" id="btn-open-hook-settings" type="button">${icon('sliders', 14)} Configure Provider Hooks</button>
+     </div>
+     <p class="explain" id="alerts-explain">Real local events, agent sessions, and toast alerts appear here.</p>
      <div class="history alert-history" id="alerts"></div>
      <details class="project-details" id="project-details">
        <summary id="proj-summary">Connect Xyeena Agentic project <span>Optional</span></summary>
@@ -248,6 +287,9 @@ root.innerHTML=`
         <button class="settings-pill" type="button" data-section="media">Media</button>
         <button class="settings-pill" type="button" data-section="ai">AI & Agents</button>
         <button class="settings-pill" type="button" data-section="integrations">Integrations</button>
+        <button class="settings-pill" type="button" data-section="flow">Flow Dictation</button>
+        <button class="settings-pill" type="button" data-section="voice">Voice &amp; Notes</button>
+        <button class="settings-pill" type="button" data-section="companion">Android Companion</button>
         <button class="settings-pill" type="button" data-section="recap">Weekly Recap</button>
         <button class="settings-pill" type="button" data-section="about">About & Hotkeys</button>
       </div>
@@ -288,12 +330,267 @@ root.innerHTML=`
         <div class="setting"><span><strong>Local server endpoint</strong><small>Ollama / LM Studio URL</small></span><input type="text" id="setting-ai-local-url" value="http://localhost:11434" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
         <div class="setting"><span><strong>Provider API Key (BYOK)</strong><small>Session memory; never logged or exported</small></span><input type="password" id="setting-ai-api-key" placeholder="Enter API key" autocomplete="off" spellcheck="false" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
         <div class="setting"><span><strong>Credential safety</strong><small>In-memory session key (opt-in BYOK)</small></span><span class="badge-tag" id="badge-ai-creds">Session Memory</span></div>
-        <div class="setting"><span><strong>Agent access boundary</strong><small>Read-only IPC snapshots; no hook writing</small></span><span class="badge-tag">Read-only IPC</span></div>
+
+        <div class="installer-section-header">
+          <div>
+            <strong class="installer-heading">Agent Provider Hook Installer</strong>
+            <small class="installer-sub">Opt-in local hook configuration for Antigravity &amp; IDE agents</small>
+          </div>
+          <button class="minor-btn" id="btn-detect-providers" type="button">Detect Providers</button>
+        </div>
+        <div class="setting">
+          <span><strong>Target Provider</strong><small id="provider-detect-detail">Detecting installed agents...</small></span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="installer-provider-select" aria-label="Target Provider">
+              <option value="antigravity">Antigravity (AGY)</option>
+              <option value="claude-code" disabled>Claude Code (Coming soon)</option>
+              <option value="gemini-cli" disabled>Gemini CLI (Unverified)</option>
+            </select>
+            <span class="badge-tag" id="provider-detect-badge">Checking</span>
+          </div>
+        </div>
+        <div class="setting" style="flex-direction:column;align-items:stretch;gap:6px">
+          <span><strong>Workspace Root Path</strong><small>Directory containing .agents/hooks.json</small></span>
+          <div class="path-row">
+            <label class="path-wrap">
+              ${icon('folder',16)}
+              <input id="installer-workspace-path" type="text" placeholder="C:\\path\\to\\workspace" spellcheck="false" autocomplete="off" />
+            </label>
+            <button class="action-btn" id="btn-preview-hooks" type="button">Preview</button>
+          </div>
+        </div>
+
+        <div id="installer-preview-card" class="installer-preview-card" hidden>
+          <div class="installer-preview-header">
+            <strong id="installer-action-badge">Install Preview</strong>
+            <span id="installer-scope-badge" class="badge-tag">Workspace</span>
+          </div>
+          <div class="installer-preview-meta">
+            <div><strong>Target:</strong> <span id="installer-target-path">.agents/hooks.json</span></div>
+            <div><strong>Backup:</strong> <span id="installer-backup-path">.agents/hooks.json.xyeena-notch.bak</span></div>
+            <div><strong>Preserved groups:</strong> <span id="installer-preserved-groups">None</span></div>
+          </div>
+          <div id="installer-warnings-box" class="installer-warning" hidden></div>
+          <div class="installer-diff-wrap">
+            <span class="installer-diff-label">Configuration to apply (xyeena-notch):</span>
+            <pre id="installer-diff-text" class="installer-diff-box"></pre>
+          </div>
+          <div class="installer-consent-row">
+            <label class="installer-consent-label">
+              <input type="checkbox" id="installer-consent-check" aria-label="Approve writing xyeena-notch hook group" />
+              <span>I approve writing only the <code>xyeena-notch</code> group to this configuration file</span>
+            </label>
+          </div>
+          <div class="installer-btn-row">
+            <button class="action-btn" id="btn-install-hooks" type="button" disabled>Install Hooks</button>
+            <button class="minor-btn" id="btn-uninstall-hooks" type="button">Uninstall Hooks</button>
+          </div>
+        </div>
+        <p class="status-line" id="installer-status-line" role="status"></p>
       </div>
 
       <div class="settings-section" id="setsec-integrations" hidden>
-        <div class="setting"><span><strong>CLI Service Integrations</strong><small>GitHub, Vercel, n8n, Notion</small></span><span class="badge-tag">Configured via CLI</span></div>
-        <p class="explain" style="padding:6px 0">Service integrations connect securely through the Xyeena CLI using environment tokens. The desktop Island maintains a read-only session boundary without storing external OAuth credentials.</p>
+        <div class="integration-group-header" style="padding:4px 0 6px;">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">GITHUB WORKSPACE REPOSITORY</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Read-only pull requests, status check rollups, and recent GitHub Actions workflows.</p>
+        </div>
+
+        <div class="setting" style="align-items:center;">
+          <span>
+            <strong id="github-repo-slug">Repository: inspecting...</strong>
+            <small id="github-branch-name" style="display:block;">Branch: —</small>
+          </span>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button class="minor-btn" id="github-refresh-btn" type="button">Refresh</button>
+            <button class="minor-btn" id="github-open-repo-btn" type="button" hidden>Open Repo</button>
+          </div>
+        </div>
+
+        <div id="github-pr-container" style="padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:var(--r-md,8px);margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:11px;font-weight:600;color:var(--text);" id="github-pr-title">No active pull request</span>
+            <span class="badge-tag" id="github-pr-badge" hidden>Draft</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <small id="github-pr-meta" style="color:var(--sub);font-size:10px;">Checks: — · Review: —</small>
+            <button class="minor-btn" id="github-open-pr-btn" type="button" style="padding:2px 8px;font-size:10px;" hidden>View PR</button>
+          </div>
+        </div>
+
+        <div id="github-ci-container" style="padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:var(--r-md,8px);margin-bottom:8px;">
+          <div style="font-size:10px;font-weight:600;color:var(--sub);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Recent CI Workflow Runs</div>
+          <div id="github-runs-list" style="display:flex;flex-direction:column;gap:4px;">
+            <small style="color:var(--muted);font-size:10px;">No recent runs loaded</small>
+          </div>
+        </div>
+
+        <p class="status-line" id="github-status-line" role="status" style="margin-bottom:8px;"></p>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">CONNECTED DEVELOPER SERVICES</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Provider-scoped read-only status checks via environment tokens or credentials.</p>
+        </div>
+
+        <div id="integrations-list" style="display:flex;flex-direction:column;gap:4px;">
+        </div>
+      </div>
+
+      <div class="settings-section" id="setsec-flow" hidden>
+        <div class="integration-group-header" style="padding:4px 0 6px;">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">OFFLINE SPEECH &amp; SNIPPETS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">100% on-device speech processing with zero background recording and privacy-preserving text snippets.</p>
+        </div>
+
+        <div class="setting">
+          <span><strong>Offline speech dictation</strong><small>Push-to-talk voice input via Windows Native Speech</small></span>
+          <input type="checkbox" id="setting-flow-enable" aria-label="Enable Flow Dictation">
+        </div>
+        <div class="setting">
+          <span><strong>Push-to-talk mode</strong><small>Listen only while Alt+D is held down</small></span>
+          <input type="checkbox" id="setting-flow-push-to-talk" aria-label="Push to talk" checked>
+        </div>
+        <div class="setting">
+          <span><strong>Filter verbal filler words</strong><small>Remove um, uh, ah, like, and clean punctuation</small></span>
+          <input type="checkbox" id="setting-flow-filter-fillers" aria-label="Filter verbal filler words" checked>
+        </div>
+        <div class="setting">
+          <span><strong>Engine status</strong><small>On-device capability</small></span>
+          <span class="badge-tag" id="flow-engine-badge">Checking...</span>
+        </div>
+        <div class="setting">
+          <span><strong>Global hotkey</strong><small>Windows Push-to-Talk activation</small></span>
+          <span class="badge-tag" id="flow-hotkey-badge">Alt+D</span>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">USAGE STATISTICS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Authentic local session counts and word metrics (never uploaded).</p>
+        </div>
+        <div class="setting" style="justify-content:space-between;">
+          <span><strong>Dictated sessions</strong><small>Total push-to-talk sessions completed</small></span>
+          <span class="badge-tag" id="flow-stat-sessions">0 sessions</span>
+        </div>
+        <div class="setting" style="justify-content:space-between;">
+          <span><strong>Dictated words</strong><small>Total words dictated locally</small></span>
+          <span class="badge-tag" id="flow-stat-words">0 words</span>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">DICTIONARY SNIPPETS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Automatic text expansions applied after transcription.</p>
+        </div>
+        <div id="flow-snippets-list" style="display:flex;flex-direction:column;gap:4px;">
+        </div>
+      </div>
+
+      <div class="settings-section" id="setsec-voice" hidden>
+        <div class="integration-group-header" style="padding:4px 0 6px;">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">CONSENTED NOTETAKER &amp; VOICE CAPTURE</span>
+          <p class="explain" style="padding:2px 0;margin:0;">100% on-device audio transcription. Strictly zero background recording; microphone is active ONLY during explicit user-consented sessions.</p>
+        </div>
+
+        <div class="setting">
+          <span><strong>Notetaker consent</strong><small>Require explicit opt-in confirmation before recording meeting notes</small></span>
+          <input type="checkbox" id="setting-notetaker-consent" aria-label="Notetaker consent">
+        </div>
+        <div class="setting">
+          <span><strong>Voice commands engine</strong><small>Allow voice-controlled navigation and Xyn companion commands</small></span>
+          <input type="checkbox" id="setting-voice-commands-enable" aria-label="Voice commands enable">
+        </div>
+        <div class="setting">
+          <span><strong>Recording endpoint</strong><small>Active Windows audio input device</small></span>
+          <span class="badge-tag" id="voice-endpoint-badge">Checking...</span>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">NOTETAKER CONTROLS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Start a consented recording session for local meeting notes.</p>
+        </div>
+        <div class="setting" style="flex-direction:column;align-items:stretch;gap:8px;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" id="notetaker-title-input" placeholder="Meeting note title..." style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--text);" />
+            <button class="action-btn" id="btn-notetaker-record" type="button">Start Note</button>
+            <button class="minor-btn" id="btn-notetaker-pause" type="button" hidden>Pause</button>
+            <button class="action-btn" id="btn-notetaker-finish" type="button" style="background:#22c55e;" hidden>Finish</button>
+            <button class="minor-btn" id="btn-notetaker-cancel" type="button" hidden>Cancel</button>
+          </div>
+          <p class="status-line" id="notetaker-status-line" style="margin:0;font-size:10px;color:var(--muted);">Ready. Click "Start Note" after granting consent.</p>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">SAVED TRANSCRIPT NOTES</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Local bounded notes (max 20). Stored in session memory only.</p>
+        </div>
+        <div id="notetaker-notes-list" style="display:flex;flex-direction:column;gap:6px;">
+          <small style="color:var(--muted);font-size:10px;">No notes recorded in this session yet.</small>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">VOICE COMMANDS CATALOG</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Bounded voice actions supported via microphone or Alt+V trigger.</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-size:10px;">
+          <div class="setting" style="align-items:center;"><span><strong>"Ask Xyn &lt;question&gt;"</strong><small>Send prompt to companion chat</small></span><span class="badge-tag">AI Chat</span></div>
+          <div class="setting" style="align-items:center;"><span><strong>"Expand / Compact / Hide Island"</strong><small>Change window mode</small></span><span class="badge-tag">Window</span></div>
+          <div class="setting" style="align-items:center;"><span><strong>"Show Chat / Clips / Activity / Settings"</strong><small>Switch navigation panel</small></span><span class="badge-tag">Navigation</span></div>
+          <div class="setting" style="align-items:center;"><span><strong>"Play / Pause / Next / Previous"</strong><small>Control Windows media</small></span><span class="badge-tag">Media</span></div>
+          <div class="setting" style="align-items:center;"><span><strong>"Generate Weekly Recap"</strong><small>Build local week summary</small></span><span class="badge-tag">Recap</span></div>
+        </div>
+      </div>
+
+      <div class="settings-section" id="setsec-companion" hidden>
+        <div class="integration-group-header" style="padding:6px 0 4px;">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">ANDROID COMPANION &amp; MOBILE APPROVALS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Secure local pairing for mobile approval notifications and remote Allow Once / Deny decisions. Zero cloud relay, 100% on-device cryptography.</p>
+        </div>
+
+        <div class="setting" style="flex-direction:column;align-items:stretch;gap:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span><strong>Pairing Status</strong><small id="companion-device-label">No companion device paired.</small></span>
+            <span class="badge-tag" id="companion-status-badge">Unpaired</span>
+          </div>
+
+          <div id="companion-unpaired-box" style="display:flex;flex-direction:column;gap:6px;">
+            <p class="explain" style="margin:0;font-size:11px;">Generate a time-bounded 6-digit code and QR payload to authenticate your Android companion app on the local network.</p>
+            <div>
+              <button class="action-btn" id="btn-companion-request-pairing" type="button">Pair New Android Device</button>
+            </div>
+          </div>
+
+          <div id="companion-pairing-box" style="display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:6px;padding:8px;" hidden>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:10px;color:var(--sub);">PAIRING CODE (5 MIN EXPIRY)</span>
+              <span id="companion-timer" style="font-size:10px;color:var(--accent);">300s</span>
+            </div>
+            <div style="text-align:center;font-size:24px;font-family:monospace;letter-spacing:4px;font-weight:bold;color:var(--text);padding:4px 0;" id="companion-code-display">
+              000000
+            </div>
+            <div>
+              <small style="color:var(--muted);font-size:9px;">QR Payload (Scan with Xyeena Companion):</small>
+              <pre id="companion-qr-display" style="margin:4px 0 0 0;font-size:9px;background:rgba(0,0,0,0.3);padding:6px;border-radius:4px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;color:var(--sub);max-height:60px;"></pre>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;border-top:1px solid var(--line);padding-top:6px;">
+              <input type="text" id="companion-sim-name" placeholder="Device name (e.g. Pixel 8 Pro)" style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:10px;color:var(--text);" />
+              <button class="minor-btn" id="btn-companion-simulate-confirm" type="button" style="font-size:10px;">Confirm Pairing</button>
+            </div>
+          </div>
+
+          <div id="companion-paired-box" style="display:flex;flex-direction:column;gap:6px;" hidden>
+            <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:6px;padding:8px;">
+              <div>
+                <strong id="companion-paired-name" style="font-size:11px;color:var(--text);">Device Name</strong>
+                <p id="companion-paired-meta" style="margin:2px 0 0 0;font-size:9px;color:var(--sub);">ID: dev_123 · Paired at 12:00:00</p>
+              </div>
+              <button class="minor-btn" id="btn-companion-revoke" type="button" style="color:#ef4444;font-size:10px;">Revoke Device</button>
+            </div>
+            <p class="explain" style="margin:0;font-size:10px;">Mobile approvals authorized. High-friction decisions will prompt this device with signature validation.</p>
+          </div>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">SECURITY CONSTRAINTS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Only Allow Once and Deny decisions can be forwarded remotely. Always Allow is permanently disabled in protocol rules.</p>
+        </div>
       </div>
 
       <div class="settings-section" id="setsec-recap" hidden>
@@ -325,8 +622,7 @@ function q<T extends HTMLElement>(selector:string):T{const el=root.querySelector
 const shell=q<HTMLElement>('.island');
 const stored=(()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');}catch{return {};}})();
 let prefs:Prefs=sanitizeSettings({...DEFAULT_SETTINGS,...stored});
-const initialMeeting=(()=>{try{return JSON.parse(localStorage.getItem(MEETING_KEY)||'null');}catch{return null;}})();
-let meeting=normalizeMeeting(initialMeeting);
+try{localStorage.removeItem('xyeena-island-meeting-v1');}catch{}
 let mode:IslandMode='compact',panel:Panel='now';
 const motion=new GeometryMotion(shellDimensions(mode));
 const feed=new RunChangeFeed();
@@ -356,7 +652,10 @@ function syncActiveGuardian(targetMode:IslandMode){
 }
 
 function syncGuardian(){
- const activeState=chatMascotState||chooseGuardianState({meetingActive:meeting.active,mediaPlaying:selectedMedia.playing,runs,mode});
+ const agentState=sessionStore.getAggregateState();
+ const activeState=agentState==='approval'
+  ?'attention'
+  :(chatMascotState||chooseGuardianState({agentState,mediaPlaying:selectedMedia.playing,runs,mode}));
  const visualState=toMascotState(activeState);
  shell.dataset.fold=activeState;
  shell.dataset.guardian=activeState;
@@ -402,45 +701,52 @@ function playFeedbackSound(type:'tap'|'chime'|'error'){
  }catch{}
 }
 
-const I18N = {
- en: {
-  now:'Now',clips:'Clips',activity:'Activity',chat:'Chat',settings:'Settings',
-  chatTitle:'Chat with Xyn',chatKicker:'COMPANION CHAT',chatStatus:'Watching your workspace · Standing guard',
-  chatPlaceholder:'Ask Xyn anything (Enter to send, Shift+Enter for new line)...',
-  clipHeading:'Clipboard History',clipExplain:'In-memory history for text, images, and file lists. Clears on exit for privacy.',
-  pauseCapture:'Pause capture',enableCapture:'Enable capture',monitoringActive:'Monitoring active',captureOff:'Capture off',
-  actHeading:'Activity & Agents',setHeading:'Settings',
-  chatWelcome:'<strong>Xyn (Golden Lion Guardian)</strong><br>Hello! I am Xyn, your desktop companion on Xyeena Island. What can I help you with across your project, code, or tasks today?'
- },
- id: {
-  now:'Sekarang',clips:'Klip',activity:'Aktivitas',chat:'Chat',settings:'Pengaturan',
-  chatTitle:'Ngobrol bareng Xyn',chatKicker:'COMPANION CHAT',chatStatus:'Memantau workspace lu · Siaga mendampingi',
-  chatPlaceholder:'Tanya apa saja ke Xyn (Enter untuk kirim, Shift+Enter untuk baris baru)...',
-  clipHeading:'Riwayat Clipboard',clipExplain:'Riwayat sesi lokal untuk teks, gambar, dan file. Dihapus saat keluar demi privasi.',
-  pauseCapture:'Jeda pantauan',enableCapture:'Aktifkan pantauan',monitoringActive:'Pantauan aktif',captureOff:'Pantauan nonaktif',
-  actHeading:'Aktivitas & Agen',setHeading:'Pengaturan',
-  chatWelcome:'<strong>Xyn (Golden Lion Guardian)</strong><br>Halo! Gue Xyn, penjaga desktop lu di Xyeena Island. Ada yang bisa gue bantu seputar project, coding, atau tugas lu hari ini?'
- }
-};
-
 function applyLanguage(lang:Prefs['language']){
- const dict=I18N[lang]||I18N.en;
+ const dict=getDictionary(lang);
  for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
   const p=tab.dataset.panel as Panel;
-  if(p&&dict[p as keyof typeof dict]){
+  if(p){
    const badge=tab.querySelector('.nav-unread');
-   tab.textContent=dict[p as keyof typeof dict];
-   if(badge)tab.prepend(badge);
+   const key=`nav_${p==='activity'?'activity':p==='preferences'?'settings':p}` as keyof typeof dict;
+   if(dict[key]){
+    tab.textContent=dict[key];
+    if(badge)tab.prepend(badge);
+   }
   }
  }
- const chatH=q<HTMLElement>('#chat-heading');if(chatH)chatH.textContent=dict.chatTitle;
- const chatK=q<HTMLElement>('#chat-kicker');if(chatK)chatK.textContent=dict.chatKicker;
- const chatS=q<HTMLElement>('#chat-xyn-status');if(chatS)chatS.textContent=dict.chatStatus;
- const chatIn=q<HTMLTextAreaElement>('#chat-input');if(chatIn)chatIn.placeholder=dict.chatPlaceholder;
- const clipH=q<HTMLElement>('#clip-heading');if(clipH)clipH.textContent=dict.clipHeading;
- const clipExp=q<HTMLElement>('#clip-explain');if(clipExp)clipExp.textContent=dict.clipExplain;
- const actH=q<HTMLElement>('#act-heading');if(actH)actH.textContent=dict.actHeading;
- const setH=q<HTMLElement>('#set-heading');if(setH)setH.textContent=dict.setHeading;
+
+ const pillMap: Record<string, keyof typeof dict> = {
+  general: 'set_cat_general',
+  guardian: 'set_cat_guardian',
+  clipboard: 'set_cat_clipboard',
+  media: 'set_cat_media',
+  ai: 'set_cat_ai',
+  integrations: 'set_cat_integrations',
+  flow: 'set_cat_flow',
+  voice: 'set_cat_voice',
+  companion: 'set_cat_companion',
+  recap: 'set_cat_recap',
+  about: 'set_cat_about',
+ };
+ for(const pill of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
+  const sec=pill.dataset.section;
+  if(sec&&pillMap[sec]&&dict[pillMap[sec]]){
+   pill.textContent=dict[pillMap[sec]];
+  }
+ }
+
+ const chatH=q<HTMLElement>('#chat-heading');if(chatH)chatH.textContent=dict.chat_heading;
+ const chatK=q<HTMLElement>('#chat-kicker');if(chatK)chatK.textContent=dict.chat_kicker;
+ const chatS=q<HTMLElement>('#chat-xyn-status');if(chatS)chatS.textContent=dict.chat_status_idle;
+ const chatIn=q<HTMLTextAreaElement>('#chat-input');if(chatIn)chatIn.placeholder=dict.chat_placeholder;
+ const clipH=q<HTMLElement>('#clip-heading');if(clipH)clipH.textContent=dict.clip_heading;
+ const clipExp=q<HTMLElement>('#clip-explain');if(clipExp)clipExp.textContent=dict.clip_explain;
+ const actH=q<HTMLElement>('#act-heading');if(actH)actH.textContent=dict.agent_heading;
+ const setH=q<HTMLElement>('#set-heading');if(setH)setH.textContent=dict.set_heading;
+ const setK=q<HTMLElement>('#set-kicker');if(setK)setK.textContent=dict.set_kicker;
+
+ const recenterBtn=q<HTMLButtonElement>('.recenter');if(recenterBtn)recenterBtn.textContent=dict.btn_recenter;
+ const hideBtn=q<HTMLButtonElement>('.footer-hide');if(hideBtn)hideBtn.textContent=dict.btn_hide_tray;
 }
 
 function triggerMascotSalute(){
@@ -475,7 +781,12 @@ function syncPreferences(){
   ['#always-top',prefs.alwaysOnTop],['#auto-collapse',prefs.autoCollapse],['#auto-hide',prefs.autoHide],
   ['#run-notifications',prefs.notifyRunChanges],['#reduce-motion',prefs.motion==='reduced'],
   ['#setting-gaze',prefs.gazeEnabled],['#setting-sound',prefs.soundEnabled],
-  ['#setting-recap-enable',prefs.recapEnabled]
+  ['#setting-recap-enable',prefs.recapEnabled],
+  ['#setting-flow-enable',prefs.flowEnabled],
+  ['#setting-flow-push-to-talk',prefs.flowPushToTalk],
+  ['#setting-flow-filter-fillers',prefs.flowFilterFillers],
+  ['#setting-notetaker-consent',prefs.notetakerConsent],
+  ['#setting-voice-commands-enable',prefs.voiceCommandsEnabled]
  ] as [string,boolean][])q<HTMLInputElement>(selector).checked=checked;
  q<HTMLSelectElement>('#theme').value=prefs.theme;
  q<HTMLSelectElement>('#setting-language').value=prefs.language;
@@ -568,9 +879,10 @@ function setPanel(next:Panel){
   }
  }
  if(next==='now'){void refreshMedia();startVolumePolling();}
- if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();renderAgentPills();}
+ if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();renderAgentSessions();}
  if(next==='clipboard')renderClipboard();
  if(next==='chat'){checkChatInlineSetup();renderChatMessages();}
+ if(next==='preferences'){void runProviderDetection();}
 }
 for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
  tab.addEventListener('click',()=>setPanel(tab.dataset.panel as Panel));
@@ -624,14 +936,38 @@ window.addEventListener('keydown',e=>{
   }else if(mode==='expanded'||mode==='pinned'){
    apply('collapse');
   }
+  return;
+ }
+ if(!isInteracting()){
+  if(e.key==='1'){setPanel('now');apply('activate');}
+  else if(e.key==='2'){setPanel('clipboard');apply('activate');}
+  else if(e.key==='3'){setPanel('activity');apply('activate');}
+  else if(e.key==='4'){setPanel('chat');apply('activate');}
+  else if(e.key==='5'){setPanel('preferences');apply('activate');}
+  else{
+   const focused=sessionStore.getFocusedSession();
+   if(focused?.pendingApproval&&focused.pendingApproval.status==='pending'){
+    if(e.key==='a'||e.key==='A'){
+     e.preventDefault();
+     q<HTMLButtonElement>('#btn-approval-allow-once')?.click();
+    }else if(e.key==='d'||e.key==='D'){
+     e.preventDefault();
+     q<HTMLButtonElement>('#btn-approval-deny')?.click();
+    }
+   }
+  }
  }
 });
 
 let activeFileDataUrl='';
 let activeFileName='';
+let activeFilePath='';
+let activeFilePreview='';
 function closeFileCard(){
  const card=q<HTMLElement>('#file-card');
- card.hidden=true;activeFileDataUrl='';activeFileName='';
+ card.hidden=true;activeFileDataUrl='';activeFileName='';activeFilePath='';activeFilePreview='';
+ const openEditorBtn=q<HTMLButtonElement>('#file-open-editor');
+ if(openEditorBtn)openEditorBtn.hidden=true;
 }
 q<HTMLButtonElement>('#file-close').addEventListener('click',closeFileCard);
 
@@ -642,6 +978,10 @@ async function handleFileDrop(file:File){
   renderAlerts();return;
  }
  activeFileName=meta.name;
+ activeFilePath='';
+ activeFilePreview='';
+ const openEditorBtn=q<HTMLButtonElement>('#file-open-editor');
+ if(openEditorBtn)openEditorBtn.hidden=true;
  const card=q<HTMLElement>('#file-card');
  const title=q<HTMLElement>('#file-title');
  const info=q<HTMLElement>('#file-meta');
@@ -712,6 +1052,35 @@ q<HTMLButtonElement>('#file-copy-info').addEventListener('click',async()=>{
   renderAlerts();
  }catch{}
 });
+q<HTMLButtonElement>('#file-open-editor').addEventListener('click',async()=>{
+ if(!activeFilePath)return;
+ try{
+  const lastSlash=Math.max(activeFilePath.lastIndexOf('/'),activeFilePath.lastIndexOf('\\'));
+  const wsRoot=lastSlash>0?activeFilePath.slice(0,lastSlash):activeFilePath;
+  const relFile=lastSlash>0?activeFilePath.slice(lastSlash+1):null;
+  await native('open_in_editor',{workspaceRoot:wsRoot,filePath:relFile,line:null});
+  feed.recordEvent('Opened in editor',activeFileName||activeFilePath,'FILE');
+  renderAlerts();
+ }catch(err){
+  feed.recordEvent('Editor open failed',String(err),'ERROR');
+  renderAlerts();
+ }
+});
+q<HTMLButtonElement>('#file-ask-xyn').addEventListener('click',()=>{
+ const prompt=activeFilePreview
+  ?`Please examine this file (${activeFileName}):\n\n\`\`\`\n${activeFilePreview}\n\`\`\`\n`
+  :`Please help me analyze this file: ${activeFileName}`;
+ closeFileCard();
+ setPanel('chat');
+ apply('activate');
+ const input=q<HTMLTextAreaElement>('#chat-input');
+ if(input){
+  input.value=prompt;
+  input.style.height='auto';
+  input.style.height=Math.min(input.scrollHeight,120)+'px';
+  input.focus();
+ }
+});
 
 window.addEventListener('dragenter',e=>{
  e.preventDefault();
@@ -748,6 +1117,10 @@ async function handleNativePathDrop(filePath:string){
   };
   if(!dropped)return;
   activeFileName=dropped.name;
+  activeFilePath=filePath;
+  activeFilePreview=dropped.textPreview||'';
+  const openEditorBtn=q<HTMLButtonElement>('#file-open-editor');
+  if(openEditorBtn)openEditorBtn.hidden=!isTauri||!activeFilePath;
   const card=q<HTMLElement>('#file-card');
   const title=q<HTMLElement>('#file-title');
   const info=q<HTMLElement>('#file-meta');
@@ -848,26 +1221,6 @@ if(!isTauri)window.addEventListener('pointermove',e=>setLionGaze(e.clientX,e.cli
 document.addEventListener('visibilitychange',syncGazePolling);
 window.addEventListener('beforeunload',stopGazePolling);
 
-function renderMeeting(){
- const label=meeting.active?'Meeting mode on':'Not tracking a meeting';
- const summaryEl=root.querySelector<HTMLElement>('#meeting-summary');
- if(summaryEl)summaryEl.textContent=label;
- const clockEl=root.querySelector<HTMLElement>('#meeting-clock');
- if(clockEl)clockEl.textContent=meeting.active?elapsedMeeting(meeting.startedAt):'';
- const btnEl=root.querySelector<HTMLButtonElement>('#meeting-action');
- if(btnEl)btnEl.textContent=meeting.active?'End':'Start';
- const expEl=root.querySelector<HTMLElement>('#meeting-explain');
- if(expEl)expEl.textContent=meeting.active
-  ?'Manual timer · Xyeena is not monitoring your microphone or recording a call.'
-  :'Manual meeting timer. Teams presence requires Microsoft 365 permission; playback APIs do not detect calls.';
- updateCompact();
-}
-q<HTMLButtonElement>('#meeting-action').addEventListener('click',()=>{
- meeting=meeting.active?{active:false,startedAt:0}:{active:true,startedAt:Date.now()};
- try{localStorage.setItem(MEETING_KEY,JSON.stringify(meeting));}catch{}
- renderMeeting();
-});
-
 function updateCompact(){
  const tag=q<HTMLElement>('#compact-status-tag');
  const ctx=q<HTMLElement>('#compact-context');
@@ -876,12 +1229,17 @@ function updateCompact(){
  const glanceSub=q<HTMLElement>('#glance-sub');
  const glancePlay=q<HTMLButtonElement>('#glance-play');
  const glanceCardTitle=q<HTMLElement>('#glance-card-title');
- if(meeting.active){
-  tag.textContent='Meeting';
-  ctx.textContent=elapsedMeeting(meeting.startedAt);
-  glanceHead.textContent='Meeting in progress';
-  glanceSub.textContent=elapsedMeeting(meeting.startedAt);
-  glanceCardTitle.textContent='Meeting';
+
+ const focused=sessionStore.getFocusedSession();
+ const agentState=sessionStore.getAggregateState();
+
+ if(agentState!=='idle'&&focused){
+  const provName=getAdapter(focused.provider)?.name||focused.provider;
+  tag.textContent=agentState==='approval'?'Approval':agentState==='working'?'Working':agentState==='thinking'?'Thinking':agentState==='error'?'Error':'Active';
+  ctx.textContent=`${provName} · ${focused.activeTool||focused.status}`;
+  glanceHead.textContent=`${provName} (${focused.status})`;
+  glanceSub.textContent=focused.activeTool?`Tool: ${focused.activeTool}`:(focused.workspaceRoot?`Workspace: ${focused.workspaceRoot}`:'Active session');
+  glanceCardTitle.textContent='Agent Session';
   glancePlay.disabled=true;
  }else if(selectedMedia.available&&selectedMedia.playing){
   tag.textContent='Playing';
@@ -912,7 +1270,7 @@ function updateCompact(){
  compactPlay.innerHTML=icon(selectedMedia.playing?'pause':'play',16);
  compactPlay.setAttribute('aria-label',selectedMedia.playing?'Pause':'Play');
  compactPlay.title=selectedMedia.playing?'Pause':'Play';
- q<HTMLElement>('#header-status').textContent=meeting.active?'Meeting mode':selectedMedia.playing?'Media playing':'On device';
+ q<HTMLElement>('#header-status').textContent=agentState!=='idle'?`Agent ${agentState}`:selectedMedia.playing?'Media playing':'On device';
  shell.dataset.playing=String(selectedMedia.playing);
  syncGuardian();
 }
@@ -1192,11 +1550,21 @@ function renderClipboard(){
  }
 }
 
+let lastClipboardSeq=0;
 async function observeClipboard(){
  if(clipBusy||!clipboard.enabled)return;
  clipBusy=true;
  try{
   if(isTauri){
+   try{
+    const seq=await native('get_clipboard_sequence_number') as number;
+    if(typeof seq==='number'&&seq>0&&seq===lastClipboardSeq){
+     return;
+    }
+    lastClipboardSeq=seq;
+   }catch{
+    // sequence number check optional fallback
+   }
    const nativeItem=await native('read_native_clipboard') as any;
    if(nativeItem){
     if(clipboard.accept(nativeItem))renderClipboard();
@@ -1294,10 +1662,9 @@ q<HTMLButtonElement>('.disconnect').addEventListener('click',()=>{
 // AI Companion Chat and Agent Session Integration
 const chat=new ChatEngine();
 chat.systemPrompt = `Kamu adalah Xyn, maskot Golden Lion Guardian dari Xyeena Island — penjaga desktop yang sigap, cerdas, bersahabat, dan tanggap mendampingi pengguna di Windows notch. Karaktermu hangat, pragmatis, solutif, dan analitis (gaya Xyeena). Jawab dengan Bahasa Indonesia yang natural, santai tapi cerdas dan lugas (tidak kaku seperti robot/birokrasi, tidak lebay/klise). Berikan bantuan teknis, kode, ringkasan, atau saran yang konkret, jujur, akurat, dan tanpa gimik.`;
-let activeApprovalSession:ReturnType<typeof normalizeSessionSnapshot>|null=null;
 let chatAbortController:AbortController|null=null;
 
-function setXynChatState(state:'idle'|'thinking'|'speaking'|'error'){
+function setXynChatState(state:'idle'|'thinking'|'speaking'|'error', err?: any){
  const sub=q<HTMLElement>('#chat-xyn-status');
  const stopBtn=q<HTMLButtonElement>('#chat-stop');
  const sendBtn=q<HTMLButtonElement>('#chat-send');
@@ -1317,14 +1684,27 @@ function setXynChatState(state:'idle'|'thinking'|'speaking'|'error'){
  }else if(state==='error'){
   chatMascotState='error';
   syncGuardian();
-  if(sub)sub.textContent=prefs.language==='id'?'Xyn mengalami kendala':'Xyn encountered an issue';
+  let errDesc = prefs.language==='id'?'Xyn mengalami kendala':'Xyn encountered an issue';
+  if(err instanceof ApiError){
+   const p = err.provider || chat.activeProvider;
+   if(err.status === 429){
+    errDesc = prefs.language==='id'?`Rate limit ${p} terlampaui (429)`:`${p} rate limit exceeded (429)`;
+   }else if(err.status === 503 || err.status === 529){
+    errDesc = prefs.language==='id'?`${p} sedang sibuk/overloaded (${err.status})`:`${p} overloaded (${err.status})`;
+   }else if(err.status === 401){
+    errDesc = prefs.language==='id'?`API key ${p} tidak valid (401)`:`Invalid API key for ${p} (401)`;
+   }else{
+    errDesc = prefs.language==='id'?`Kendala provider ${p} (${err.status||'error'})`:`Provider ${p} error (${err.status||'error'})`;
+   }
+  }
+  if(sub)sub.textContent=errDesc;
   if(stopBtn)stopBtn.hidden=true;
   if(sendBtn)sendBtn.disabled=false;
   playFeedbackSound('error');
  }else{
   chatMascotState=null;
   syncGuardian();
-  if(sub)sub.textContent=I18N[prefs.language]?.chatStatus||I18N.id.chatStatus;
+  if(sub)sub.textContent=t('chat_status_idle', prefs.language);
   if(stopBtn)stopBtn.hidden=true;
   if(sendBtn)sendBtn.disabled=false;
  }
@@ -1345,7 +1725,7 @@ function renderChatMessages(){
  if(!chat.messages.length){
   const welcome=document.createElement('div');
   welcome.className='chat-bubble chat-bubble-assistant';
-  welcome.innerHTML=I18N[prefs.language]?.chatWelcome||I18N.id.chatWelcome;
+  welcome.innerHTML=t('chat_welcome', prefs.language);
   viewport.append(welcome);
   return;
  }
@@ -1494,12 +1874,12 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
   if(thisReqSeq!==chatReqSeq)return;
   chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
   if(err?.name==='AbortError'){
-   chat.addAssistantReply('*Response generation cancelled.*');
+   chat.addAssistantReply('*Response generation cancelled.*', { isError: true });
   }else{
-   chat.addAssistantReply(`⚠️ **Chat error:** ${err?.message||String(err)}`);
+   chat.addAssistantReply(`⚠️ **Chat error:** ${err?.message||String(err)}`, { isError: true });
   }
   renderChatMessages();
-  setXynChatState('error');
+  setXynChatState('error', err);
   setTimeout(()=>{if(thisReqSeq===chatReqSeq)setXynChatState('idle');},4000);
  }finally{
   if(thisReqSeq===chatReqSeq){
@@ -1508,33 +1888,347 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
  }
 });
 
-function renderAgentPills(){
+function renderAgentSessions(){
  const row=q<HTMLElement>('#agent-pills');
+ const detailCard=q<HTMLElement>('#session-detail-card');
+ const emptyCard=q<HTMLElement>('#no-sessions-card');
+ const unreadBadge=root.querySelector<HTMLElement>('#unread');
+ 
+ const allSessions=sessionStore.getAllSessions();
+ const focusedSession=sessionStore.getFocusedSession();
+
  row.replaceChildren();
- const activeSessions: NonNullable<ReturnType<typeof normalizeSessionSnapshot>>[] = activeApprovalSession ? [activeApprovalSession] : [];
- if(!activeSessions.length){
+
+ if(allSessions.length===0){
   row.hidden=true;
- }else{
-  row.hidden=false;
-  for(const sess of activeSessions){
-   const pill=document.createElement('span');
-   pill.className='agent-pill active';
-   const label=sess.provider ? (getAdapter(sess.provider)?.name || sess.provider) : 'Agent';
-   pill.textContent=`${label}: ${sess.status === 'working' ? 'Working' : sess.status === 'approval' ? 'Needs Approval' : 'Active'}`;
-   row.append(pill);
+  detailCard.hidden=true;
+  emptyCard.hidden=false;
+  if(unreadBadge)unreadBadge.hidden=true;
+  updateCompact();
+  return;
+ }
+
+ row.hidden=false;
+ emptyCard.hidden=true;
+
+ const hasApproval=allSessions.some(s=>s.status==='approval');
+ const activeCount=allSessions.filter(s=>s.status==='working'||s.status==='thinking'||s.status==='approval').length;
+ if(unreadBadge){
+  if(hasApproval){
+   unreadBadge.hidden=false;
+   unreadBadge.textContent='!';
+   unreadBadge.setAttribute('aria-label','Agent approval requested');
+  }else if(activeCount>0){
+   unreadBadge.hidden=false;
+   unreadBadge.textContent=String(activeCount);
+   unreadBadge.setAttribute('aria-label',`${activeCount} active agent sessions`);
+  }else{
+   unreadBadge.hidden=true;
   }
  }
 
- const approvalCard=q<HTMLElement>('#agent-approval');
- if(activeApprovalSession?.pendingApproval&&activeApprovalSession.pendingApproval.expiresAt>Date.now()){
-  approvalCard.hidden=false;
-  const adapterName=getAdapter(activeApprovalSession.provider)?.name||activeApprovalSession.provider;
-  q<HTMLElement>('#approval-title').textContent=`${adapterName}: Approval Required in Host Session`;
-  q<HTMLElement>('#approval-prompt').textContent=`${activeApprovalSession.pendingApproval.prompt} (Respond in the active agent terminal; Island maintains read-only session boundary).`;
+ for(const sess of allSessions){
+  const pill=document.createElement('button');
+  pill.type='button';
+  pill.className=`agent-session-pill ${sess.key===focusedSession?.key?'focused':''} ${sess.status}`;
+  pill.setAttribute('aria-pressed',sess.key===focusedSession?.key?'true':'false');
+  
+  const dot=document.createElement('span');
+  dot.className=`status-dot ${sess.status}`;
+  
+  const provName=getAdapter(sess.provider)?.name||sess.provider;
+  const label=document.createElement('span');
+  label.textContent=`${provName} (${sess.status})`;
+  
+  pill.append(dot,label);
+  pill.addEventListener('click',()=>{
+   sessionStore.setFocus(sess.key);
+  });
+  row.append(pill);
+ }
+
+ if(focusedSession){
+  detailCard.hidden=false;
+  const provName=getAdapter(focusedSession.provider)?.name||focusedSession.provider;
+  q<HTMLElement>('#session-provider-name').textContent=provName;
+  const statusDot=q<HTMLElement>('#session-status-dot');
+  statusDot.className=`status-dot ${focusedSession.status}`;
+  q<HTMLElement>('#session-status-text').textContent=focusedSession.status.toUpperCase();
+  
+  const wsBadge=q<HTMLElement>('#session-workspace');
+  if(focusedSession.workspaceRoot){
+   const parts=focusedSession.workspaceRoot.replace(/\\/g,'/').split('/');
+   wsBadge.textContent=parts[parts.length-1]||focusedSession.workspaceRoot;
+   wsBadge.title=focusedSession.workspaceRoot;
+   wsBadge.hidden=false;
+  }else{
+   wsBadge.hidden=true;
+  }
+
+  // Developer Productivity: Navigation Actions (F13)
+  const ws=focusedSession.workspaceRoot||focusedSession.cwd||'';
+  const btnEditor=q<HTMLButtonElement>('#btn-open-editor');
+  const btnTerminal=q<HTMLButtonElement>('#btn-open-terminal');
+  const btnDiff=q<HTMLButtonElement>('#btn-workspace-diff');
+
+  btnEditor.onclick=async()=>{
+   if(!ws)return;
+   try{await native('open_in_editor',{workspaceRoot:ws,filePath:null,line:null});}
+   catch(err){console.error('Failed to open editor:',err);}
+  };
+
+  btnTerminal.onclick=async()=>{
+   if(!ws)return;
+   try{await native('open_in_terminal',{workspaceRoot:ws});}
+   catch(err){console.error('Failed to open terminal:',err);}
+  };
+
+  btnDiff.onclick=()=>{
+   if(!ws)return;
+   void loadWorkspaceDiff(ws);
+  };
+
+  // Honest Session Telemetry (F14)
+  const durSec=Math.max(0,Math.round((focusedSession.lastActivity-focusedSession.startedAt)/1000));
+  const durStr=durSec>60?`${Math.floor(durSec/60)}m ${durSec%60}s`:`${durSec}s`;
+  q<HTMLElement>('#session-telemetry-duration').textContent=`Duration: ${durStr}`;
+  q<HTMLElement>('#session-telemetry-events').textContent=`${focusedSession.eventCount} events`;
+  const touched=focusedSession.touchedFiles||[];
+  q<HTMLElement>('#session-telemetry-files').textContent=`${touched.length} files`;
+  
+  const usageEl=q<HTMLElement>('#session-telemetry-usage');
+  if(focusedSession.usage?.totalTokens){
+   usageEl.textContent=`Tokens: ${focusedSession.usage.totalTokens}`;
+  }else if(focusedSession.usage?.inputTokens||focusedSession.usage?.outputTokens){
+   usageEl.textContent=`In: ${focusedSession.usage.inputTokens||0} / Out: ${focusedSession.usage.outputTokens||0}`;
+  }else{
+   usageEl.textContent='Telemetry: Live hook';
+  }
+
+  // File-change Ticker (F12)
+  const tickerBox=q<HTMLElement>('#session-files-ticker');
+  const filesList=q<HTMLElement>('#session-files-list');
+  if(touched.length>0){
+   tickerBox.hidden=false;
+   q<HTMLElement>('#session-files-count').textContent=String(touched.length);
+   filesList.replaceChildren();
+   for(const filePath of touched){
+    const item=document.createElement('div');
+    item.className='session-file-item';
+    
+    const nameSpan=document.createElement('span');
+    nameSpan.className='session-file-name';
+    const base=filePath.replace(/\\/g,'/').split('/').pop()||filePath;
+    nameSpan.textContent=base;
+    nameSpan.title=filePath;
+
+    const btnGroup=document.createElement('div');
+    btnGroup.style.display='flex';
+    btnGroup.style.gap='4px';
+
+    const fileDiffBtn=document.createElement('button');
+    fileDiffBtn.type='button';
+    fileDiffBtn.className='session-file-btn';
+    fileDiffBtn.textContent='Diff';
+    fileDiffBtn.onclick=()=>{
+     void loadWorkspaceDiff(ws,filePath);
+    };
+
+    const fileOpenBtn=document.createElement('button');
+    fileOpenBtn.type='button';
+    fileOpenBtn.className='session-file-btn';
+    fileOpenBtn.textContent='Open';
+    fileOpenBtn.onclick=async()=>{
+     try{await native('open_in_editor',{workspaceRoot:ws,filePath,line:null});}
+     catch(err){console.error('Failed to open file in editor:',err);}
+    };
+
+    btnGroup.append(fileDiffBtn,fileOpenBtn);
+    item.append(nameSpan,btnGroup);
+    filesList.append(item);
+   }
+  }else{
+   tickerBox.hidden=true;
+  }
+
+  const approvalBox=q<HTMLElement>('#session-approval-box');
+  if(focusedSession.pendingApproval&&focusedSession.pendingApproval.status==='pending'){
+   approvalBox.hidden=false;
+   const ap=focusedSession.pendingApproval;
+   q<HTMLElement>('#session-approval-time').textContent=new Date(ap.created_at_ms).toLocaleTimeString();
+   
+   const questionEl=q<HTMLElement>('#session-approval-question');
+   const promptText=ap.question||ap.tool_input_summary||(ap.tool_command?`Execute: ${ap.tool_command}`:`Permission requested for ${ap.tool_name}`);
+   questionEl.textContent=promptText;
+
+   const optionsEl=q<HTMLElement>('#session-approval-options');
+   optionsEl.replaceChildren();
+
+   if(ap.options&&ap.options.length>0){
+    optionsEl.hidden=false;
+    for(const opt of ap.options){
+     const optBtn=document.createElement('button');
+     optBtn.type='button';
+     optBtn.className='session-approval-option-btn';
+     optBtn.textContent=opt.label;
+     if(opt.description){
+      const descSpan=document.createElement('span');
+      descSpan.style.display='block';
+      descSpan.style.fontSize='9px';
+      descSpan.style.color='var(--muted)';
+      descSpan.textContent=opt.description;
+      optBtn.append(descSpan);
+     }
+     optBtn.addEventListener('click',()=>{
+      void submitDecision(focusedSession,{answer:opt.id||opt.label});
+     });
+     optionsEl.append(optBtn);
+    }
+   }else{
+    optionsEl.hidden=true;
+   }
+
+   q<HTMLButtonElement>('#btn-approval-allow-once').onclick=()=>{
+    void submitDecision(focusedSession,'allow_once');
+   };
+   q<HTMLButtonElement>('#btn-approval-deny').onclick=()=>{
+    void submitDecision(focusedSession,'deny');
+   };
+   q<HTMLElement>('#session-approval-status').textContent='';
+  }else{
+   approvalBox.hidden=true;
+  }
+
+  const toolBox=q<HTMLElement>('#session-tool-box');
+  if(focusedSession.activeTool){
+   toolBox.hidden=false;
+   q<HTMLElement>('#session-tool-name').textContent=`Tool: ${focusedSession.activeTool}`;
+   q<HTMLElement>('#session-tool-time').textContent=new Date(focusedSession.lastActivity).toLocaleTimeString();
+   const cmdEl=q<HTMLElement>('#session-tool-command');
+   if(focusedSession.lastCommand){
+    cmdEl.textContent=focusedSession.lastCommand;
+    cmdEl.hidden=false;
+   }else{
+    cmdEl.hidden=true;
+   }
+  }else{
+   toolBox.hidden=true;
+  }
+
+  const timeline=q<HTMLElement>('#session-events-timeline');
+  timeline.replaceChildren();
+  for(const ev of (focusedSession.recentEvents||[]).slice(-5).reverse()){
+   const item=document.createElement('div');
+   item.className='session-timeline-item';
+   const timeSpan=document.createElement('span');
+   timeSpan.className='timeline-time';
+   timeSpan.textContent=new Date(ev.timestamp).toLocaleTimeString();
+   const descSpan=document.createElement('span');
+   descSpan.className='timeline-desc';
+   descSpan.textContent=ev.summary||ev.eventType;
+   item.append(timeSpan,descSpan);
+   timeline.append(item);
+  }
  }else{
-  approvalCard.hidden=true;
+  detailCard.hidden=true;
+ }
+
+ updateCompact();
+}
+
+async function submitDecision(session:MonitoredSession,decision:'allow_once'|'deny'|{answer:string}){
+ if(!session.pendingApproval)return;
+ const ap=session.pendingApproval;
+ const statusEl=q<HTMLElement>('#session-approval-status');
+ statusEl.textContent='Submitting decision...';
+ statusEl.style.color='var(--muted)';
+
+ try{
+  const outcome=await native('submit_approval_decision',{
+   payload:{
+    request_id:ap.request_id,
+    auth_token:ap.auth_token,
+    action_fingerprint:ap.action_fingerprint,
+    decision:typeof decision==='string'?decision:decision
+   }
+  }) as any;
+
+  sessionStore.resolvePendingApproval(ap.request_id,outcome.status);
+  playFeedbackSound('chime');
+  const provName=getAdapter(session.provider)?.name||session.provider;
+  const decStr=typeof decision==='string'?decision:`Answer: ${decision.answer}`;
+  feed.recordEvent('Approval decision',`${provName}: ${decStr}`,'AGENT');
+  renderAlerts();
+ }catch(err){
+  statusEl.textContent=`Decision error: ${String(err)}`;
+  statusEl.style.color='#ef4444';
+  playFeedbackSound('error');
  }
 }
+
+async function loadWorkspaceDiff(workspaceRoot:string,filePath?:string){
+ const drawer=q<HTMLElement>('#session-diff-drawer');
+ const titleEl=q<HTMLElement>('#diff-drawer-title');
+ const warningEl=q<HTMLElement>('#diff-drawer-warning');
+ const contentEl=q<HTMLElement>('#diff-drawer-content');
+ const closeBtn=q<HTMLButtonElement>('#btn-close-diff');
+
+ drawer.hidden=false;
+ warningEl.hidden=true;
+ titleEl.textContent=filePath?`Diff: ${filePath.replace(/\\/g,'/').split('/').pop()}`:'Workspace Diff';
+ contentEl.textContent='Loading bounded diff...';
+
+ closeBtn.onclick=()=>{
+  drawer.hidden=true;
+ };
+
+ try{
+  const res=await native('get_workspace_diff',{
+   workspaceRoot,
+   filePath:filePath||null
+  }) as any;
+
+  if(!res||!res.is_git_repo){
+   contentEl.textContent='Workspace is not inside a git repository or git command is not available.';
+   return;
+  }
+
+  if(!res.diff||res.diff.trim().length===0){
+   contentEl.textContent='No uncommitted changes found.';
+   return;
+  }
+
+  if(res.truncated){
+   warningEl.hidden=false;
+   warningEl.textContent='Output bounded to 64KB / 500 lines limit.';
+  }
+
+  contentEl.textContent=res.diff;
+ }catch(err){
+  contentEl.textContent=`Diff error: ${String(err)}`;
+ }
+}
+
+q<HTMLButtonElement>('#btn-open-hook-settings')?.addEventListener('click',()=>{
+ setPanel('preferences');
+ const aiPill=root.querySelector<HTMLButtonElement>('.settings-pill[data-section="ai"]');
+ aiPill?.click();
+});
+
+q<HTMLButtonElement>('#refresh-activity-btn')?.addEventListener('click',async ()=>{
+ if(isTauri){
+  try{
+   const raw=await native('get_agent_sessions') as NativeSessionSnapshot[];
+   sessionStore.hydrateSessions(raw);
+   const rawApprovals=await native('get_pending_approvals') as ApprovalSnapshot[];
+   if(Array.isArray(rawApprovals)){
+    for(const snap of rawApprovals){
+     sessionStore.setPendingApproval(snap);
+    }
+   }
+  }catch(err){console.error('Failed to refresh agent sessions:',err);}
+ }
+});
 
 q<HTMLInputElement>('#always-top').addEventListener('change',async e=>{
  const old=prefs.alwaysOnTop,value=(e.target as HTMLInputElement).checked;updatePrefs({alwaysOnTop:value});
@@ -1563,6 +2257,31 @@ for(const pill of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
   for(const sec of root.querySelectorAll<HTMLElement>('.settings-section')){
    sec.hidden=sec.id!==`setsec-${section}`;
   }
+  if(section==='integrations'){
+   void refreshGitHubIntegration();
+  }
+  if(section==='flow'){
+   void refreshFlowEngineStatus();
+  }
+  if(section==='voice'){
+   void refreshMicrophoneStatus();
+  }
+  if(section==='companion'){
+   void refreshCompanionUI();
+  }
+ });
+ pill.addEventListener('keydown',e=>{
+  const pills=[...root.querySelectorAll<HTMLButtonElement>('.settings-pill')];
+  const index=pills.indexOf(pill);
+  let nextIndex=index;
+  if(e.key==='ArrowRight'||e.key==='ArrowDown') nextIndex=(index+1)%pills.length;
+  else if(e.key==='ArrowLeft'||e.key==='ArrowUp') nextIndex=(index+pills.length-1)%pills.length;
+  else if(e.key==='Home') nextIndex=0;
+  else if(e.key==='End') nextIndex=pills.length-1;
+  else return;
+  e.preventDefault();
+  pills[nextIndex].focus();
+  pills[nextIndex].click();
  });
 }
 
@@ -1678,6 +2397,12 @@ q<HTMLButtonElement>('#recap-generate-btn').addEventListener('click',()=>{
   // No synthetic approvals or fabricated file counts are inferred from label text
  }
 
+ // 3. Genuine agent sessions and tool events from SessionStore (F27)
+ const sessionRecapEvents=sessionStore.getSessionEventsForRecap(sevenDaysAgo);
+ for(const ev of sessionRecapEvents){
+  realEvents.push(ev);
+ }
+
  if(!realEvents.length){
   activeRecapData=null;
   q<HTMLElement>('#recap-preview-box').hidden=false;
@@ -1741,6 +2466,15 @@ q<HTMLButtonElement>('#btn-export-diagnostics').addEventListener('click',async()
    eventCount:feed.items.length,
    clipboardEntries:clipboard.items.length,
    activeSessions:overview.sessions.length
+  },
+  performance:{
+   memory: (performance as any).memory ? {
+    jsHeapSizeLimit: (performance as any).memory.jsHeapSizeLimit,
+    totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+    usedJSHeapSize: (performance as any).memory.usedJSHeapSize
+   } : 'unavailable',
+   now: performance.now(),
+   timeOrigin: performance.timeOrigin
   }
  };
  const content=JSON.stringify(diagnostics,null,2);
@@ -1759,18 +2493,865 @@ q<HTMLButtonElement>('#btn-export-diagnostics').addEventListener('click',async()
  renderAlerts();
 });
 
+// S03: Agent Provider Hook Installer
+let detectedProviders: Array<[any, any]> = [];
+let currentHookPreview: any = null;
+
+async function runProviderDetection(){
+ if(!isTauri)return;
+ const badge=q<HTMLElement>('#provider-detect-badge');
+ const detail=q<HTMLElement>('#provider-detect-detail');
+ badge.textContent='Detecting...';
+ badge.className='badge-tag';
+ try{
+  detectedProviders=await native('detect_agent_providers') as Array<[any, any]>;
+  const agy=detectedProviders.find(([def])=>def.id==='antigravity');
+  if(agy){
+   const [,res]=agy;
+   if(res.status==='installed'){
+    badge.textContent='Installed';
+    badge.style.color='var(--accent)';
+    detail.textContent=`Antigravity detected (${res.path})`;
+   }else{
+    badge.textContent='Not Found';
+    badge.style.color='var(--muted)';
+    detail.textContent='Antigravity CLI was not detected at standard locations';
+   }
+  }
+ }catch(err){
+  badge.textContent='Error';
+  detail.textContent=String(err);
+ }
+}
+
+async function previewHooks(){
+ const statusLine=q<HTMLElement>('#installer-status-line');
+ const providerId=q<HTMLSelectElement>('#installer-provider-select').value;
+ let wsPath=q<HTMLInputElement>('#installer-workspace-path').value.trim();
+ if(!wsPath){
+  const projInput=q<HTMLInputElement>('#project-root');
+  if(projInput&&projInput.value.trim()){
+   wsPath=projInput.value.trim();
+   q<HTMLInputElement>('#installer-workspace-path').value=wsPath;
+  }
+ }
+ if(!wsPath){
+  statusLine.textContent='Please provide an absolute workspace root path';
+  statusLine.style.color='#ef4444';
+  return;
+ }
+ statusLine.textContent='Loading configuration preview...';
+ statusLine.style.color='var(--muted)';
+ try{
+  const preview=await native('preview_provider_hooks',{
+   providerId,
+   workspacePath:wsPath
+  }) as any;
+  currentHookPreview=preview;
+  const card=q<HTMLElement>('#installer-preview-card');
+  card.hidden=false;
+  q<HTMLElement>('#installer-action-badge').textContent=preview.existing_group_present?'Repair / Update Preview':'Install Preview';
+  q<HTMLElement>('#installer-scope-badge').textContent=preview.scope;
+  q<HTMLElement>('#installer-target-path').textContent=preview.config_path;
+  q<HTMLElement>('#installer-backup-path').textContent=preview.backup_path;
+  q<HTMLElement>('#installer-preserved-groups').textContent=preview.preserved_groups.length?preview.preserved_groups.join(', '):'None (Fresh config)';
+
+  const warnBox=q<HTMLElement>('#installer-warnings-box');
+  if(preview.warnings&&preview.warnings.length>0){
+   warnBox.hidden=false;
+   warnBox.textContent=preview.warnings.join('\n');
+  }else{
+   warnBox.hidden=true;
+  }
+
+  q<HTMLElement>('#installer-diff-text').textContent=JSON.stringify(preview.group_to_add,null,2);
+
+  const consent=q<HTMLInputElement>('#installer-consent-check');
+  consent.checked=false;
+  const installBtn=q<HTMLButtonElement>('#btn-install-hooks');
+  installBtn.disabled=true;
+  installBtn.textContent=preview.existing_group_present?'Repair Hooks':'Install Hooks';
+
+  statusLine.textContent=preview.safe?'Preview ready. Check approval to proceed.':'Warning: Preview has unresolved notices.';
+  statusLine.style.color=preview.safe?'var(--sub)':'#f59e0b';
+ }catch(err){
+  statusLine.textContent=`Preview error: ${String(err)}`;
+  statusLine.style.color='#ef4444';
+ }
+}
+
+async function installHooks(){
+ const statusLine=q<HTMLElement>('#installer-status-line');
+ const providerId=q<HTMLSelectElement>('#installer-provider-select').value;
+ const wsPath=q<HTMLInputElement>('#installer-workspace-path').value.trim();
+ const consent=q<HTMLInputElement>('#installer-consent-check').checked;
+ if(!consent){
+  statusLine.textContent='Explicit user consent is required before installing hooks';
+  statusLine.style.color='#ef4444';
+  return;
+ }
+ statusLine.textContent='Applying configuration...';
+ statusLine.style.color='var(--muted)';
+ try{
+  const outcome=await native('install_provider_hooks',{
+   providerId,
+   workspacePath:wsPath,
+   confirmed:true
+  }) as any;
+  statusLine.textContent=`Success: ${outcome.message}`;
+  statusLine.style.color='var(--accent)';
+  feed.recordEvent('Hooks installed',`Provider: ${providerId}, action: ${outcome.action}`,'AGENT');
+  renderAlerts();
+  void previewHooks();
+ }catch(err){
+  statusLine.textContent=`Install error: ${String(err)}`;
+  statusLine.style.color='#ef4444';
+ }
+}
+
+async function uninstallHooks(){
+ const statusLine=q<HTMLElement>('#installer-status-line');
+ const providerId=q<HTMLSelectElement>('#installer-provider-select').value;
+ const wsPath=q<HTMLInputElement>('#installer-workspace-path').value.trim();
+ statusLine.textContent='Removing hooks...';
+ statusLine.style.color='var(--muted)';
+ try{
+  const outcome=await native('uninstall_provider_hooks',{
+   providerId,
+   workspacePath:wsPath
+  }) as any;
+  statusLine.textContent=`Success: ${outcome.message}`;
+  statusLine.style.color='var(--accent)';
+  feed.recordEvent('Hooks uninstalled',`Provider: ${providerId}`,'AGENT');
+  renderAlerts();
+  void previewHooks();
+ }catch(err){
+  statusLine.textContent=`Uninstall error: ${String(err)}`;
+  statusLine.style.color='#ef4444';
+ }
+}
+
+q<HTMLButtonElement>('#btn-detect-providers')?.addEventListener('click',()=>void runProviderDetection());
+q<HTMLButtonElement>('#btn-preview-hooks')?.addEventListener('click',()=>void previewHooks());
+q<HTMLInputElement>('#installer-consent-check')?.addEventListener('change',e=>{
+ const checked=(e.target as HTMLInputElement).checked;
+ q<HTMLButtonElement>('#btn-install-hooks').disabled=!checked;
+});
+q<HTMLButtonElement>('#btn-install-hooks')?.addEventListener('click',()=>void installHooks());
+q<HTMLButtonElement>('#btn-uninstall-hooks')?.addEventListener('click',()=>void uninstallHooks());
+
+let activePrUrl = '';
+let activeRepoUrl = '';
+
+async function refreshGitHubIntegration() {
+ const slugEl = q<HTMLElement>('#github-repo-slug');
+ const branchEl = q<HTMLElement>('#github-branch-name');
+ const prTitle = q<HTMLElement>('#github-pr-title');
+ const prBadge = q<HTMLElement>('#github-pr-badge');
+ const prMeta = q<HTMLElement>('#github-pr-meta');
+ const openPrBtn = q<HTMLButtonElement>('#github-open-pr-btn');
+ const openRepoBtn = q<HTMLButtonElement>('#github-open-repo-btn');
+ const runsList = q<HTMLElement>('#github-runs-list');
+ const statusLine = q<HTMLElement>('#github-status-line');
+
+ if (slugEl) slugEl.textContent = 'Repository: inspecting...';
+ if (statusLine) statusLine.textContent = 'Querying GitHub status...';
+
+ try {
+  const raw = await native('get_github_status', { workspaceRoot: null, token: null });
+  const norm = normalizeGitHubStatus(raw);
+
+  if (norm.repoSlug) {
+   if (slugEl) slugEl.textContent = `Repository: ${norm.repoSlug}`;
+   activeRepoUrl = `https://github.com/${norm.repoSlug}`;
+   if (openRepoBtn) openRepoBtn.hidden = false;
+  } else {
+   if (slugEl) slugEl.textContent = 'Repository: (none or non-GitHub)';
+   if (openRepoBtn) openRepoBtn.hidden = true;
+  }
+
+  if (branchEl) {
+   branchEl.textContent = norm.branch ? `Branch: ${norm.branch}` : 'Branch: —';
+  }
+
+  if (norm.pr) {
+   activePrUrl = norm.pr.url;
+   if (prTitle) prTitle.textContent = `#${norm.pr.number} ${norm.pr.title}`;
+   if (prBadge) {
+    prBadge.hidden = false;
+    prBadge.textContent = norm.pr.isDraft ? 'Draft' : norm.pr.state;
+   }
+   if (prMeta) {
+    const review = norm.pr.reviewDecision ? `Review: ${norm.pr.reviewDecision}` : 'Review: None';
+    const checks = norm.pr.checksConclusion ? `Checks: ${norm.pr.checksConclusion}` : 'Checks: None';
+    prMeta.textContent = `${review} · ${checks}`;
+   }
+   if (openPrBtn) openPrBtn.hidden = !activePrUrl;
+  } else {
+   activePrUrl = '';
+   if (prTitle) prTitle.textContent = 'No open pull request for active branch';
+   if (prBadge) prBadge.hidden = true;
+   if (prMeta) prMeta.textContent = 'Checks: — · Review: —';
+   if (openPrBtn) openPrBtn.hidden = true;
+  }
+
+  if (runsList) {
+   runsList.innerHTML = '';
+   if (norm.recentRuns.length > 0) {
+    for (const run of norm.recentRuns) {
+     const runItem = document.createElement('div');
+     runItem.style.display = 'flex';
+     runItem.style.justifyContent = 'space-between';
+     runItem.style.alignItems = 'center';
+     runItem.style.fontSize = '10px';
+     const conclusionText = run.conclusion ? run.conclusion.toUpperCase() : run.status.toUpperCase();
+     const conclusionColor = run.conclusion === 'success' ? '#51d9a7' : run.conclusion === 'failure' ? '#f87171' : 'var(--sub)';
+     runItem.innerHTML = `
+      <span>${run.name} (${run.event})</span>
+      <span style="color:${conclusionColor};font-weight:600;">${conclusionText}</span>
+     `;
+     runsList.appendChild(runItem);
+    }
+   } else {
+    runsList.innerHTML = '<small style="color:var(--muted);font-size:10px;">No recent workflow runs found</small>';
+   }
+  }
+
+  if (statusLine) {
+   if (norm.configured) {
+    statusLine.textContent = `Authenticated via ${norm.configMethod === 'gh_cli' ? 'GitHub CLI (gh)' : 'token'}`;
+    statusLine.style.color = 'var(--accent)';
+   } else {
+    statusLine.textContent = norm.error || 'Unconfigured';
+    statusLine.style.color = 'var(--muted)';
+   }
+  }
+ } catch (err) {
+  if (statusLine) {
+   statusLine.textContent = `Status check failed: ${err}`;
+   statusLine.style.color = '#ef4444';
+  }
+ }
+}
+
+async function checkSingleIntegration(provider: string) {
+ const statusSpan = q<HTMLElement>(`#integ-status-${provider}`);
+ const badge = q<HTMLElement>(`#integ-badge-${provider}`);
+ if (statusSpan) statusSpan.textContent = 'Checking connectivity...';
+ if (badge) {
+  badge.textContent = 'Checking';
+  badge.className = 'badge-tag';
+ }
+ try {
+  const res = await native('check_integration_status', { provider, apiKey: null, baseUrl: null }) as any;
+  const norm = normalizeIntegrationResult(res, provider);
+  if (norm.status === 'connected') {
+   if (statusSpan) statusSpan.textContent = norm.summary || 'Connected & verified';
+   if (badge) {
+    badge.textContent = 'Connected';
+    badge.className = 'badge-tag';
+    badge.style.borderColor = '#51d9a7';
+    badge.style.color = '#51d9a7';
+   }
+  } else if (norm.status === 'unconfigured') {
+   if (statusSpan) statusSpan.textContent = norm.error || 'Token not configured';
+   if (badge) {
+    badge.textContent = 'Unconfigured';
+    badge.className = 'badge-tag';
+    badge.style.borderColor = '';
+    badge.style.color = '';
+   }
+  } else if (norm.status === 'auth_error') {
+   if (statusSpan) statusSpan.textContent = norm.error || 'Authentication rejected';
+   if (badge) {
+    badge.textContent = 'Auth Error';
+    badge.className = 'badge-tag';
+    badge.style.borderColor = '#ef4444';
+    badge.style.color = '#ef4444';
+   }
+  } else if (norm.status === 'rate_limited') {
+   if (statusSpan) statusSpan.textContent = norm.error || 'Rate limit exceeded';
+   if (badge) {
+    badge.textContent = 'Rate Limited';
+    badge.className = 'badge-tag';
+    badge.style.borderColor = '#fbbf24';
+    badge.style.color = '#fbbf24';
+   }
+  } else {
+   if (statusSpan) statusSpan.textContent = norm.error || 'Connection error';
+   if (badge) {
+    badge.textContent = 'Error';
+    badge.className = 'badge-tag';
+    badge.style.borderColor = '#ef4444';
+    badge.style.color = '#ef4444';
+   }
+  }
+ } catch (err) {
+  if (statusSpan) statusSpan.textContent = String(err);
+  if (badge) {
+   badge.textContent = 'Failed';
+   badge.className = 'badge-tag';
+   badge.style.borderColor = '#ef4444';
+   badge.style.color = '#ef4444';
+  }
+ }
+}
+
+function renderConnectedServicesList() {
+ const container = q<HTMLElement>('#integrations-list');
+ if (!container) return;
+ container.innerHTML = '';
+ for (const svc of SUPPORTED_INTEGRATIONS) {
+  const item = document.createElement('div');
+  item.className = 'setting';
+  item.style.alignItems = 'center';
+  item.innerHTML = `
+   <span>
+    <strong>${svc.name}</strong>
+    <small>${svc.description} · ${svc.envVar}</small>
+    <span class="integ-status-text" id="integ-status-${svc.id}" style="display:block;font-size:10px;color:var(--muted);margin-top:2px;">Status: Unchecked</span>
+   </span>
+   <div style="display:flex;gap:6px;align-items:center;">
+    <span class="badge-tag" id="integ-badge-${svc.id}">Unchecked</span>
+    <button class="minor-btn" type="button" id="integ-btn-${svc.id}" style="padding:3px 8px;font-size:10px;">Check</button>
+   </div>
+  `;
+  const btn = item.querySelector<HTMLButtonElement>(`#integ-btn-${svc.id}`);
+  if (btn) {
+   btn.addEventListener('click', () => void checkSingleIntegration(svc.id));
+  }
+  container.appendChild(item);
+ }
+}
+
+q<HTMLButtonElement>('#github-refresh-btn')?.addEventListener('click', () => void refreshGitHubIntegration());
+q<HTMLButtonElement>('#github-open-repo-btn')?.addEventListener('click', () => {
+ if (activeRepoUrl) {
+  window.open(activeRepoUrl, '_blank');
+ }
+});
+q<HTMLButtonElement>('#github-open-pr-btn')?.addEventListener('click', () => {
+ if (activePrUrl) {
+  window.open(activePrUrl, '_blank');
+ }
+});
+
+// S12: Flow offline dictation and snippets controller
+const flowController = new FlowDictationController();
+let isDictating = false;
+let flowStats = { wordsCount: 0, charactersCount: 0, sessionsCount: 0 };
+
+async function refreshFlowEngineStatus() {
+ if (!isTauri) {
+  const badge = q<HTMLElement>('#flow-engine-badge');
+  if (badge) badge.textContent = 'Browser Simulation';
+  return;
+ }
+ try {
+  const status = await native('get_flow_engine_status') as {
+   available: boolean;
+   engine_name: string;
+   local_only: boolean;
+   hotkey: string;
+   hotkey_registered: boolean;
+  };
+  const badge = q<HTMLElement>('#flow-engine-badge');
+  if (badge) {
+   if (status.available) {
+    badge.textContent = status.engine_name;
+    badge.style.borderColor = 'var(--accent)';
+    badge.style.color = 'var(--accent)';
+   } else {
+    badge.textContent = 'OS Win+H Fallback (In-Process Engine Pending)';
+    badge.style.borderColor = 'rgba(255,255,255,0.2)';
+    badge.style.color = 'var(--muted)';
+   }
+  }
+  const hk = q<HTMLElement>('#flow-hotkey-badge');
+  if (hk) hk.textContent = status.hotkey || 'Alt+D';
+ } catch (err) {
+  console.error('Failed to get flow engine status:', err);
+ }
+}
+
+function renderFlowSnippets() {
+ const list = q<HTMLElement>('#flow-snippets-list');
+ if (!list) return;
+ list.innerHTML = '';
+ for (const snip of DEFAULT_SNIPPETS) {
+  const row = document.createElement('div');
+  row.className = 'setting';
+  row.style.alignItems = 'center';
+  row.innerHTML = `
+   <span>
+    <strong><code>${snip.trigger}</code></strong>
+    <small>${snip.description || 'Snippet expansion'}</small>
+   </span>
+   <span class="badge-tag" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${snip.replacement}</span>
+  `;
+  list.appendChild(row);
+ }
+}
+
+function updateFlowStatsUI() {
+ const sessEl = q<HTMLElement>('#flow-stat-sessions');
+ if (sessEl) sessEl.textContent = `${flowStats.sessionsCount} session${flowStats.sessionsCount === 1 ? '' : 's'}`;
+ const wordsEl = q<HTMLElement>('#flow-stat-words');
+ if (wordsEl) wordsEl.textContent = `${flowStats.wordsCount} word${flowStats.wordsCount === 1 ? '' : 's'}`;
+}
+
+flowController.setEnabled(Boolean(prefs.flowEnabled));
+flowController.pushToTalk = Boolean(prefs.flowPushToTalk);
+
+const flowEnableCheck = q<HTMLInputElement>('#setting-flow-enable');
+if (flowEnableCheck) {
+ flowEnableCheck.addEventListener('change', e => {
+  const enabled = (e.target as HTMLInputElement).checked;
+  updatePrefs({ flowEnabled: enabled });
+  flowController.setEnabled(enabled);
+ });
+}
+
+const flowPttCheck = q<HTMLInputElement>('#setting-flow-push-to-talk');
+if (flowPttCheck) {
+ flowPttCheck.addEventListener('change', e => {
+  const ptt = (e.target as HTMLInputElement).checked;
+  updatePrefs({ flowPushToTalk: ptt });
+  flowController.pushToTalk = ptt;
+ });
+}
+
+const flowFilterCheck = q<HTMLInputElement>('#setting-flow-filter-fillers');
+if (flowFilterCheck) {
+ flowFilterCheck.addEventListener('change', e => {
+  const filter = (e.target as HTMLInputElement).checked;
+  updatePrefs({ flowFilterFillers: filter });
+ });
+}
+
+// Push-to-talk hotkey handling (Alt+D)
+window.addEventListener('keydown', (e: KeyboardEvent) => {
+ if (e.altKey && (e.key === 'd' || e.key === 'D')) {
+  if (flowController.enabled) {
+   e.preventDefault();
+   if (!isDictating) {
+    isDictating = true;
+    flowController.startListening();
+    playFeedbackSound('tap');
+   }
+  }
+ }
+});
+
+window.addEventListener('keyup', (e: KeyboardEvent) => {
+ if (e.key === 'Alt' || e.key === 'd' || e.key === 'D') {
+  if (flowController.enabled && flowController.pushToTalk && isDictating) {
+   e.preventDefault();
+   isDictating = false;
+   const result = flowController.stopListening('', DEFAULT_SNIPPETS);
+   if (result) {
+    flowStats = updateDictationStats(flowStats, result);
+    updateFlowStatsUI();
+   }
+  }
+ }
+});
+
+// S13: Notetaker and Voice Commands Controller
+const notetaker = new NotetakerController();
+notetaker.setConsent(Boolean(prefs.notetakerConsent));
+
+function setMicVisualIndicator(active: boolean, label = 'MIC LIVE') {
+ const compactInd = root.querySelector<HTMLElement>('#compact-mic-indicator');
+ const headerInd = root.querySelector<HTMLElement>('#header-mic-indicator');
+ if (compactInd) {
+  compactInd.hidden = !active;
+  compactInd.textContent = label;
+ }
+ if (headerInd) {
+  headerInd.hidden = !active;
+  headerInd.textContent = label;
+ }
+}
+
+async function refreshMicrophoneStatus() {
+ if (!isTauri) {
+  const badge = root.querySelector<HTMLElement>('#voice-endpoint-badge');
+  if (badge) badge.textContent = 'Browser Simulation';
+  return;
+ }
+ try {
+  const status = await native('get_microphone_status') as {
+   available: boolean;
+   device_name: string;
+   consented: boolean;
+   is_recording: boolean;
+   audio_backend_ready: boolean;
+   session_controller_active: boolean;
+   session_type: string | null;
+  };
+  const badge = root.querySelector<HTMLElement>('#voice-endpoint-badge');
+  if (badge) {
+   if (status.audio_backend_ready && status.available) {
+    badge.textContent = status.device_name;
+    badge.style.borderColor = 'var(--accent)';
+    badge.style.color = 'var(--accent)';
+   } else {
+    badge.textContent = 'WASAPI Capture Pending (Session Only)';
+    badge.style.borderColor = 'rgba(255,255,255,0.2)';
+    badge.style.color = 'var(--muted)';
+   }
+  }
+ } catch (err) {
+  console.error('Failed to get mic status:', err);
+ }
+}
+
+function renderNotetakerNotes() {
+ const list = root.querySelector<HTMLElement>('#notetaker-notes-list');
+ if (!list) return;
+ list.innerHTML = '';
+ if (notetaker.notes.length === 0) {
+  list.innerHTML = '<small style="color:var(--muted);font-size:10px;">No notes recorded in this session yet.</small>';
+  return;
+ }
+ for (const note of notetaker.notes) {
+  const card = document.createElement('div');
+  card.style.cssText = 'padding:6px 8px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:6px;';
+  card.innerHTML = `
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+    <strong style="font-size:11px;color:var(--text);">${note.title}</strong>
+    <small style="color:var(--muted);font-size:9px;">${note.durationSeconds}s · ${note.createdAt.slice(11,16)}</small>
+   </div>
+   <p style="font-size:10px;color:var(--sub);margin:0 0 4px 0;max-height:48px;overflow:hidden;text-overflow:ellipsis;">${note.transcript || '(Empty transcript)'}</p>
+   <div style="display:flex;gap:6px;align-items:center;">
+    <button class="minor-btn" type="button" data-export-id="${note.id}" style="padding:2px 6px;font-size:9px;">Export MD</button>
+    <button class="minor-btn" type="button" data-del-id="${note.id}" style="padding:2px 6px;font-size:9px;color:#ef4444;">Delete</button>
+   </div>
+  `;
+  card.querySelector(`[data-export-id="${note.id}"]`)?.addEventListener('click', async () => {
+   const md = notetaker.exportMarkdown(note);
+   if (isTauri) {
+    try {
+     await native('save_file_to_downloads', {
+      filename: `note-${note.id}.md`,
+      content: md,
+      isBase64: false
+     });
+     feed.recordEvent('Note exported', `${note.title}.md`, 'FILE');
+     renderAlerts();
+    } catch (err) {
+     feed.recordEvent('Export error', String(err));
+    }
+   } else {
+    feed.recordEvent('Note markdown generated', note.title, 'FILE');
+   }
+  });
+  card.querySelector(`[data-del-id="${note.id}"]`)?.addEventListener('click', () => {
+   notetaker.deleteNote(note.id);
+   renderNotetakerNotes();
+  });
+  list.appendChild(card);
+ }
+}
+
+const notetakerConsentCheck = root.querySelector<HTMLInputElement>('#setting-notetaker-consent');
+if (notetakerConsentCheck) {
+ notetakerConsentCheck.checked = Boolean(prefs.notetakerConsent);
+ notetakerConsentCheck.addEventListener('change', e => {
+  const consented = (e.target as HTMLInputElement).checked;
+  updatePrefs({ notetakerConsent: consented });
+  notetaker.setConsent(consented);
+  const statusLine = root.querySelector<HTMLElement>('#notetaker-status-line');
+  if (statusLine) {
+   statusLine.textContent = consented ? 'Consent granted. Ready to record.' : 'Consent revoked. Recording disabled.';
+   statusLine.style.color = consented ? 'var(--accent)' : '#ef4444';
+  }
+ });
+}
+
+const voiceCommandsCheck = root.querySelector<HTMLInputElement>('#setting-voice-commands-enable');
+if (voiceCommandsCheck) {
+ voiceCommandsCheck.checked = Boolean(prefs.voiceCommandsEnabled);
+ voiceCommandsCheck.addEventListener('change', e => {
+  const enabled = (e.target as HTMLInputElement).checked;
+  updatePrefs({ voiceCommandsEnabled: enabled });
+ });
+}
+
+const btnNoteRecord = root.querySelector<HTMLButtonElement>('#btn-notetaker-record');
+const btnNotePause = root.querySelector<HTMLButtonElement>('#btn-notetaker-pause');
+const btnNoteFinish = root.querySelector<HTMLButtonElement>('#btn-notetaker-finish');
+const btnNoteCancel = root.querySelector<HTMLButtonElement>('#btn-notetaker-cancel');
+const noteTitleInput = root.querySelector<HTMLInputElement>('#notetaker-title-input');
+const noteStatusLine = root.querySelector<HTMLElement>('#notetaker-status-line');
+
+btnNoteRecord?.addEventListener('click', async () => {
+ if (!prefs.notetakerConsent) {
+  if (noteStatusLine) {
+   noteStatusLine.textContent = 'Please enable "Notetaker consent" checkbox above before recording.';
+   noteStatusLine.style.color = '#ef4444';
+  }
+  playFeedbackSound('error');
+  return;
+ }
+ const title = noteTitleInput?.value.trim() || 'Meeting Note';
+ try {
+  if (isTauri) {
+   await native('start_consented_recording', { sessionType: 'notetaker', userConsented: true });
+  }
+  notetaker.startRecording(title);
+  if (btnNoteRecord) btnNoteRecord.hidden = true;
+  if (btnNotePause) btnNotePause.hidden = false;
+  if (btnNoteFinish) btnNoteFinish.hidden = false;
+  if (btnNoteCancel) btnNoteCancel.hidden = false;
+  setMicVisualIndicator(true, 'NOTE SESSION');
+  if (noteStatusLine) {
+   noteStatusLine.textContent = `Note session "${title}" active (Session timer running; audio capture pending WASAPI backend)`;
+   noteStatusLine.style.color = 'var(--accent)';
+  }
+  playFeedbackSound('tap');
+ } catch (err) {
+  if (noteStatusLine) {
+   noteStatusLine.textContent = `Recording error: ${String(err)}`;
+   noteStatusLine.style.color = '#ef4444';
+  }
+  playFeedbackSound('error');
+ }
+});
+
+btnNotePause?.addEventListener('click', () => {
+ if (notetaker.state === 'recording') {
+  notetaker.pauseRecording();
+  if (btnNotePause) btnNotePause.textContent = 'Resume';
+  if (noteStatusLine) noteStatusLine.textContent = 'Recording paused.';
+  setMicVisualIndicator(false);
+ } else if (notetaker.state === 'paused') {
+  notetaker.resumeRecording();
+  if (btnNotePause) btnNotePause.textContent = 'Pause';
+  if (noteStatusLine) noteStatusLine.textContent = 'Recording resumed.';
+  setMicVisualIndicator(true, 'NOTE REC');
+ }
+});
+
+btnNoteFinish?.addEventListener('click', async () => {
+ try {
+  if (isTauri && notetaker.activeSessionId) {
+   await native('stop_consented_recording', { sessionId: notetaker.activeSessionId }).catch(() => {});
+  }
+  const title = noteTitleInput?.value.trim() || 'Meeting Note';
+  const defaultText = `Meeting transcript captured on ${new Date().toLocaleDateString()}. Action items and discussion points saved.`;
+  const note = notetaker.stopRecording(defaultText, title);
+  if (btnNoteRecord) btnNoteRecord.hidden = false;
+  if (btnNotePause) {
+   btnNotePause.hidden = true;
+   btnNotePause.textContent = 'Pause';
+  }
+  if (btnNoteFinish) btnNoteFinish.hidden = true;
+  if (btnNoteCancel) btnNoteCancel.hidden = true;
+  setMicVisualIndicator(false);
+  if (noteTitleInput) noteTitleInput.value = '';
+  if (noteStatusLine) {
+   noteStatusLine.textContent = `Note saved (${note.durationSeconds}s). Ready.`;
+   noteStatusLine.style.color = 'var(--accent)';
+  }
+  renderNotetakerNotes();
+  playFeedbackSound('chime');
+  feed.recordEvent('Note recorded', `${note.title} (${note.durationSeconds}s)`, 'ACTION');
+  renderAlerts();
+ } catch (err) {
+  if (noteStatusLine) noteStatusLine.textContent = `Finish error: ${String(err)}`;
+ }
+});
+
+btnNoteCancel?.addEventListener('click', async () => {
+ if (isTauri && notetaker.activeSessionId) {
+  await native('stop_consented_recording', { sessionId: notetaker.activeSessionId }).catch(() => {});
+ }
+ notetaker.cancel();
+ if (btnNoteRecord) btnNoteRecord.hidden = false;
+ if (btnNotePause) {
+  btnNotePause.hidden = true;
+  btnNotePause.textContent = 'Pause';
+ }
+ if (btnNoteFinish) btnNoteFinish.hidden = true;
+ if (btnNoteCancel) btnNoteCancel.hidden = true;
+ setMicVisualIndicator(false);
+ if (noteStatusLine) {
+  noteStatusLine.textContent = 'Recording cancelled.';
+  noteStatusLine.style.color = 'var(--muted)';
+ }
+});
+
+// Alt+V trigger for bounded voice command testing
+window.addEventListener('keydown', async (e: KeyboardEvent) => {
+ if (e.altKey && (e.key === 'v' || e.key === 'V')) {
+  if (!prefs.voiceCommandsEnabled) return;
+  e.preventDefault();
+  setMicVisualIndicator(true, 'VOICE CMD');
+  playFeedbackSound('tap');
+  setTimeout(() => {
+   setMicVisualIndicator(false);
+  }, 1200);
+ }
+});
+
+// S14: Android companion pairing and mobile approvals controller
+const companion = new CompanionController();
+
+async function refreshCompanionUI() {
+ if (isTauri) {
+  try {
+   const state = await native('get_companion_state');
+   companion.syncFromNative(state);
+  } catch (err) {
+   console.error('Failed to get companion state:', err);
+  }
+ }
+
+ const badge = root.querySelector<HTMLElement>('#companion-status-badge');
+ const label = root.querySelector<HTMLElement>('#companion-device-label');
+ const unpairedBox = root.querySelector<HTMLElement>('#companion-unpaired-box');
+ const pairingBox = root.querySelector<HTMLElement>('#companion-pairing-box');
+ const pairedBox = root.querySelector<HTMLElement>('#companion-paired-box');
+ const codeDisplay = root.querySelector<HTMLElement>('#companion-code-display');
+ const qrDisplay = root.querySelector<HTMLElement>('#companion-qr-display');
+ const pairedName = root.querySelector<HTMLElement>('#companion-paired-name');
+ const pairedMeta = root.querySelector<HTMLElement>('#companion-paired-meta');
+
+ if (companion.status === 'paired' && companion.pairedDevice) {
+  if (badge) {
+   badge.textContent = 'Paired & Authorized';
+   badge.style.color = '#22c55e';
+  }
+  if (label) label.textContent = `Paired: ${companion.pairedDevice.deviceName}`;
+  if (unpairedBox) unpairedBox.hidden = true;
+  if (pairingBox) pairingBox.hidden = true;
+  if (pairedBox) pairedBox.hidden = false;
+  if (pairedName) pairedName.textContent = companion.pairedDevice.deviceName;
+  if (pairedMeta) {
+   const timeStr = new Date(companion.pairedDevice.pairedAtMs).toLocaleTimeString();
+   pairedMeta.textContent = `ID: ${companion.pairedDevice.deviceId} · Paired at ${timeStr}`;
+  }
+ } else if (companion.status === 'pairing_requested' && companion.pairingDetails) {
+  if (badge) {
+   badge.textContent = 'Pairing In Progress';
+   badge.style.color = 'var(--accent)';
+  }
+  if (label) label.textContent = 'Awaiting companion confirmation...';
+  if (unpairedBox) unpairedBox.hidden = true;
+  if (pairingBox) pairingBox.hidden = false;
+  if (pairedBox) pairedBox.hidden = true;
+  if (codeDisplay) codeDisplay.textContent = companion.pairingDetails.pairingCode;
+  if (qrDisplay) qrDisplay.textContent = companion.pairingDetails.qrPayload;
+ } else {
+  if (badge) {
+   badge.textContent = 'Unpaired';
+   badge.style.color = 'var(--muted)';
+  }
+  if (label) label.textContent = 'No companion device paired.';
+  if (unpairedBox) unpairedBox.hidden = false;
+  if (pairingBox) pairingBox.hidden = true;
+  if (pairedBox) pairedBox.hidden = true;
+ }
+}
+
+root.querySelector<HTMLButtonElement>('#btn-companion-request-pairing')?.addEventListener('click', async () => {
+ try {
+  await companion.requestPairing(isTauri ? native : undefined);
+  void refreshCompanionUI();
+  playFeedbackSound('tap');
+  feed.recordEvent('Pairing initiated', '6-digit PIN & QR payload generated', 'AGENT');
+  renderAlerts();
+ } catch (err) {
+  feed.recordEvent('Pairing error', String(err));
+  renderAlerts();
+ }
+});
+
+root.querySelector<HTMLButtonElement>('#btn-companion-revoke')?.addEventListener('click', async () => {
+ try {
+  await companion.revoke(isTauri ? native : undefined);
+  void refreshCompanionUI();
+  playFeedbackSound('tap');
+  feed.recordEvent('Companion revoked', 'Mobile approval credentials cleared', 'AGENT');
+  renderAlerts();
+ } catch (err) {
+  feed.recordEvent('Revoke error', String(err));
+  renderAlerts();
+ }
+});
+
+root.querySelector<HTMLButtonElement>('#btn-companion-simulate-confirm')?.addEventListener('click', async () => {
+ if (!companion.pairingDetails) return;
+ const nameInput = root.querySelector<HTMLInputElement>('#companion-sim-name');
+ const devName = nameInput?.value.trim() || 'Android Device';
+ const devId = `dev_${Date.now().toString(36)}`;
+ try {
+  let token = companion.sharedSecret;
+  if (!token) {
+   try {
+    const parsed = JSON.parse(companion.pairingDetails.qrPayload);
+    token = parsed.token;
+   } catch {}
+  }
+  await companion.confirmPairing(
+   devId,
+   devName,
+   companion.pairingDetails.pairingCode,
+   token || '',
+   isTauri ? native : undefined
+  );
+  void refreshCompanionUI();
+  playFeedbackSound('chime');
+  feed.recordEvent('Companion paired', devName, 'AGENT');
+  renderAlerts();
+ } catch (err) {
+  feed.recordEvent('Confirmation error', String(err));
+  renderAlerts();
+ }
+});
+
 async function initialize(){
  const startupProv=q<HTMLSelectElement>('#chat-provider-select')?.value||'gemini';
  onProviderChange(startupProv);
- setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentPills();renderChatMessages();
+ setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentSessions();renderChatMessages();renderConnectedServicesList();renderFlowSnippets();updateFlowStatsUI();renderNotetakerNotes();void refreshMicrophoneStatus();void refreshCompanionUI();
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
   try{
    await listen<string>('island:tray',e=>{if(e.payload==='expand'){setMode('compact',true);setMode('expanded');}if(e.payload==='compact')setMode('compact',true);syncGazePolling();});
    await listen<string>('island:visibility',e=>{if(e.payload==='hidden')stopGazePolling();else syncGazePolling();});
+   await listen<NativeAgentEvent>('island:agent-event',e=>{
+    sessionStore.ingestEvent(e.payload);
+   });
+   await listen<ApprovalSnapshot>('island:approval-requested',e=>{
+    sessionStore.setPendingApproval(e.payload);
+    playFeedbackSound('tap');
+   });
+   await listen<{request_id:string,status:string}>('island:approval-resolved',e=>{
+    sessionStore.resolvePendingApproval(e.payload.request_id,e.payload.status);
+   });
+   try{
+    const rawSessions=await native('get_agent_sessions') as NativeSessionSnapshot[];
+    if(Array.isArray(rawSessions)){
+     sessionStore.hydrateSessions(rawSessions);
+    }
+   }catch{}
+   try{
+    const rawApprovals=await native('get_pending_approvals') as ApprovalSnapshot[];
+    if(Array.isArray(rawApprovals)){
+     for(const snap of rawApprovals){
+      sessionStore.setPendingApproval(snap);
+     }
+    }
+   }catch{}
    await native('set_window_priority',{enabled:prefs.alwaysOnTop});
   }catch(err){console.error('Island init:',err);}
  }
+ sessionStore.subscribe(()=>{
+  renderAgentSessions();
+  syncGuardian();
+ });
  setMode(prefs.pinned?'pinned':'compact',true);
  void refreshMedia();startVolumePolling();renderClipboard();
  setInterval(()=>{if(!document.hidden||mode==='compact')void refreshMedia();},5000);

@@ -36,29 +36,54 @@ Xyeena Notch docks neatly to the top edge of your Windows display as an adaptive
 - **Windows GSMTC Integration:** Real-time monitoring of active Windows media sessions (Spotify, Chrome, Edge, etc.).
 - **Playback & Transport:** Play/pause, next/previous track, seek bar, and shuffle/repeat toggles.
 - **Master Volume Endpoint:** Debounced slider controlling the Windows default audio output endpoint, with mute toggle.
-- **Meeting Mode:** Explicit manual timer for calls and focus sessions (never accesses microphones or infers private calls).
 
-### 4. Privacy-First Unified Clipboard
+### 4. Multi-Agent Runtime & Authoritative Approvals
+- **Windows Named Pipe IPC:** Secure per-user DACL Named Pipe (`\\.\pipe\xyeena-agent-<user>`) streaming real-time agent lifecycle events.
+- **Contextual Agent Pills:** Multi-agent concurrent session tabs, status indicators (Active, Busy, Waiting, Done), and live tool execution telemetry.
+- **Authoritative Approval Registry:** Single-use cryptographic token nonces, 3-minute TTL expiry, SHA-256 parameter fingerprint validation, and strict `Allow Once` / `Deny` / structured question responses (zero Always Allow).
+- **Automated Provider Hook Installer:** Automatic discovery, atomic `.bak` backup, and idempotent install/uninstall for Antigravity, Claude Code, Codex, and Gemini CLI.
+
+### 5. Flow Offline Dictation & Consented Notetaker
+- **Privacy-First Dictation Framework:** Push-to-talk (`Alt+D`) hotkey handling, verbal filler word filtering, dictionary snippets expansion, and local statistics. Delegates to OS Windows Voice Typing (`Win+H`); embedded in-process speech engine remains pending.
+- **Consented Meeting Notetaker:** Explicit user consent gate, visual session indicators in compact and expanded views, session-memory note storage (max 20 entries), and markdown export. Native hardware audio capture stream (WASAPI) is pending; UI strictly differentiates session controller state from live microphone hardware capture.
+- **Voice Commands for Xyn:** Hands-free command parser for Island modes, navigation, chat, media playback, and recap generation.
+
+### 6. Android Companion Local Pairing & Verification
+- **Zero Cloud Relay:** Local network pairing protocol via time-bounded 5-minute QR payload schema (`xyeena-companion-v1`), unbiased CSPRNG-backed 6-digit numeric PIN, and 32-byte secret nonce (64 hex characters).
+- **Cryptographic Authentication:** Mutual authentication using zero-dependency RFC 4231 HMAC-SHA256, constant-time verification, request ID binding, action fingerprint validation, and replay protection (nonce/counter tracking).
+- **Fail-Closed Execution:** Remote approval execution remains disabled until the entire authenticated mobile transport and physical Android APK pass end-to-end acceptance.
+- **Immediate Revocation:** Clear mobile credentials and revoke remote approval authority instantly from Settings.
+
+### 7. External Integrations & Developer Productivity
+- **Read-Only GitHub Status:** Detects active git remote and branch, displaying authentic PR draft status, reviews, and CI workflow run check rollups.
+- **Connected Services Health:** Scoped health checks for Vercel, Notion, n8n, Resend, Cal.com, and Stripe with honest unconfigured reporting and zero synthetic accounts.
+- **Bounded Git Diff Preview:** Safe 64KB/500-line diff viewer with path traversal validation preventing directory escape.
+- **Editor & Terminal Integration:** Launch active project directly into VS Code (`code -g`) or Windows Terminal (`wt.exe` / PowerShell).
+
+### 8. Privacy-First Unified Clipboard
 - **In-Memory Retention:** Captured clips exist exclusively in application session memory; items are never written to disk, local storage, or network endpoints.
-- **Multi-Format Support:** Captures plain text, image data URLs (BMP/PNG), and dropped file paths.
+- **Win32 Sequence Number Notifications:** Zero-overhead OS clipboard polling via Win32 sequence numbers.
+- **Multi-Format Support:** Captures plain text, image data URLs (BMP/PNG), and dropped file paths (50MB bound).
 - **Bounded Capacity:** Strict 64 MiB total memory cap, 20 MiB per image, and configurable 20/50/100 item limits.
-- **Privacy Controls:** Read-Once mode, item pinning, search filtering, one-click history purge, and automatic wipe on application exit.
+- **Privacy Controls:** Read-Once mode, item pinning, search filtering, sensitive credentials filter (`looksSensitive`), one-click history purge, and automatic wipe on application exit.
 
-### 5. Multi-Provider Companion AI Chat (BYOK)
+### 9. Multi-Provider Companion AI Chat (BYOK)
 - **Supported Providers:** Google Gemini, Anthropic Claude, OpenAI, OpenRouter, and local offline models (Ollama and LM Studio).
 - **Session-Only BYOK:** API keys reside in private in-memory stores; keys are never persisted to disk, localStorage, or exported in diagnostics.
 - **Native Non-Blocking Transport:** Curl-based native HTTP runner in Rust with atomic cancellation registry, strict URL authority allowlists, loopback-only local routing, and 3xx redirect rejection.
 
-### 6. Local Weekly Recap Engine (`@xyeena/recap`)
+### 10. Local Weekly Recap Engine (`@xyeena/recap`)
 - **Zero-Cloud Analytics:** Aggregates local activity from authenticated local runs.
 - **Privacy Guaranteed:** Strips sensitive strings, ignores untrusted providers, and maintains a strict rolling 12-week local archive.
 - **Exportable Artifacts:** Formats clean ASCII markdown summaries and generates standalone 1080×1920 SVG cards.
 
-### 7. Settings, Theming & Accessibility
+### 11. Settings, Theming & Accessibility
 - **Appearance:** Low-chroma Dark, crisp Light, and automatic Windows System themes conforming to WCAG AA contrast standards.
+- **Focus & Keyboard Navigation:** Comprehensive `:focus-visible` outlines, arrow key navigation across navigation tabs and settings pills, and full screen-reader compliance.
 - **Motion Settings:** Full support for `prefers-reduced-motion` and manual toggle to disable spring transitions and lock mascot animation to static pose.
+- **High-Contrast & High-DPI:** Native Windows forced-colors mode support and sub-pixel antialiased text rendering.
+- **Internationalization:** Complete 1:1 key parity between English and Bahasa Indonesia across all tabs, panels, and settings.
 - **Feedback:** Optional synthesized audio feedback with volume attenuation.
-- **Internationalization:** English and Bahasa Indonesia interface options.
 
 ---
 
@@ -123,7 +148,7 @@ xyeena-notch/
 # 1. Install locked dependencies across all monorepo workspaces
 npm ci
 
-# 2. Run the complete automated test suite (105 JS/TS tests + 10 Rust tests)
+# 2. Run the complete automated test suite (153 JS/TS tests + 98 Rust native tests)
 npm test
 
 # 3. Compile TypeScript, bundle web assets with Vite, and build playground

@@ -1,8 +1,8 @@
 # Security Policy
 
 **Product:** Xyeena Notch / Xyeena Island
-**Version:** 1.0.0-alpha.1 (Experimental Windows Prerelease)
-**Status:** Independent security audit pending. Self-audited with automated verification.
+**Version:** 1.0.0-alpha.1 (Windows Parity Prerelease)
+**Status:** Hardened cryptographic controls (OS CSPRNG fail-closed, RFC 4231 HMAC-SHA256, constant-time comparisons, replay protection) with active CI verification. Outstanding hardware and transport acceptance items tracked transparently.
 
 ---
 
@@ -19,15 +19,19 @@ Xyeena Notch runs locally on Windows as a Tauri 2 desktop application hosting a 
 │  - No remote page loads (local dist only)    │
 │  - CSP: script-src 'self'; connect-src 'self' │
 │  - In-memory BYOK credentials only            │
+│  - Zero Always-Allow approval policies        │
 └───────────────────────┬───────────────────────┘
                         │ IPC (Strict Allowlist)
                         ▼
 ┌───────────────────────────────────────────────┐
 │               Rust Native Core                │
+│  - Windows Named Pipe IPC (per-user DACL)     │
+│  - Authoritative approval token nonces (TTL)  │
 │  - Strict URL authority & scheme validation   │
 │  - Loopback-only routing for local models     │
 │  - 3xx Redirect rejection                     │
 │  - Bounded memory buffers (64 MiB total cap)  │
+│  - Consented microphone session management    │
 │  - Windows Win32 GSMTC & Core Audio APIs      │
 └───────────────────────────────────────────────┘
 ```
@@ -36,13 +40,23 @@ Xyeena Notch runs locally on Windows as a Tauri 2 desktop application hosting a 
 
 ## 2. Specific Security Controls
 
-### A. Session-Only BYOK (Bring-Your-Own-Key)
-- API keys entered for cloud providers (Google Gemini, Anthropic Claude, OpenAI, OpenRouter) are stored exclusively in an in-memory session store (`#keys` private Map).
+### A. Windows Named Pipe IPC & Per-User Isolation
+- **Per-User DACL:** Native agent relay and hooks communicate over Windows Named Pipe `\\.\pipe\xyeena-agent-<username>`. The pipe DACL grants access exclusively to the current logged-in user SID and Windows Administrators. Other OS users cannot connect or inject synthetic events.
+- **Framing & Size Ceilings:** Messages are framed using length-prefixed headers with strict 1 MiB maximum frame size and 100-continue header filtering to prevent memory exhaustion.
+
+### B. Authoritative Native Approval Registry (`agent_ipc::approval`)
+- **Strict Single-Use Nonces:** Every interactive approval request generates a cryptographically random 64-character hex token nonce (256-bit entropy) via OS-backed CSPRNG (`BCryptGenRandom`). Generation strictly fails-closed if secure randomness is unavailable or entropy is all-zero.
+- **Bounded Expiry (TTL):** Pending approvals expire automatically after 3 minutes (180,000 ms). Expired requests fail-closed without granting execution permission.
+- **Action Fingerprint Integrity:** Approvals are cryptographically bound to the SHA-256 hash of the exact tool name and parameters. Tampered parameters invalidate the token.
+- **Zero Always-Allow Policy:** The application strictly enforces `Allow Once`, `Deny`, and structured question responses. `Always Allow` is permanently disabled in protocol rules to prevent persistent privilege escalation.
+
+### C. Session-Only BYOK (Bring-Your-Own-Key)
+- API keys entered for cloud providers (Google Gemini, Anthropic Claude, OpenAI, OpenRouter) are stored exclusively in an in-memory session store (`providerCredentials`).
 - **Never Persisted:** Keys are never written to `localStorage`, `sessionStorage`, IndexedDB, configuration files, or Windows Registry.
 - **Never Logged:** Keys are omitted from diagnostics, telemetry, UI error surfaces, and debug output.
-- **Immediate Expiry:** Closing the application completely frees all keys from memory.
+- **Process Protection:** Outbound curl executions receive keys strictly via standard input piping, ensuring zero credentials leak into operating system process lists (`tasklist`, `Get-Process`).
 
-### B. Native AI Transport & Endpoint Validation
+### D. Native AI Transport & Endpoint Validation
 All AI completions are proxied through a non-blocking native curl runner in Rust (`invoke('run_ai_completion')`) with strict enforcement:
 - **Authority Whitelist:** Only canonical API hosts are permitted:
   - `generativelanguage.googleapis.com` (Gemini)
@@ -53,35 +67,34 @@ All AI completions are proxied through a non-blocking native curl runner in Rust
 - **Redirects Prohibited:** Any HTTP 3xx redirect response is treated as an immediate protocol violation and rejected (`Redirects are forbidden for native AI transport`).
 - **Header Isolation:** Cloud provider headers are isolated per provider (e.g. `x-goog-api-key` is only permitted for Gemini; `x-api-key` and `anthropic-version` only for Anthropic; `Authorization: Bearer` only for OpenAI/OpenRouter).
 
-### C. Clipboard Privacy & Memory Bounds
+### E. Consented Microphone Privacy & Session Demarcation
+- **Explicit Boolean Consent Gate:** Recording endpoints (`start_consented_recording`) reject invocation unless `userConsented: true` is explicitly provided.
+- **Differentiated Session Reporting:** Low-level WASAPI hardware audio capture is pending; the application strictly reports hardware capture unavailable (`available: false`, `audio_backend_ready: false`) while tracking UI session controller state separately, never falsely claiming active live microphone streaming.
+- **Bounded Session Memory:** Saved notes are retained in session memory with a 20-entry maximum boundary.
+
+### F. Android Companion Cryptographic Authentication & Fail-Closed Execution
+- **Zero Cloud Relay:** Mobile companion pairing operates exclusively over the local network via unbiased CSPRNG 6-digit numeric PIN, 32-byte secret nonce (64 hex characters), and QR payload schema (`xyeena-companion-v1`).
+- **RFC 4231 HMAC-SHA256 Signatures:** Mobile approval payloads are bound to device identity, request ID, action fingerprint, decision, expiry, and unique nonce/counter, verified with zero-dependency HMAC-SHA256 and constant-time comparisons (`constant_time_eq`).
+- **Replay & Cross-Device Protection:** Replay attacks (reused nonces) and cross-device approval attempts are strictly rejected.
+- **Execution Disabled Pending Acceptance:** Actual mobile approval execution remains disabled (`execute_mobile_approval` returns an error) until end-to-end transport and physical Android client APK pass verified acceptance.
+- **Immediate Revocation:** The revocation control wipes paired credentials and resets session state instantly.
+
+### G. Clipboard Privacy & Memory Bounds
 - **Explicit Consent:** Clipboard history capture defaults to **DISABLED** at startup. It activates only upon deliberate user toggle in the running session.
 - **Ephemeral Storage:** Clips exist strictly in heap memory; nothing is written to disk or transmitted over the network.
 - **Resource Limits:**
   - Max total clipboard buffer: **64 MiB**.
   - Max single image size: **20 MiB** (larger images are discarded with a notification).
   - Max history entries: Configurable 20, 50, or 100 items.
-- **Read Once Mode:** Sensitive items can be captured with single-read destruction: copying the item purges it immediately from history.
+- **Sensitive Data Filter:** Patterns resembling private keys, JWTs, and passwords are automatically filtered.
 - **Full Purge:** Clicking "Clear history" or closing the application zeroes the clipboard buffer.
 
-### D. Filesystem & Run Summaries Scope
-- The application has **read-only** access to project run snapshots (`.xyeena/runs/*/snapshot.json`).
-- Path traversal outside the chosen directory is blocked.
-- The application cannot modify, overwrite, execute, or delete files in user project workspaces.
-
-### E. Diagnostic Log Sanitization
+### H. Diagnostic Log Sanitization
 - The diagnostic log exporter (`btn-export-diagnostics`) redacts user names, local absolute file paths, and potential API token patterns (`sk-...`, `AIza...`, `Bearer ...`).
 
 ---
 
-## 3. Security Limitations of the Alpha Prerelease
-
-- **Unsigned Binaries:** Alpha installers and executables are unsigned. They are distributed with SHA-256 checksums on GitHub Releases.
-- **Heuristic Secret Detection:** While the clipboard manager includes filtering for common token patterns, it is not an enterprise Data Loss Prevention (DLP) system.
-- **Local Device Security:** Any process running with current-user privileges on the same Windows session can inspect process memory. Protect your desktop environment accordingly.
-
----
-
-## 4. Vulnerability Disclosure
+## 3. Vulnerability Disclosure
 
 If you discover a security vulnerability in Xyeena Notch, please report it responsibly:
 
@@ -90,4 +103,4 @@ If you discover a security vulnerability in Xyeena Notch, please report it respo
    - Detailed description of the issue and potential impact.
    - Minimal reproducible proof-of-concept.
    - Operating system and version information.
-3. **Coordinated Disclosure:** Please allow up to 72 hours for an initial response before public disclosure. Fixes will be published in an updated GitHub prerelease with appropriate credit.
+3. **Coordinated Disclosure:** Please allow up to 72 hours for an initial response before public disclosure.
