@@ -102,8 +102,18 @@ pub fn parse_and_normalize(raw: &serde_json::Value) -> Result<NormalizedEvent, E
         .ok_or_else(|| EventParseError::InvalidPayload("Payload must be a JSON object".into()))?;
 
     // 1. Resolve Provider
-    let provider = extract_str(obj, &["provider", "agent", "source", "client"])
-        .unwrap_or_else(|| "unknown-agent".to_string());
+    let provider =
+        extract_str(obj, &["provider", "agent", "source", "client"]).unwrap_or_else(|| {
+            if obj.contains_key("conversationId")
+                || obj.contains_key("workspacePaths")
+                || obj.contains_key("toolCall")
+                || obj.contains_key("hook_event_name")
+            {
+                "antigravity".to_string()
+            } else {
+                "unknown-agent".to_string()
+            }
+        });
     if provider.len() > MAX_IDENTIFIER_LEN {
         return Err(EventParseError::FieldTooLong {
             field: "provider".into(),
@@ -131,13 +141,23 @@ pub fn parse_and_normalize(raw: &serde_json::Value) -> Result<NormalizedEvent, E
     }
 
     // 3. Resolve Event Type
-    let event_name = extract_str(obj, &["event", "event_type", "type", "hook", "name"])
-        .unwrap_or_else(|| "unknown".to_string());
+    let event_name = extract_str(
+        obj,
+        &[
+            "hook_event_name",
+            "event",
+            "event_type",
+            "type",
+            "hook",
+            "name",
+        ],
+    )
+    .unwrap_or_else(|| "unknown".to_string());
     let event_type = match event_name.to_lowercase().replace(['-', '_'], "").as_str() {
         "sessionstart" | "start" | "sessioninit" => NormalizedEventType::SessionStart,
         "sessionend" | "stop" | "sessionstop" | "end" => NormalizedEventType::SessionEnd,
         "userprompt" | "userpromptsubmit" | "prompt" => NormalizedEventType::Prompt,
-        "pretooluse" | "beforetool" | "toolpre" | "toolstart" | "toolcall" => {
+        "pretooluse" | "preinvocation" | "beforetool" | "toolpre" | "toolstart" | "toolcall" => {
             NormalizedEventType::ToolPre
         }
         "posttooluse" | "aftertool" | "toolpost" | "toolend" | "toolresult" => {
@@ -171,22 +191,54 @@ pub fn parse_and_normalize(raw: &serde_json::Value) -> Result<NormalizedEvent, E
         obj,
         &["workspace_root", "workspace", "project_root", "projectRoot"],
         MAX_FIELD_LEN,
-    )?;
+    )?
+    .or_else(|| {
+        obj.get("workspacePaths")
+            .or_else(|| obj.get("workspace_paths"))
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    });
 
     // 6. Resolve Tool Information
-    let tool_name = extract_bounded_str(
-        obj,
-        &["tool_name", "toolName", "tool", "name"],
-        MAX_IDENTIFIER_LEN,
-    )?;
+    let tool_call_obj = obj
+        .get("toolCall")
+        .or_else(|| obj.get("tool_call"))
+        .and_then(|v| v.as_object());
 
-    let tool_input = obj
-        .get("tool_input")
-        .or_else(|| obj.get("toolInput"))
-        .or_else(|| obj.get("input"))
-        .or_else(|| obj.get("parameters"))
-        .or_else(|| obj.get("arguments"))
-        .or_else(|| obj.get("args"))
+    let tool_name = if let Some(tc) = tool_call_obj {
+        extract_bounded_str(tc, &["name", "tool_name", "toolName"], MAX_IDENTIFIER_LEN)?.or(
+            extract_bounded_str(
+                obj,
+                &["tool_name", "toolName", "tool", "name"],
+                MAX_IDENTIFIER_LEN,
+            )?,
+        )
+    } else {
+        extract_bounded_str(
+            obj,
+            &["tool_name", "toolName", "tool", "name"],
+            MAX_IDENTIFIER_LEN,
+        )?
+    };
+
+    let tool_input = tool_call_obj
+        .and_then(|tc| {
+            tc.get("args")
+                .or_else(|| tc.get("arguments"))
+                .or_else(|| tc.get("input"))
+                .or_else(|| tc.get("parameters"))
+        })
+        .or_else(|| {
+            obj.get("tool_input")
+                .or_else(|| obj.get("toolInput"))
+                .or_else(|| obj.get("input"))
+                .or_else(|| obj.get("parameters"))
+                .or_else(|| obj.get("arguments"))
+                .or_else(|| obj.get("args"))
+        })
         .map(normalize_tool_input);
 
     let tool_output = extract_bounded_str(
@@ -355,6 +407,37 @@ mod tests {
         let input = event.tool_input.expect("input");
         assert_eq!(input.path.as_deref(), Some("C:\\repo\\Cargo.toml"));
         assert_eq!(input.query.as_deref(), Some("tokio"));
+    }
+
+    #[test]
+    fn test_normalize_native_antigravity_lifecycle_hook() {
+        let payload = json!({
+            "hook_event_name": "PostToolUse",
+            "conversationId": "d641ffc3-c6ee-4d42-9f3c-19a386137da5",
+            "workspacePaths": ["C:\\Users\\dev\\project"],
+            "toolCall": {
+                "name": "run_command",
+                "args": {
+                    "CommandLine": "git status --short",
+                    "toolSummary": "Check git status"
+                }
+            }
+        });
+
+        let event =
+            parse_and_normalize(&payload).expect("must parse native antigravity hook payload");
+        assert_eq!(event.event_type, NormalizedEventType::ToolPost);
+        assert_eq!(event.provider, "antigravity");
+        assert_eq!(event.session_id, "d641ffc3-c6ee-4d42-9f3c-19a386137da5");
+        assert_eq!(
+            event.workspace_root.as_deref(),
+            Some("C:\\Users\\dev\\project")
+        );
+        assert_eq!(event.tool_name.as_deref(), Some("run_command"));
+
+        let input = event.tool_input.expect("must have tool_input");
+        assert_eq!(input.command.as_deref(), Some("git status --short"));
+        assert_eq!(input.summary.as_deref(), Some("Check git status"));
     }
 
     #[test]
