@@ -11,7 +11,8 @@ import {GeometryMotion,validFrame} from './core/motion.mjs';
 import {DEFAULT_SETTINGS,STORAGE_KEY,sanitizeSettings} from './core/settings.mjs';
 import {normalizeRuns} from './core/run-summaries.mjs';
 import {normalizeSessions,pickSession,sourceLabel} from './core/media-sessions.mjs';
-import {normalizeMeeting,elapsedMeeting,MEETING_KEY} from './core/meeting.mjs';
+import {sessionStore} from './core/session-store.mjs';
+import type {NativeAgentEvent,NativeSessionSnapshot,MonitoredSession} from './core/session-store.d.mts';
 import {RunChangeFeed} from './core/notifications.mjs';
 import {chooseGuardianState,toMascotState,guardianStatus,defineXyeenaGuardian} from './core/mascot.mjs';
 import {inspectFile,convertImageDataUrl} from './core/files.mjs';
@@ -105,7 +106,7 @@ root.innerHTML=`
   <nav class="navigation" role="tablist" aria-label="Island sections">
    <button class="nav-tab current" role="tab" data-panel="now" aria-controls="page-now" aria-selected="true" type="button">Now</button>
    <button class="nav-tab" role="tab" data-panel="clipboard" aria-controls="page-clipboard" aria-selected="false" type="button">Clips</button>
-   <button class="nav-tab" role="tab" data-panel="activity" aria-controls="page-activity" aria-selected="false" type="button">Activity <span class="nav-unread" id="unread" hidden></span></button>
+   <button class="nav-tab" role="tab" data-panel="activity" aria-controls="page-activity" aria-selected="false" type="button">Agents <span class="nav-unread" id="unread" hidden></span></button>
    <button class="nav-tab" role="tab" data-panel="chat" aria-controls="page-chat" aria-selected="false" type="button">Chat</button>
    <button class="nav-tab nav-settings" role="tab" data-panel="preferences" aria-controls="page-preferences" aria-selected="false" type="button">${icon('sliders',15)} Settings</button>
   </nav>
@@ -131,17 +132,6 @@ root.innerHTML=`
      <div id="media-feedback" class="feedback" role="status">Volume controls Windows default output, not individual apps.</div>
     </div>
     <div class="source-line"><label for="media-choice">Playback source</label><select id="media-choice" aria-label="Windows playback source"><option value="">No compatible source</option></select></div>
-    <div class="meeting-card" id="meeting-card">
-      <div class="meeting-header">
-        <div>
-          <span class="kicker">CALLS & MEETINGS</span>
-          <strong id="meeting-summary">Not tracking a meeting</strong>
-          <span id="meeting-clock" class="clock"></span>
-        </div>
-        <button class="meeting-button" id="meeting-action" type="button">Start</button>
-      </div>
-      <p class="explain" id="meeting-explain">Manual meeting timer. Teams presence requires Microsoft 365 permission; playback APIs do not detect calls.</p>
-    </div>
     <div class="file-card" id="file-card" hidden>
      <div class="file-card-header">
        <img class="file-card-thumb" id="file-thumb" src="" alt="File preview" hidden>
@@ -162,18 +152,39 @@ root.innerHTML=`
     <section class="page" id="page-clipboard" role="tabpanel" hidden>
       <div class="section-heading"><div><span class="kicker" id="clip-kicker">ON-DEVICE CLIPBOARD</span><h1 id="clip-heading">Clipboard History</h1></div><div class="clip-actions"><button id="clip-clear-unpinned" class="minor-btn" type="button">Clear unpinned</button><button id="clip-clear" class="minor-btn" type="button">Clear all</button></div></div>
       <p class="explain clip-warning" id="clip-explain">In-memory history for text, images, and file lists. Sensitive tokens are best-effort filtered. Clears on exit for privacy.</p>
-      <div class="clip-controls"><button id="clip-toggle" class="meeting-button" aria-pressed="false" type="button">Enable capture</button><button id="clip-read" class="minor-btn" type="button">Read once</button><span id="clip-state" role="status">Capture off</span></div>
+      <div class="clip-controls"><button id="clip-toggle" class="toggle-btn" aria-pressed="false" type="button">Enable capture</button><button id="clip-read" class="minor-btn" type="button">Read once</button><span id="clip-state" role="status">Capture off</span></div>
       <div class="clip-search-bar">${icon('search',14)}<input id="clip-search" type="search" placeholder="Search clipboard history..." aria-label="Search clips"></div>
       <div id="clip-list" class="clip-list" aria-label="Clipboard history"></div>
     </section>
     <section class="page" id="page-activity" role="tabpanel" hidden>
-     <div class="section-heading"><div><span class="kicker" id="act-kicker">ON-DEVICE HISTORY</span><h1 id="act-heading">Activity & Agents</h1></div><button class="minor-btn" id="refresh-activity-btn" type="button">Refresh</button></div>
+     <div class="section-heading"><div><span class="kicker" id="act-kicker">CODING AGENTS</span><h1 id="act-heading">Agent Sessions</h1></div><button class="minor-btn" id="refresh-activity-btn" type="button">${icon('refresh',14)} Refresh</button></div>
      <div class="agent-pills-row" id="agent-pills" aria-label="Detected agent sessions"></div>
-     <div id="agent-approval" class="agent-approval-box" hidden>
-       <strong id="approval-title">Agent Approval Notice</strong>
-       <p class="explain" id="approval-prompt">Live agent consent interception requires an authenticated host bridge. External agents execute permissions in their own terminal sessions.</p>
+     <div id="session-detail-card" class="session-detail-card" hidden>
+       <div class="session-card-header">
+         <div class="session-provider-info">
+           <span id="session-provider-icon"></span>
+           <strong id="session-provider-name">Agent</strong>
+           <span id="session-status-dot" class="status-dot"></span>
+           <span id="session-status-text" class="status-text">Thinking</span>
+         </div>
+         <span id="session-workspace" class="session-workspace-badge"></span>
+       </div>
+       <div id="session-tool-box" class="session-tool-box" hidden>
+         <div class="session-tool-header">
+           <span id="session-tool-name">tool</span>
+           <span id="session-tool-time" class="clock"></span>
+         </div>
+         <div id="session-tool-command" class="session-tool-command"></div>
+       </div>
+       <div id="session-events-timeline" class="session-events-timeline"></div>
      </div>
-     <p class="explain" id="alerts-explain">Real local events, agent sessions, and Xyeena run changes appear here.</p>
+     <div id="no-sessions-card" class="no-sessions-card">
+       <span aria-hidden="true">${icon('activity', 28)}</span>
+       <strong>No Active Agent Sessions</strong>
+       <p>Waiting for events from Antigravity IDE, Claude Code, or local CLI agents over Windows Named Pipe.</p>
+       <button class="minor-btn" id="btn-open-hook-settings" type="button">${icon('sliders', 14)} Configure Provider Hooks</button>
+     </div>
+     <p class="explain" id="alerts-explain">Real local events, agent sessions, and toast alerts appear here.</p>
      <div class="history alert-history" id="alerts"></div>
      <details class="project-details" id="project-details">
        <summary id="proj-summary">Connect Xyeena Agentic project <span>Optional</span></summary>
@@ -363,8 +374,7 @@ function q<T extends HTMLElement>(selector:string):T{const el=root.querySelector
 const shell=q<HTMLElement>('.island');
 const stored=(()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');}catch{return {};}})();
 let prefs:Prefs=sanitizeSettings({...DEFAULT_SETTINGS,...stored});
-const initialMeeting=(()=>{try{return JSON.parse(localStorage.getItem(MEETING_KEY)||'null');}catch{return null;}})();
-let meeting=normalizeMeeting(initialMeeting);
+try{localStorage.removeItem('xyeena-island-meeting-v1');}catch{}
 let mode:IslandMode='compact',panel:Panel='now';
 const motion=new GeometryMotion(shellDimensions(mode));
 const feed=new RunChangeFeed();
@@ -394,7 +404,7 @@ function syncActiveGuardian(targetMode:IslandMode){
 }
 
 function syncGuardian(){
- const activeState=chatMascotState||chooseGuardianState({meetingActive:meeting.active,mediaPlaying:selectedMedia.playing,runs,mode});
+ const activeState=chatMascotState||chooseGuardianState({agentState:sessionStore.getAggregateState(),mediaPlaying:selectedMedia.playing,runs,mode});
  const visualState=toMascotState(activeState);
  shell.dataset.fold=activeState;
  shell.dataset.guardian=activeState;
@@ -606,7 +616,7 @@ function setPanel(next:Panel){
   }
  }
  if(next==='now'){void refreshMedia();startVolumePolling();}
- if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();renderAgentPills();}
+ if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();renderAgentSessions();}
  if(next==='clipboard')renderClipboard();
  if(next==='chat'){checkChatInlineSetup();renderChatMessages();}
  if(next==='preferences'){void runProviderDetection();}
@@ -887,26 +897,6 @@ if(!isTauri)window.addEventListener('pointermove',e=>setLionGaze(e.clientX,e.cli
 document.addEventListener('visibilitychange',syncGazePolling);
 window.addEventListener('beforeunload',stopGazePolling);
 
-function renderMeeting(){
- const label=meeting.active?'Meeting mode on':'Not tracking a meeting';
- const summaryEl=root.querySelector<HTMLElement>('#meeting-summary');
- if(summaryEl)summaryEl.textContent=label;
- const clockEl=root.querySelector<HTMLElement>('#meeting-clock');
- if(clockEl)clockEl.textContent=meeting.active?elapsedMeeting(meeting.startedAt):'';
- const btnEl=root.querySelector<HTMLButtonElement>('#meeting-action');
- if(btnEl)btnEl.textContent=meeting.active?'End':'Start';
- const expEl=root.querySelector<HTMLElement>('#meeting-explain');
- if(expEl)expEl.textContent=meeting.active
-  ?'Manual timer · Xyeena is not monitoring your microphone or recording a call.'
-  :'Manual meeting timer. Teams presence requires Microsoft 365 permission; playback APIs do not detect calls.';
- updateCompact();
-}
-q<HTMLButtonElement>('#meeting-action').addEventListener('click',()=>{
- meeting=meeting.active?{active:false,startedAt:0}:{active:true,startedAt:Date.now()};
- try{localStorage.setItem(MEETING_KEY,JSON.stringify(meeting));}catch{}
- renderMeeting();
-});
-
 function updateCompact(){
  const tag=q<HTMLElement>('#compact-status-tag');
  const ctx=q<HTMLElement>('#compact-context');
@@ -915,12 +905,17 @@ function updateCompact(){
  const glanceSub=q<HTMLElement>('#glance-sub');
  const glancePlay=q<HTMLButtonElement>('#glance-play');
  const glanceCardTitle=q<HTMLElement>('#glance-card-title');
- if(meeting.active){
-  tag.textContent='Meeting';
-  ctx.textContent=elapsedMeeting(meeting.startedAt);
-  glanceHead.textContent='Meeting in progress';
-  glanceSub.textContent=elapsedMeeting(meeting.startedAt);
-  glanceCardTitle.textContent='Meeting';
+
+ const focused=sessionStore.getFocusedSession();
+ const agentState=sessionStore.getAggregateState();
+
+ if(agentState!=='idle'&&focused){
+  const provName=getAdapter(focused.provider)?.name||focused.provider;
+  tag.textContent=agentState==='approval'?'Approval':agentState==='working'?'Working':agentState==='thinking'?'Thinking':agentState==='error'?'Error':'Active';
+  ctx.textContent=`${provName} · ${focused.activeTool||focused.status}`;
+  glanceHead.textContent=`${provName} (${focused.status})`;
+  glanceSub.textContent=focused.activeTool?`Tool: ${focused.activeTool}`:(focused.workspaceRoot?`Workspace: ${focused.workspaceRoot}`:'Active session');
+  glanceCardTitle.textContent='Agent Session';
   glancePlay.disabled=true;
  }else if(selectedMedia.available&&selectedMedia.playing){
   tag.textContent='Playing';
@@ -951,7 +946,7 @@ function updateCompact(){
  compactPlay.innerHTML=icon(selectedMedia.playing?'pause':'play',16);
  compactPlay.setAttribute('aria-label',selectedMedia.playing?'Pause':'Play');
  compactPlay.title=selectedMedia.playing?'Pause':'Play';
- q<HTMLElement>('#header-status').textContent=meeting.active?'Meeting mode':selectedMedia.playing?'Media playing':'On device';
+ q<HTMLElement>('#header-status').textContent=agentState!=='idle'?`Agent ${agentState}`:selectedMedia.playing?'Media playing':'On device';
  shell.dataset.playing=String(selectedMedia.playing);
  syncGuardian();
 }
@@ -1333,7 +1328,6 @@ q<HTMLButtonElement>('.disconnect').addEventListener('click',()=>{
 // AI Companion Chat and Agent Session Integration
 const chat=new ChatEngine();
 chat.systemPrompt = `Kamu adalah Xyn, maskot Golden Lion Guardian dari Xyeena Island — penjaga desktop yang sigap, cerdas, bersahabat, dan tanggap mendampingi pengguna di Windows notch. Karaktermu hangat, pragmatis, solutif, dan analitis (gaya Xyeena). Jawab dengan Bahasa Indonesia yang natural, santai tapi cerdas dan lugas (tidak kaku seperti robot/birokrasi, tidak lebay/klise). Berikan bantuan teknis, kode, ringkasan, atau saran yang konkret, jujur, akurat, dan tanpa gimik.`;
-let activeApprovalSession:ReturnType<typeof normalizeSessionSnapshot>|null=null;
 let chatAbortController:AbortController|null=null;
 
 function setXynChatState(state:'idle'|'thinking'|'speaking'|'error'){
@@ -1547,33 +1541,134 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
  }
 });
 
-function renderAgentPills(){
+function renderAgentSessions(){
  const row=q<HTMLElement>('#agent-pills');
+ const detailCard=q<HTMLElement>('#session-detail-card');
+ const emptyCard=q<HTMLElement>('#no-sessions-card');
+ const unreadBadge=root.querySelector<HTMLElement>('#unread');
+ 
+ const allSessions=sessionStore.getAllSessions();
+ const focusedSession=sessionStore.getFocusedSession();
+
  row.replaceChildren();
- const activeSessions: NonNullable<ReturnType<typeof normalizeSessionSnapshot>>[] = activeApprovalSession ? [activeApprovalSession] : [];
- if(!activeSessions.length){
+
+ if(allSessions.length===0){
   row.hidden=true;
- }else{
-  row.hidden=false;
-  for(const sess of activeSessions){
-   const pill=document.createElement('span');
-   pill.className='agent-pill active';
-   const label=sess.provider ? (getAdapter(sess.provider)?.name || sess.provider) : 'Agent';
-   pill.textContent=`${label}: ${sess.status === 'working' ? 'Working' : sess.status === 'approval' ? 'Needs Approval' : 'Active'}`;
-   row.append(pill);
+  detailCard.hidden=true;
+  emptyCard.hidden=false;
+  if(unreadBadge)unreadBadge.hidden=true;
+  updateCompact();
+  return;
+ }
+
+ row.hidden=false;
+ emptyCard.hidden=true;
+
+ const hasApproval=allSessions.some(s=>s.status==='approval');
+ const activeCount=allSessions.filter(s=>s.status==='working'||s.status==='thinking'||s.status==='approval').length;
+ if(unreadBadge){
+  if(hasApproval){
+   unreadBadge.hidden=false;
+   unreadBadge.textContent='!';
+   unreadBadge.setAttribute('aria-label','Agent approval requested');
+  }else if(activeCount>0){
+   unreadBadge.hidden=false;
+   unreadBadge.textContent=String(activeCount);
+   unreadBadge.setAttribute('aria-label',`${activeCount} active agent sessions`);
+  }else{
+   unreadBadge.hidden=true;
   }
  }
 
- const approvalCard=q<HTMLElement>('#agent-approval');
- if(activeApprovalSession?.pendingApproval&&activeApprovalSession.pendingApproval.expiresAt>Date.now()){
-  approvalCard.hidden=false;
-  const adapterName=getAdapter(activeApprovalSession.provider)?.name||activeApprovalSession.provider;
-  q<HTMLElement>('#approval-title').textContent=`${adapterName}: Approval Required in Host Session`;
-  q<HTMLElement>('#approval-prompt').textContent=`${activeApprovalSession.pendingApproval.prompt} (Respond in the active agent terminal; Island maintains read-only session boundary).`;
- }else{
-  approvalCard.hidden=true;
+ for(const sess of allSessions){
+  const pill=document.createElement('button');
+  pill.type='button';
+  pill.className=`agent-session-pill ${sess.key===focusedSession?.key?'focused':''} ${sess.status}`;
+  pill.setAttribute('aria-pressed',sess.key===focusedSession?.key?'true':'false');
+  
+  const dot=document.createElement('span');
+  dot.className=`status-dot ${sess.status}`;
+  
+  const provName=getAdapter(sess.provider)?.name||sess.provider;
+  const label=document.createElement('span');
+  label.textContent=`${provName} (${sess.status})`;
+  
+  pill.append(dot,label);
+  pill.addEventListener('click',()=>{
+   sessionStore.setFocus(sess.key);
+  });
+  row.append(pill);
  }
+
+ if(focusedSession){
+  detailCard.hidden=false;
+  const provName=getAdapter(focusedSession.provider)?.name||focusedSession.provider;
+  q<HTMLElement>('#session-provider-name').textContent=provName;
+  const statusDot=q<HTMLElement>('#session-status-dot');
+  statusDot.className=`status-dot ${focusedSession.status}`;
+  q<HTMLElement>('#session-status-text').textContent=focusedSession.status.toUpperCase();
+  
+  const wsBadge=q<HTMLElement>('#session-workspace');
+  if(focusedSession.workspaceRoot){
+   const parts=focusedSession.workspaceRoot.replace(/\\/g,'/').split('/');
+   wsBadge.textContent=parts[parts.length-1]||focusedSession.workspaceRoot;
+   wsBadge.title=focusedSession.workspaceRoot;
+   wsBadge.hidden=false;
+  }else{
+   wsBadge.hidden=true;
+  }
+
+  const toolBox=q<HTMLElement>('#session-tool-box');
+  if(focusedSession.activeTool){
+   toolBox.hidden=false;
+   q<HTMLElement>('#session-tool-name').textContent=`Tool: ${focusedSession.activeTool}`;
+   q<HTMLElement>('#session-tool-time').textContent=new Date(focusedSession.lastActivity).toLocaleTimeString();
+   const cmdEl=q<HTMLElement>('#session-tool-command');
+   if(focusedSession.lastCommand){
+    cmdEl.textContent=focusedSession.lastCommand;
+    cmdEl.hidden=false;
+   }else{
+    cmdEl.hidden=true;
+   }
+  }else{
+   toolBox.hidden=true;
+  }
+
+  const timeline=q<HTMLElement>('#session-events-timeline');
+  timeline.replaceChildren();
+  for(const ev of (focusedSession.recentEvents||[]).slice(-5).reverse()){
+   const item=document.createElement('div');
+   item.className='session-timeline-item';
+   const timeSpan=document.createElement('span');
+   timeSpan.className='timeline-time';
+   timeSpan.textContent=new Date(ev.timestamp).toLocaleTimeString();
+   const descSpan=document.createElement('span');
+   descSpan.className='timeline-desc';
+   descSpan.textContent=ev.summary||ev.eventType;
+   item.append(timeSpan,descSpan);
+   timeline.append(item);
+  }
+ }else{
+  detailCard.hidden=true;
+ }
+
+ updateCompact();
 }
+
+q<HTMLButtonElement>('#btn-open-hook-settings')?.addEventListener('click',()=>{
+ setPanel('preferences');
+ const aiPill=root.querySelector<HTMLButtonElement>('.settings-pill[data-section="ai"]');
+ aiPill?.click();
+});
+
+q<HTMLButtonElement>('#refresh-activity-btn')?.addEventListener('click',async ()=>{
+ if(isTauri){
+  try{
+   const raw=await native('get_agent_sessions') as NativeSessionSnapshot[];
+   sessionStore.hydrateSessions(raw);
+  }catch(err){console.error('Failed to refresh agent sessions:',err);}
+ }
+});
 
 q<HTMLInputElement>('#always-top').addEventListener('change',async e=>{
  const old=prefs.alwaysOnTop,value=(e.target as HTMLInputElement).checked;updatePrefs({alwaysOnTop:value});
@@ -1948,15 +2043,28 @@ q<HTMLButtonElement>('#btn-uninstall-hooks')?.addEventListener('click',()=>void 
 async function initialize(){
  const startupProv=q<HTMLSelectElement>('#chat-provider-select')?.value||'gemini';
  onProviderChange(startupProv);
- setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentPills();renderChatMessages();
+ setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentSessions();renderChatMessages();
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
   try{
    await listen<string>('island:tray',e=>{if(e.payload==='expand'){setMode('compact',true);setMode('expanded');}if(e.payload==='compact')setMode('compact',true);syncGazePolling();});
    await listen<string>('island:visibility',e=>{if(e.payload==='hidden')stopGazePolling();else syncGazePolling();});
+   await listen<NativeAgentEvent>('island:agent-event',e=>{
+    sessionStore.ingestEvent(e.payload);
+   });
+   try{
+    const rawSessions=await native('get_agent_sessions') as NativeSessionSnapshot[];
+    if(Array.isArray(rawSessions)){
+     sessionStore.hydrateSessions(rawSessions);
+    }
+   }catch{}
    await native('set_window_priority',{enabled:prefs.alwaysOnTop});
   }catch(err){console.error('Island init:',err);}
  }
+ sessionStore.subscribe(()=>{
+  renderAgentSessions();
+  syncGuardian();
+ });
  setMode(prefs.pinned?'pinned':'compact',true);
  void refreshMedia();startVolumePolling();renderClipboard();
  setInterval(()=>{if(!document.hidden||mode==='compact')void refreshMedia();},5000);

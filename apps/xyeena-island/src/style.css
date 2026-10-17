@@ -963,27 +963,8 @@ input[type="range"] {
   cursor: pointer;
 }
 
-/* Meeting Timer / Call Row */
-.meeting-card {
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--panel);
-  margin-top: 4px;
-}
-
-.meeting-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.meeting-header strong {
-  font-size: 11px;
-}
-
-.meeting-button {
+/* Toggle action button */
+.toggle-btn {
   height: 24px;
   padding: 0 10px;
   border-radius: var(--r-sm);
@@ -994,7 +975,7 @@ input[type="range"] {
   cursor: pointer;
 }
 
-.meeting-button:hover {
+.toggle-btn:hover {
   filter: brightness(1.08);
 }
 
@@ -1238,8 +1219,194 @@ input[type="range"] {
 }
 
 /* ==========================================================================
-   PANEL 3: ACTIVITY (Real Events & Local Runs) — Single Scroll Owner
+   PANEL 3: AGENTS (Real Multi-Agent Monitoring & Contextual UI)
    ========================================================================== */
+
+.agent-pills-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0 8px;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.agent-pills-row::-webkit-scrollbar {
+  display: none;
+}
+
+.agent-session-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.agent-session-pill:hover {
+  border-color: var(--sub);
+  background: var(--panel-hover, rgba(255, 255, 255, 0.05));
+}
+.agent-session-pill.focused {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sub);
+  flex-shrink: 0;
+}
+.status-dot.working {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+  animation: pulse-dot 1.5s infinite;
+}
+.status-dot.thinking {
+  background: #3b82f6;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+}
+.status-dot.approval {
+  background: #eab308;
+  box-shadow: 0 0 6px rgba(234, 179, 8, 0.6);
+}
+.status-dot.error {
+  background: #ef4444;
+}
+.status-dot.idle {
+  background: var(--sub);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* Focused Session Detail Card */
+.session-detail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.session-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.session-provider-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.session-workspace-badge {
+  font-size: 9px;
+  font-family: var(--font-mono, monospace);
+  color: var(--sub);
+  background: var(--line);
+  padding: 2px 6px;
+  border-radius: 4px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-tool-box {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 6px 8px;
+  font-size: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.session-tool-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.session-tool-command {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--text);
+  word-break: break-all;
+  max-height: 48px;
+  overflow-y: auto;
+}
+
+/* Empty State Card */
+.no-sessions-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px 16px;
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.no-sessions-card strong {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.no-sessions-card p {
+  font-size: 10px;
+  color: var(--sub);
+  max-width: 280px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Compact Mode Contextual Agent Pill */
+.compact-agent-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-full);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Dedicated Single Scroll Owner for Alerts */
 .alert-history {
@@ -2005,7 +2172,7 @@ input[type="range"] {
   }
 
   .action-btn,
-  .meeting-button,
+  .toggle-btn,
   .transport {
     background: ButtonFace;
     color: ButtonText;

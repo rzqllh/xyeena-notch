@@ -60,6 +60,7 @@ export const GUARDIAN_STATES = Object.freeze([
  * 8. Default -> idle
  *
  * @param {{
+ *   agentState?: string,
  *   meetingActive?: boolean,
  *   mediaPlaying?: boolean,
  *   runs?: Array<{ state?: string }>,
@@ -69,11 +70,16 @@ export const GUARDIAN_STATES = Object.freeze([
  */
 export function chooseGuardianState(source = {}) {
   if (source.mode === 'hidden') return 'sleeping';
+  if (source.agentState === 'approval') return 'attention';
+  if (source.agentState === 'error') return 'error';
   const runs = Array.isArray(source.runs) ? source.runs : [];
   if (runs.some(x => WORKFLOW_ERROR.has((x?.state || '').toUpperCase()))) return 'error';
   if (runs.some(x => WORKFLOW_ATTENTION.has((x?.state || '').toUpperCase()))) return 'attention';
+  if (source.agentState === 'working') return 'working';
+  if (source.agentState === 'thinking') return 'thinking';
   if (source.meetingActive) return 'listening';
   if (runs.some(x => WORKFLOW_BUSY.has((x?.state || '').toUpperCase()))) return 'working';
+  if (source.agentState === 'finished') return 'finished';
   if (runs.length > 0 && runs.every(x => WORKFLOW_SUCCESS.has((x?.state || '').toUpperCase()))) return 'finished';
   if (source.mediaPlaying) return 'playing';
   return 'idle';
@@ -101,11 +107,12 @@ export function toMascotState(state) {
  */
 export function guardianStatus(state) {
   switch (state) {
-    case 'listening': return 'Meeting timer active';
+    case 'thinking': return 'Coding agent thinking';
+    case 'listening': return 'Focus timer active';
     case 'playing': return 'Media playing';
-    case 'working': return 'Xyeena workflow in progress';
-    case 'attention': return 'Xyeena workflow needs review';
-    case 'finished': case 'success': return 'Xyeena workflow completed';
+    case 'working': return 'Coding agent or workflow active';
+    case 'attention': return 'Agent approval or workflow review needed';
+    case 'finished': case 'success': return 'Task completed';
     case 'error': return 'Workflow needs attention';
     case 'sleeping': return 'Resting';
     case 'greeting': return 'Guardian salute';
