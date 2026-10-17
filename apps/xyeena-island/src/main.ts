@@ -26,6 +26,7 @@ import {DEFAULT_SNIPPETS,cleanDictatedText,expandSnippets,updateDictationStats,F
 import {NotetakerController} from './core/notetaker.mjs';
 import {CompanionController} from './core/companion.mjs';
 import {parseVoiceIntent,executeVoiceAction} from './core/voice-commands.mjs';
+import {t, getDictionary} from './core/i18n.mjs';
 import './style.css';
 
 defineXyeenaGuardian();
@@ -376,7 +377,7 @@ root.innerHTML=`
           </div>
           <div class="installer-consent-row">
             <label class="installer-consent-label">
-              <input type="checkbox" id="installer-consent-check" />
+              <input type="checkbox" id="installer-consent-check" aria-label="Approve writing xyeena-notch hook group" />
               <span>I approve writing only the <code>xyeena-notch</code> group to this configuration file</span>
             </label>
           </div>
@@ -700,45 +701,52 @@ function playFeedbackSound(type:'tap'|'chime'|'error'){
  }catch{}
 }
 
-const I18N = {
- en: {
-  now:'Now',clips:'Clips',activity:'Activity',chat:'Chat',settings:'Settings',
-  chatTitle:'Chat with Xyn',chatKicker:'COMPANION CHAT',chatStatus:'Watching your workspace · Standing guard',
-  chatPlaceholder:'Ask Xyn anything (Enter to send, Shift+Enter for new line)...',
-  clipHeading:'Clipboard History',clipExplain:'In-memory history for text, images, and file lists. Clears on exit for privacy.',
-  pauseCapture:'Pause capture',enableCapture:'Enable capture',monitoringActive:'Monitoring active',captureOff:'Capture off',
-  actHeading:'Activity & Agents',setHeading:'Settings',
-  chatWelcome:'<strong>Xyn (Golden Lion Guardian)</strong><br>Hello! I am Xyn, your desktop companion on Xyeena Island. What can I help you with across your project, code, or tasks today?'
- },
- id: {
-  now:'Sekarang',clips:'Klip',activity:'Aktivitas',chat:'Chat',settings:'Pengaturan',
-  chatTitle:'Ngobrol bareng Xyn',chatKicker:'COMPANION CHAT',chatStatus:'Memantau workspace lu · Siaga mendampingi',
-  chatPlaceholder:'Tanya apa saja ke Xyn (Enter untuk kirim, Shift+Enter untuk baris baru)...',
-  clipHeading:'Riwayat Clipboard',clipExplain:'Riwayat sesi lokal untuk teks, gambar, dan file. Dihapus saat keluar demi privasi.',
-  pauseCapture:'Jeda pantauan',enableCapture:'Aktifkan pantauan',monitoringActive:'Pantauan aktif',captureOff:'Pantauan nonaktif',
-  actHeading:'Aktivitas & Agen',setHeading:'Pengaturan',
-  chatWelcome:'<strong>Xyn (Golden Lion Guardian)</strong><br>Halo! Gue Xyn, penjaga desktop lu di Xyeena Island. Ada yang bisa gue bantu seputar project, coding, atau tugas lu hari ini?'
- }
-};
-
 function applyLanguage(lang:Prefs['language']){
- const dict=I18N[lang]||I18N.en;
+ const dict=getDictionary(lang);
  for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
   const p=tab.dataset.panel as Panel;
-  if(p&&dict[p as keyof typeof dict]){
+  if(p){
    const badge=tab.querySelector('.nav-unread');
-   tab.textContent=dict[p as keyof typeof dict];
-   if(badge)tab.prepend(badge);
+   const key=`nav_${p==='activity'?'activity':p==='preferences'?'settings':p}` as keyof typeof dict;
+   if(dict[key]){
+    tab.textContent=dict[key];
+    if(badge)tab.prepend(badge);
+   }
   }
  }
- const chatH=q<HTMLElement>('#chat-heading');if(chatH)chatH.textContent=dict.chatTitle;
- const chatK=q<HTMLElement>('#chat-kicker');if(chatK)chatK.textContent=dict.chatKicker;
- const chatS=q<HTMLElement>('#chat-xyn-status');if(chatS)chatS.textContent=dict.chatStatus;
- const chatIn=q<HTMLTextAreaElement>('#chat-input');if(chatIn)chatIn.placeholder=dict.chatPlaceholder;
- const clipH=q<HTMLElement>('#clip-heading');if(clipH)clipH.textContent=dict.clipHeading;
- const clipExp=q<HTMLElement>('#clip-explain');if(clipExp)clipExp.textContent=dict.clipExplain;
- const actH=q<HTMLElement>('#act-heading');if(actH)actH.textContent=dict.actHeading;
- const setH=q<HTMLElement>('#set-heading');if(setH)setH.textContent=dict.setHeading;
+
+ const pillMap: Record<string, keyof typeof dict> = {
+  general: 'set_cat_general',
+  guardian: 'set_cat_guardian',
+  clipboard: 'set_cat_clipboard',
+  media: 'set_cat_media',
+  ai: 'set_cat_ai',
+  integrations: 'set_cat_integrations',
+  flow: 'set_cat_flow',
+  voice: 'set_cat_voice',
+  companion: 'set_cat_companion',
+  recap: 'set_cat_recap',
+  about: 'set_cat_about',
+ };
+ for(const pill of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
+  const sec=pill.dataset.section;
+  if(sec&&pillMap[sec]&&dict[pillMap[sec]]){
+   pill.textContent=dict[pillMap[sec]];
+  }
+ }
+
+ const chatH=q<HTMLElement>('#chat-heading');if(chatH)chatH.textContent=dict.chat_heading;
+ const chatK=q<HTMLElement>('#chat-kicker');if(chatK)chatK.textContent=dict.chat_kicker;
+ const chatS=q<HTMLElement>('#chat-xyn-status');if(chatS)chatS.textContent=dict.chat_status_idle;
+ const chatIn=q<HTMLTextAreaElement>('#chat-input');if(chatIn)chatIn.placeholder=dict.chat_placeholder;
+ const clipH=q<HTMLElement>('#clip-heading');if(clipH)clipH.textContent=dict.clip_heading;
+ const clipExp=q<HTMLElement>('#clip-explain');if(clipExp)clipExp.textContent=dict.clip_explain;
+ const actH=q<HTMLElement>('#act-heading');if(actH)actH.textContent=dict.agent_heading;
+ const setH=q<HTMLElement>('#set-heading');if(setH)setH.textContent=dict.set_heading;
+ const setK=q<HTMLElement>('#set-kicker');if(setK)setK.textContent=dict.set_kicker;
+
+ const recenterBtn=q<HTMLButtonElement>('.recenter');if(recenterBtn)recenterBtn.textContent=dict.btn_recenter;
+ const hideBtn=q<HTMLButtonElement>('.footer-hide');if(hideBtn)hideBtn.textContent=dict.btn_hide_tray;
 }
 
 function triggerMascotSalute(){
@@ -1696,7 +1704,7 @@ function setXynChatState(state:'idle'|'thinking'|'speaking'|'error', err?: any){
  }else{
   chatMascotState=null;
   syncGuardian();
-  if(sub)sub.textContent=I18N[prefs.language]?.chatStatus||I18N.id.chatStatus;
+  if(sub)sub.textContent=t('chat_status_idle', prefs.language);
   if(stopBtn)stopBtn.hidden=true;
   if(sendBtn)sendBtn.disabled=false;
  }
@@ -1717,7 +1725,7 @@ function renderChatMessages(){
  if(!chat.messages.length){
   const welcome=document.createElement('div');
   welcome.className='chat-bubble chat-bubble-assistant';
-  welcome.innerHTML=I18N[prefs.language]?.chatWelcome||I18N.id.chatWelcome;
+  welcome.innerHTML=t('chat_welcome', prefs.language);
   viewport.append(welcome);
   return;
  }
@@ -2262,6 +2270,19 @@ for(const pill of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
    void refreshCompanionUI();
   }
  });
+ pill.addEventListener('keydown',e=>{
+  const pills=[...root.querySelectorAll<HTMLButtonElement>('.settings-pill')];
+  const index=pills.indexOf(pill);
+  let nextIndex=index;
+  if(e.key==='ArrowRight'||e.key==='ArrowDown') nextIndex=(index+1)%pills.length;
+  else if(e.key==='ArrowLeft'||e.key==='ArrowUp') nextIndex=(index+pills.length-1)%pills.length;
+  else if(e.key==='Home') nextIndex=0;
+  else if(e.key==='End') nextIndex=pills.length-1;
+  else return;
+  e.preventDefault();
+  pills[nextIndex].focus();
+  pills[nextIndex].click();
+ });
 }
 
 q<HTMLSelectElement>('#setting-language').addEventListener('change',e=>updatePrefs({language:(e.target as HTMLSelectElement).value as Prefs['language']}));
@@ -2445,6 +2466,15 @@ q<HTMLButtonElement>('#btn-export-diagnostics').addEventListener('click',async()
    eventCount:feed.items.length,
    clipboardEntries:clipboard.items.length,
    activeSessions:overview.sessions.length
+  },
+  performance:{
+   memory: (performance as any).memory ? {
+    jsHeapSizeLimit: (performance as any).memory.jsHeapSizeLimit,
+    totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+    usedJSHeapSize: (performance as any).memory.usedJSHeapSize
+   } : 'unavailable',
+   now: performance.now(),
+   timeOrigin: performance.timeOrigin
   }
  };
  const content=JSON.stringify(diagnostics,null,2);

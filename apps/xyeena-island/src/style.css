@@ -144,6 +144,67 @@ textarea {
   color: inherit;
 }
 
+/* Accessibility & Focus Rings */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.nav-tab:focus-visible,
+.settings-pill:focus-visible,
+.action-btn:focus-visible,
+.minor-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Reduced Motion Enforcement */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] ::before,
+:root[data-motion="reduced"] ::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Windows High Contrast / Forced Colors */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  .nav-tab.current,
+  .settings-pill.current {
+    forced-color-adjust: none;
+    border: 2px solid Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
+}
+
+/* High DPI / Text Rendering */
+@media (-webkit-min-device-pixel-ratio: 1.25), (min-resolution: 120dpi) {
+  :root {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}
+
 button {
   cursor: pointer;
   border: 0;

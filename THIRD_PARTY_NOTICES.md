@@ -30,6 +30,7 @@ Free asset research in `docs/MASCOT-ASSET-RESEARCH.md` lists Kenney and Rive ref
 
 ## Additional desktop dependencies
 
+- Phosphor Icons (`@phosphor-icons/core`): MIT License, Copyright (c) 2021 Phosphor Icons. Used for iconography across tabs, navigation, transport controls, and settings.
 - Tauri official Clipboard Manager plugin (`@tauri-apps/plugin-clipboard-manager` / `tauri-plugin-clipboard-manager`): MIT or Apache-2.0, as published by the Tauri Programme. Only text read/write are exposed in the desktop capability manifest; all other clipboard functions remain denied.
 - Microsoft Windows GSMTC and Core Audio APIs are used via Rust `windows` crate. Master volume changes affect the default system output; media player repeat/shuffle/seek may be unsupported by specific apps. No Coucou code is copied for either integration.
 - Before redistribution, collect actual dependency licenses and include the final locked BOM. This is **source** distribution and does not represent a signed Windows binary.
