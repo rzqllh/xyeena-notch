@@ -24,6 +24,7 @@ import {icon} from './core/icons.mjs';
 import {SUPPORTED_INTEGRATIONS,normalizeGitHubStatus,normalizeIntegrationResult} from './core/integrations.mjs';
 import {DEFAULT_SNIPPETS,cleanDictatedText,expandSnippets,updateDictationStats,FlowDictationController} from './core/flow.mjs';
 import {NotetakerController} from './core/notetaker.mjs';
+import {CompanionController} from './core/companion.mjs';
 import {parseVoiceIntent,executeVoiceAction} from './core/voice-commands.mjs';
 import './style.css';
 
@@ -287,6 +288,7 @@ root.innerHTML=`
         <button class="settings-pill" type="button" data-section="integrations">Integrations</button>
         <button class="settings-pill" type="button" data-section="flow">Flow Dictation</button>
         <button class="settings-pill" type="button" data-section="voice">Voice &amp; Notes</button>
+        <button class="settings-pill" type="button" data-section="companion">Android Companion</button>
         <button class="settings-pill" type="button" data-section="recap">Weekly Recap</button>
         <button class="settings-pill" type="button" data-section="about">About & Hotkeys</button>
       </div>
@@ -532,6 +534,61 @@ root.innerHTML=`
           <div class="setting" style="align-items:center;"><span><strong>"Show Chat / Clips / Activity / Settings"</strong><small>Switch navigation panel</small></span><span class="badge-tag">Navigation</span></div>
           <div class="setting" style="align-items:center;"><span><strong>"Play / Pause / Next / Previous"</strong><small>Control Windows media</small></span><span class="badge-tag">Media</span></div>
           <div class="setting" style="align-items:center;"><span><strong>"Generate Weekly Recap"</strong><small>Build local week summary</small></span><span class="badge-tag">Recap</span></div>
+        </div>
+      </div>
+
+      <div class="settings-section" id="setsec-companion" hidden>
+        <div class="integration-group-header" style="padding:6px 0 4px;">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">ANDROID COMPANION &amp; MOBILE APPROVALS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Secure local pairing for mobile approval notifications and remote Allow Once / Deny decisions. Zero cloud relay, 100% on-device cryptography.</p>
+        </div>
+
+        <div class="setting" style="flex-direction:column;align-items:stretch;gap:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span><strong>Pairing Status</strong><small id="companion-device-label">No companion device paired.</small></span>
+            <span class="badge-tag" id="companion-status-badge">Unpaired</span>
+          </div>
+
+          <div id="companion-unpaired-box" style="display:flex;flex-direction:column;gap:6px;">
+            <p class="explain" style="margin:0;font-size:11px;">Generate a time-bounded 6-digit code and QR payload to authenticate your Android companion app on the local network.</p>
+            <div>
+              <button class="action-btn" id="btn-companion-request-pairing" type="button">Pair New Android Device</button>
+            </div>
+          </div>
+
+          <div id="companion-pairing-box" style="display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:6px;padding:8px;" hidden>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:10px;color:var(--sub);">PAIRING CODE (5 MIN EXPIRY)</span>
+              <span id="companion-timer" style="font-size:10px;color:var(--accent);">300s</span>
+            </div>
+            <div style="text-align:center;font-size:24px;font-family:monospace;letter-spacing:4px;font-weight:bold;color:var(--text);padding:4px 0;" id="companion-code-display">
+              000000
+            </div>
+            <div>
+              <small style="color:var(--muted);font-size:9px;">QR Payload (Scan with Xyeena Companion):</small>
+              <pre id="companion-qr-display" style="margin:4px 0 0 0;font-size:9px;background:rgba(0,0,0,0.3);padding:6px;border-radius:4px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;color:var(--sub);max-height:60px;"></pre>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;border-top:1px solid var(--line);padding-top:6px;">
+              <input type="text" id="companion-sim-name" placeholder="Device name (e.g. Pixel 8 Pro)" style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:10px;color:var(--text);" />
+              <button class="minor-btn" id="btn-companion-simulate-confirm" type="button" style="font-size:10px;">Confirm Pairing</button>
+            </div>
+          </div>
+
+          <div id="companion-paired-box" style="display:flex;flex-direction:column;gap:6px;" hidden>
+            <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:6px;padding:8px;">
+              <div>
+                <strong id="companion-paired-name" style="font-size:11px;color:var(--text);">Device Name</strong>
+                <p id="companion-paired-meta" style="margin:2px 0 0 0;font-size:9px;color:var(--sub);">ID: dev_123 · Paired at 12:00:00</p>
+              </div>
+              <button class="minor-btn" id="btn-companion-revoke" type="button" style="color:#ef4444;font-size:10px;">Revoke Device</button>
+            </div>
+            <p class="explain" style="margin:0;font-size:10px;">Mobile approvals authorized. High-friction decisions will prompt this device with signature validation.</p>
+          </div>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">SECURITY CONSTRAINTS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Only Allow Once and Deny decisions can be forwarded remotely. Always Allow is permanently disabled in protocol rules.</p>
         </div>
       </div>
 
@@ -2201,6 +2258,9 @@ for(const pill of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
   if(section==='voice'){
    void refreshMicrophoneStatus();
   }
+  if(section==='companion'){
+   void refreshCompanionUI();
+  }
  });
 }
 
@@ -3092,10 +3152,126 @@ window.addEventListener('keydown', async (e: KeyboardEvent) => {
  }
 });
 
+// S14: Android companion pairing and mobile approvals controller
+const companion = new CompanionController();
+
+async function refreshCompanionUI() {
+ if (isTauri) {
+  try {
+   const state = await native('get_companion_state');
+   companion.syncFromNative(state);
+  } catch (err) {
+   console.error('Failed to get companion state:', err);
+  }
+ }
+
+ const badge = root.querySelector<HTMLElement>('#companion-status-badge');
+ const label = root.querySelector<HTMLElement>('#companion-device-label');
+ const unpairedBox = root.querySelector<HTMLElement>('#companion-unpaired-box');
+ const pairingBox = root.querySelector<HTMLElement>('#companion-pairing-box');
+ const pairedBox = root.querySelector<HTMLElement>('#companion-paired-box');
+ const codeDisplay = root.querySelector<HTMLElement>('#companion-code-display');
+ const qrDisplay = root.querySelector<HTMLElement>('#companion-qr-display');
+ const pairedName = root.querySelector<HTMLElement>('#companion-paired-name');
+ const pairedMeta = root.querySelector<HTMLElement>('#companion-paired-meta');
+
+ if (companion.status === 'paired' && companion.pairedDevice) {
+  if (badge) {
+   badge.textContent = 'Paired & Authorized';
+   badge.style.color = '#22c55e';
+  }
+  if (label) label.textContent = `Paired: ${companion.pairedDevice.deviceName}`;
+  if (unpairedBox) unpairedBox.hidden = true;
+  if (pairingBox) pairingBox.hidden = true;
+  if (pairedBox) pairedBox.hidden = false;
+  if (pairedName) pairedName.textContent = companion.pairedDevice.deviceName;
+  if (pairedMeta) {
+   const timeStr = new Date(companion.pairedDevice.pairedAtMs).toLocaleTimeString();
+   pairedMeta.textContent = `ID: ${companion.pairedDevice.deviceId} · Paired at ${timeStr}`;
+  }
+ } else if (companion.status === 'pairing_requested' && companion.pairingDetails) {
+  if (badge) {
+   badge.textContent = 'Pairing In Progress';
+   badge.style.color = 'var(--accent)';
+  }
+  if (label) label.textContent = 'Awaiting companion confirmation...';
+  if (unpairedBox) unpairedBox.hidden = true;
+  if (pairingBox) pairingBox.hidden = false;
+  if (pairedBox) pairedBox.hidden = true;
+  if (codeDisplay) codeDisplay.textContent = companion.pairingDetails.pairingCode;
+  if (qrDisplay) qrDisplay.textContent = companion.pairingDetails.qrPayload;
+ } else {
+  if (badge) {
+   badge.textContent = 'Unpaired';
+   badge.style.color = 'var(--muted)';
+  }
+  if (label) label.textContent = 'No companion device paired.';
+  if (unpairedBox) unpairedBox.hidden = false;
+  if (pairingBox) pairingBox.hidden = true;
+  if (pairedBox) pairedBox.hidden = true;
+ }
+}
+
+root.querySelector<HTMLButtonElement>('#btn-companion-request-pairing')?.addEventListener('click', async () => {
+ try {
+  await companion.requestPairing(isTauri ? native : undefined);
+  void refreshCompanionUI();
+  playFeedbackSound('tap');
+  feed.recordEvent('Pairing initiated', '6-digit PIN & QR payload generated', 'AGENT');
+  renderAlerts();
+ } catch (err) {
+  feed.recordEvent('Pairing error', String(err));
+  renderAlerts();
+ }
+});
+
+root.querySelector<HTMLButtonElement>('#btn-companion-revoke')?.addEventListener('click', async () => {
+ try {
+  await companion.revoke(isTauri ? native : undefined);
+  void refreshCompanionUI();
+  playFeedbackSound('tap');
+  feed.recordEvent('Companion revoked', 'Mobile approval credentials cleared', 'AGENT');
+  renderAlerts();
+ } catch (err) {
+  feed.recordEvent('Revoke error', String(err));
+  renderAlerts();
+ }
+});
+
+root.querySelector<HTMLButtonElement>('#btn-companion-simulate-confirm')?.addEventListener('click', async () => {
+ if (!companion.pairingDetails) return;
+ const nameInput = root.querySelector<HTMLInputElement>('#companion-sim-name');
+ const devName = nameInput?.value.trim() || 'Android Device';
+ const devId = `dev_${Date.now().toString(36)}`;
+ try {
+  let token = companion.sharedSecret;
+  if (!token) {
+   try {
+    const parsed = JSON.parse(companion.pairingDetails.qrPayload);
+    token = parsed.token;
+   } catch {}
+  }
+  await companion.confirmPairing(
+   devId,
+   devName,
+   companion.pairingDetails.pairingCode,
+   token || '',
+   isTauri ? native : undefined
+  );
+  void refreshCompanionUI();
+  playFeedbackSound('chime');
+  feed.recordEvent('Companion paired', devName, 'AGENT');
+  renderAlerts();
+ } catch (err) {
+  feed.recordEvent('Confirmation error', String(err));
+  renderAlerts();
+ }
+});
+
 async function initialize(){
  const startupProv=q<HTMLSelectElement>('#chat-provider-select')?.value||'gemini';
  onProviderChange(startupProv);
- setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentSessions();renderChatMessages();renderConnectedServicesList();renderFlowSnippets();updateFlowStatsUI();renderNotetakerNotes();void refreshMicrophoneStatus();
+ setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentSessions();renderChatMessages();renderConnectedServicesList();renderFlowSnippets();updateFlowStatsUI();renderNotetakerNotes();void refreshMicrophoneStatus();void refreshCompanionUI();
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
   try{

@@ -2,6 +2,7 @@
 //! No cursor hooks, agent approval RPC, or autostart. AI requests use opt-in, bounded transport.
 pub mod agent_ipc;
 mod clipboard;
+pub mod companion;
 pub mod developer;
 pub mod flow;
 pub mod github;
@@ -1243,6 +1244,10 @@ pub fn run() {
             voice::start_consented_recording,
             voice::stop_consented_recording,
             voice::parse_voice_intent,
+            companion::get_companion_state,
+            companion::request_companion_pairing,
+            companion::confirm_companion_pairing,
+            companion::revoke_companion_device,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");
