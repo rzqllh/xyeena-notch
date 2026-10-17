@@ -20,8 +20,17 @@ pub fn cleanup_dictated_text(text: &str, filter_fillers: bool) -> String {
 
     if filter_fillers {
         let fillers = [
-            " um ", " Um ", " uh ", " Uh ", " erm ", " Erm ", " ah ", " Ah ",
-            " like, ", " you know, ", " basically, ",
+            " um ",
+            " Um ",
+            " uh ",
+            " Uh ",
+            " erm ",
+            " Erm ",
+            " ah ",
+            " Ah ",
+            " like, ",
+            " you know, ",
+            " basically, ",
         ];
         for filler in fillers {
             cleaned = cleaned.replace(filler, " ");
@@ -73,10 +82,10 @@ pub fn get_flow_engine_status() -> Result<FlowEngineStatus, String> {
 
     Ok(FlowEngineStatus {
         available,
-        engine_name: "Windows Native Speech Engine".into(),
+        engine_name: "Windows Voice Typing (Win+H) / Local Snippets".into(),
         local_only: true,
         hotkey: "Alt+D".into(),
-        hotkey_registered: true,
+        hotkey_registered: false,
     })
 }
 

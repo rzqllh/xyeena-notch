@@ -11,9 +11,9 @@ pub mod provider;
 pub mod session;
 
 pub use approval::{
-    ApprovalDecision, ApprovalError, ApprovalRegistry, ApprovalSnapshot, ApprovalStatus,
-    PendingApproval, QuestionOption, RegisterApprovalParams, SharedApprovalRegistry,
-    compute_action_fingerprint, is_provider_interactive,
+    compute_action_fingerprint, is_provider_interactive, ApprovalDecision, ApprovalError,
+    ApprovalRegistry, ApprovalSnapshot, ApprovalStatus, PendingApproval, QuestionOption,
+    RegisterApprovalParams, SharedApprovalRegistry,
 };
 pub use event::{
     parse_and_normalize, EventParseError, NormalizedEvent, NormalizedEventType,

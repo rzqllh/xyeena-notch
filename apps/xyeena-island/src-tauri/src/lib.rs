@@ -1444,8 +1444,14 @@ mod tests {
         let res = parse_curl_http_response(raw, true, "").expect("Must parse successfully");
         assert_eq!(res.status, 200);
         assert!(res.ok);
-        assert_eq!(res.headers.get("content-type").map(|s| s.as_str()), Some("application/json"));
-        assert_eq!(res.body, "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello Xyn!\"}]}}]}");
+        assert_eq!(
+            res.headers.get("content-type").map(|s| s.as_str()),
+            Some("application/json")
+        );
+        assert_eq!(
+            res.body,
+            "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello Xyn!\"}]}}]}"
+        );
     }
 
     #[test]
@@ -1455,14 +1461,22 @@ mod tests {
         let res = parse_curl_http_response(raw, true, "").expect("Must parse");
         assert_eq!(res.status, 429);
         assert!(!res.ok);
-        assert_eq!(res.headers.get("retry-after").map(|s| s.as_str()), Some("12"));
+        assert_eq!(
+            res.headers.get("retry-after").map(|s| s.as_str()),
+            Some("12")
+        );
         assert!(res.body.contains("Rate limited"));
     }
 
     #[test]
     fn test_parse_curl_http_response_empty_stdout_falls_back_to_stderr() {
         use super::parse_curl_http_response;
-        let res = parse_curl_http_response("", false, "curl: (7) Failed to connect to 127.0.0.1 port 11434: Connection refused").expect("Must parse fallback");
+        let res = parse_curl_http_response(
+            "",
+            false,
+            "curl: (7) Failed to connect to 127.0.0.1 port 11434: Connection refused",
+        )
+        .expect("Must parse fallback");
         assert_eq!(res.status, 500);
         assert!(!res.ok);
         assert!(res.body.contains("Connection refused"));

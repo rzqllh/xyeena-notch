@@ -141,9 +141,15 @@ impl std::fmt::Display for ApprovalError {
             Self::NotFound => write!(f, "Approval request not found in registry"),
             Self::NotPending => write!(f, "Approval request is no longer pending"),
             Self::Expired => write!(f, "Approval request has expired"),
-            Self::ActionTampered => write!(f, "Action fingerprint does not match authoritative request"),
-            Self::InvalidToken => write!(f, "Authorization token is invalid or does not match nonce"),
-            Self::ProviderNotInteractive => write!(f, "Provider does not support interactive approval reply"),
+            Self::ActionTampered => {
+                write!(f, "Action fingerprint does not match authoritative request")
+            }
+            Self::InvalidToken => {
+                write!(f, "Authorization token is invalid or does not match nonce")
+            }
+            Self::ProviderNotInteractive => {
+                write!(f, "Provider does not support interactive approval reply")
+            }
             Self::InvalidDecision => write!(f, "Invalid approval decision specified"),
         }
     }
@@ -257,7 +263,10 @@ impl ApprovalRegistry {
         decision: ApprovalDecision,
         now_ms: u64,
     ) -> Result<PendingApproval, ApprovalError> {
-        let req = self.requests.get_mut(request_id).ok_or(ApprovalError::NotFound)?;
+        let req = self
+            .requests
+            .get_mut(request_id)
+            .ok_or(ApprovalError::NotFound)?;
 
         if req.status != ApprovalStatus::Pending {
             return Err(ApprovalError::NotPending);
@@ -315,7 +324,10 @@ impl ApprovalRegistry {
     pub fn cancel_session_requests(&mut self, provider: &str, session_id: &str) -> usize {
         let mut count = 0;
         for req in self.requests.values_mut() {
-            if req.provider == provider && req.session_id == session_id && req.status == ApprovalStatus::Pending {
+            if req.provider == provider
+                && req.session_id == session_id
+                && req.status == ApprovalStatus::Pending
+            {
                 req.status = ApprovalStatus::Cancelled;
                 count += 1;
             }
@@ -405,15 +417,53 @@ impl SharedApprovalRegistry {
     }
 }
 
-/// Generate a high-entropy pseudo-random nonce token bound to the request.
+/// Cryptographically secure random byte generator (CSPRNG).
+/// On Windows, queries the OS kernel CSPRNG via RtlGenRandom (advapi32 / SystemFunction036).
+pub fn csprng_fill(dest: &mut [u8]) -> bool {
+    #[cfg(windows)]
+    {
+        #[link(name = "advapi32")]
+        extern "system" {
+            #[link_name = "SystemFunction036"]
+            fn RtlGenRandom(buffer: *mut u8, len: u32) -> u8;
+        }
+        unsafe { RtlGenRandom(dest.as_mut_ptr(), dest.len() as u32) != 0 }
+    }
+    #[cfg(not(windows))]
+    {
+        use std::fs::File;
+        use std::io::Read;
+        if let Ok(mut f) = File::open("/dev/urandom") {
+            f.read_exact(dest).is_ok()
+        } else {
+            false
+        }
+    }
+}
+
+/// Compute raw 32-byte SHA-256 digest (FIPS 180-4).
+#[allow(clippy::chunks_exact_to_as_chunks)]
+pub fn sha256_bytes(input: &[u8]) -> [u8; 32] {
+    let hex = sha256_hex(input);
+    let mut out = [0u8; 32];
+    for (i, chunk) in hex.as_bytes().chunks_exact(2).enumerate() {
+        if let Ok(s) = std::str::from_utf8(chunk) {
+            out[i] = u8::from_str_radix(s, 16).unwrap_or(0);
+        }
+    }
+    out
+}
+
+/// Generate a cryptographically secure 256-bit nonce token bound to the request.
 fn generate_nonce(now_ms: u64, request_id: &str, session_id: &str) -> String {
-    let mut data = Vec::new();
+    let mut rand_bytes = [0u8; 32];
+    let _ = csprng_fill(&mut rand_bytes);
+
+    let mut data = Vec::with_capacity(32 + 8 + request_id.len() + session_id.len());
+    data.extend_from_slice(&rand_bytes);
     data.extend_from_slice(&now_ms.to_le_bytes());
     data.extend_from_slice(request_id.as_bytes());
     data.extend_from_slice(session_id.as_bytes());
-    // Mix in memory address for additional entropy
-    let addr = (&data as *const _) as usize;
-    data.extend_from_slice(&addr.to_le_bytes());
 
     sha256_hex(&data)[..32].to_string()
 }
@@ -422,19 +472,21 @@ fn generate_nonce(now_ms: u64, request_id: &str, session_id: &str) -> String {
 #[allow(clippy::chunks_exact_to_as_chunks)]
 pub fn sha256_hex(input: &[u8]) -> String {
     let mut h: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
     ];
 
     let k: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
     ];
 
     let bit_len = (input.len() as u64).wrapping_mul(8);
@@ -453,7 +505,10 @@ pub fn sha256_hex(input: &[u8]) -> String {
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
             let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
         }
 
         let mut a = h[0];
@@ -468,7 +523,11 @@ pub fn sha256_hex(input: &[u8]) -> String {
         for i in 0..64 {
             let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
             let ch = (e & f) ^ ((!e) & g);
-            let temp1 = ch_val.wrapping_add(s1).wrapping_add(ch).wrapping_add(k[i]).wrapping_add(w[i]);
+            let temp1 = ch_val
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(k[i])
+                .wrapping_add(w[i]);
             let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
             let maj = (a & b) ^ (a & c) ^ (b & c);
             let temp2 = s0.wrapping_add(maj);
@@ -751,7 +810,10 @@ mod tests {
             None,
             None,
         );
-        assert_ne!(fp1, fp2, "Fingerprints for different workspaces/providers must differ");
+        assert_ne!(
+            fp1, fp2,
+            "Fingerprints for different workspaces/providers must differ"
+        );
     }
 
     #[test]
@@ -771,7 +833,10 @@ mod tests {
             },
             now,
         );
-        assert_eq!(res_gemini.unwrap_err(), ApprovalError::ProviderNotInteractive);
+        assert_eq!(
+            res_gemini.unwrap_err(),
+            ApprovalError::ProviderNotInteractive
+        );
 
         // Antigravity is monitoring-only until interactive reply contract is verified
         let res_agy = reg.register_request(
@@ -824,8 +889,14 @@ mod tests {
         let cancelled = reg.cancel_session_requests("claude-code", "sess-term");
         assert_eq!(cancelled, 2);
 
-        assert_eq!(reg.get_request("req-1").unwrap().status, ApprovalStatus::Cancelled);
-        assert_eq!(reg.get_request("req-2").unwrap().status, ApprovalStatus::Cancelled);
+        assert_eq!(
+            reg.get_request("req-1").unwrap().status,
+            ApprovalStatus::Cancelled
+        );
+        assert_eq!(
+            reg.get_request("req-2").unwrap().status,
+            ApprovalStatus::Cancelled
+        );
         assert_eq!(reg.pending_snapshots(now).len(), 0);
     }
 
@@ -863,7 +934,10 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(snap.question, Some("Which branch should be deployed?".into()));
+        assert_eq!(
+            snap.question,
+            Some("Which branch should be deployed?".into())
+        );
         assert_eq!(snap.options.as_ref().unwrap().len(), 2);
 
         // Empty answer rejected
@@ -871,7 +945,9 @@ mod tests {
             "q-1",
             &snap.auth_token,
             &snap.action_fingerprint,
-            ApprovalDecision::Answer { answer: "   ".into() },
+            ApprovalDecision::Answer {
+                answer: "   ".into(),
+            },
             now + 100,
         );
         assert_eq!(empty_res, Err(ApprovalError::InvalidDecision));
@@ -881,12 +957,17 @@ mod tests {
             "q-1",
             &snap.auth_token,
             &snap.action_fingerprint,
-            ApprovalDecision::Answer { answer: "Continue with existing plan".into() },
+            ApprovalDecision::Answer {
+                answer: "Continue with existing plan".into(),
+            },
             now + 200,
         );
         let resolved = ans_res.expect("answer succeeds");
         assert_eq!(resolved.status, ApprovalStatus::Answered);
-        assert_eq!(resolved.answered_text, Some("Continue with existing plan".into()));
+        assert_eq!(
+            resolved.answered_text,
+            Some("Continue with existing plan".into())
+        );
     }
 
     #[test]

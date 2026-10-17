@@ -153,7 +153,9 @@ fn with_registry<F, R>(f: F) -> R
 where
     F: FnOnce(&mut CompanionRegistry) -> R,
 {
-    let mut guard = COMPANION_REGISTRY.lock().expect("CompanionRegistry lock poisoned");
+    let mut guard = COMPANION_REGISTRY
+        .lock()
+        .expect("CompanionRegistry lock poisoned");
     let reg = guard.get_or_insert_with(CompanionRegistry::default);
     f(reg)
 }
@@ -166,45 +168,50 @@ fn current_time_ms() -> u64 {
 }
 
 fn generate_nonce(len: usize) -> String {
-    use std::collections::hash_map::RandomState;
-    use std::hash::{BuildHasher, Hasher};
-
-    let mut out = String::with_capacity(len * 2);
-    while out.len() < len {
-        let s = RandomState::new().build_hasher().finish();
-        out.push_str(&format!("{:x}", s));
+    let bytes_needed = len.div_ceil(2);
+    let mut buf = vec![0u8; bytes_needed];
+    crate::agent_ipc::approval::csprng_fill(&mut buf);
+    let mut out = String::with_capacity(bytes_needed * 2);
+    for b in buf {
+        out.push_str(&format!("{:02x}", b));
     }
     out.truncate(len);
     out
 }
 
-/// Compute signature using pairing secret and message.
+/// Compute HMAC-SHA256 signature using pairing secret and message (RFC 2104).
 pub fn compute_signature(secret: &str, message: &str) -> String {
-    let combined = format!("{}:{}", secret, message);
-    let mut hasher = RandomStateHasher::new();
-    hasher.write_str(&combined);
-    format!("{:016x}", hasher.finish())
+    hmac_sha256(secret.as_bytes(), message.as_bytes())
 }
 
-struct RandomStateHasher {
-    state: u64,
-}
+/// Standard RFC 2104 HMAC-SHA256 implementation.
+pub fn hmac_sha256(key: &[u8], message: &[u8]) -> String {
+    use crate::agent_ipc::approval::{sha256_bytes, sha256_hex};
+    const BLOCK_SIZE: usize = 64;
+    let mut k_pad = [0u8; BLOCK_SIZE];
+    if key.len() > BLOCK_SIZE {
+        let key_hash = sha256_bytes(key);
+        k_pad[..32].copy_from_slice(&key_hash);
+    } else {
+        k_pad[..key.len()].copy_from_slice(key);
+    }
 
-impl RandomStateHasher {
-    fn new() -> Self {
-        Self {
-            state: 0xcbf29ce484222325,
-        }
+    let mut ipad = [0x36u8; BLOCK_SIZE];
+    let mut opad = [0x5cu8; BLOCK_SIZE];
+    for i in 0..BLOCK_SIZE {
+        ipad[i] ^= k_pad[i];
+        opad[i] ^= k_pad[i];
     }
-    fn write_str(&mut self, s: &str) {
-        for b in s.bytes() {
-            self.state ^= b as u64;
-            self.state = self.state.wrapping_mul(0x100000001b3);
-        }
-    }
-    fn finish(&self) -> u64 {
-        self.state
-    }
+
+    let mut inner_input = Vec::with_capacity(BLOCK_SIZE + message.len());
+    inner_input.extend_from_slice(&ipad);
+    inner_input.extend_from_slice(message);
+    let inner_hash = sha256_bytes(&inner_input);
+
+    let mut outer_input = Vec::with_capacity(BLOCK_SIZE + 32);
+    outer_input.extend_from_slice(&opad);
+    outer_input.extend_from_slice(&inner_hash);
+    sha256_hex(&outer_input)
 }
 
 /// Query current companion pairing state.
@@ -262,12 +269,8 @@ mod tests {
                 assert!(expires_at_ms > current_time_ms());
 
                 // Invalid code fails
-                let fail = reg.confirm_pairing(
-                    "dev_1".into(),
-                    "Pixel 8".into(),
-                    "000000",
-                    "bad_token",
-                );
+                let fail =
+                    reg.confirm_pairing("dev_1".into(), "Pixel 8".into(), "000000", "bad_token");
                 assert!(fail.is_err());
             }
             _ => panic!("Expected PairingRequested"),

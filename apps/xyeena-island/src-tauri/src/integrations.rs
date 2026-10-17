@@ -128,7 +128,9 @@ pub fn build_provider_check_request(
             ],
         )),
         "n8n" => {
-            let host = base_url.unwrap_or("http://localhost:5678").trim_end_matches('/');
+            let host = base_url
+                .unwrap_or("http://localhost:5678")
+                .trim_end_matches('/');
             if !host.starts_with("http://") && !host.starts_with("https://") {
                 return Err("n8n host must start with http:// or https://".into());
             }
@@ -318,15 +320,22 @@ mod tests {
     fn test_header_and_url_validation() {
         let (url, headers) = build_provider_check_request("notion", "secret_123", None).unwrap();
         assert_eq!(url, "https://api.notion.com/v1/users/me");
-        assert!(headers.iter().any(|(k, v)| k == "Notion-Version" && v == "2022-06-28"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "Notion-Version" && v == "2022-06-28"));
 
         let (stripe_url, stripe_headers) =
             build_provider_check_request("stripe", "rk_test_123", None).unwrap();
         assert_eq!(stripe_url, "https://api.stripe.com/v1/account");
-        assert!(stripe_headers.iter().any(|(k, v)| k == "Authorization" && v == "Bearer rk_test_123"));
+        assert!(stripe_headers
+            .iter()
+            .any(|(k, v)| k == "Authorization" && v == "Bearer rk_test_123"));
 
         let n8n_res = build_provider_check_request("n8n", "key", Some("invalid-host"));
-        assert!(n8n_res.is_err(), "Invalid host without http/https should be rejected");
+        assert!(
+            n8n_res.is_err(),
+            "Invalid host without http/https should be rejected"
+        );
     }
 
     #[test]

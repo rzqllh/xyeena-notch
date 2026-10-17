@@ -131,7 +131,13 @@ pub fn start_agent_pipe_server<R: Runtime + 'static>(
     let thread_handle = thread::Builder::new()
         .name("xyeena-agent-ipc".into())
         .spawn(move || {
-            run_server_loop(app, registry, approval_registry, pipe_name_clone, running_clone);
+            run_server_loop(
+                app,
+                registry,
+                approval_registry,
+                pipe_name_clone,
+                running_clone,
+            );
         })
         .expect("Failed to spawn agent IPC thread");
 
@@ -275,7 +281,8 @@ fn handle_pipe_client<R: Runtime>(
                         let _ = app.emit("island:agent-event", &event);
 
                         if event.event_type == NormalizedEventType::SessionEnd {
-                            approval_registry.cancel_session_requests(&event.provider, &event.session_id);
+                            approval_registry
+                                .cancel_session_requests(&event.provider, &event.session_id);
                         } else if event.event_type == NormalizedEventType::PermissionRequest
                             && is_provider_interactive(&event.provider)
                         {
@@ -285,11 +292,16 @@ fn handle_pipe_client<R: Runtime>(
                                 .or_else(|| raw_value.get("id"))
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string())
-                                .unwrap_or_else(|| format!("{}-{}", event.session_id, event.timestamp_ms));
+                                .unwrap_or_else(|| {
+                                    format!("{}-{}", event.session_id, event.timestamp_ms)
+                                });
 
-                            let tool_name = event.tool_name.clone().unwrap_or_else(|| "Tool".into());
-                            let tool_cmd = event.tool_input.as_ref().and_then(|i| i.command.clone());
-                            let tool_summary = event.tool_input.as_ref().and_then(|i| i.summary.clone());
+                            let tool_name =
+                                event.tool_name.clone().unwrap_or_else(|| "Tool".into());
+                            let tool_cmd =
+                                event.tool_input.as_ref().and_then(|i| i.command.clone());
+                            let tool_summary =
+                                event.tool_input.as_ref().and_then(|i| i.summary.clone());
 
                             let question = raw_value
                                 .get("question")
@@ -298,26 +310,28 @@ fn handle_pipe_client<R: Runtime>(
                                 .and_then(|v| v.as_str())
                                 .map(|s| s.to_string());
 
-                            let options = raw_value
-                                .get("options")
-                                .and_then(|v| v.as_array())
-                                .map(|arr| {
-                                    arr.iter()
-                                        .filter_map(|item| {
-                                            let id = item.get("id")?.as_str()?.to_string();
-                                            let label = item.get("label")?.as_str()?.to_string();
-                                            let desc = item
-                                                .get("description")
-                                                .and_then(|d| d.as_str())
-                                                .map(|s| s.to_string());
-                                            Some(QuestionOption {
-                                                id,
-                                                label,
-                                                description: desc,
+                            let options =
+                                raw_value
+                                    .get("options")
+                                    .and_then(|v| v.as_array())
+                                    .map(|arr| {
+                                        arr.iter()
+                                            .filter_map(|item| {
+                                                let id = item.get("id")?.as_str()?.to_string();
+                                                let label =
+                                                    item.get("label")?.as_str()?.to_string();
+                                                let desc = item
+                                                    .get("description")
+                                                    .and_then(|d| d.as_str())
+                                                    .map(|s| s.to_string());
+                                                Some(QuestionOption {
+                                                    id,
+                                                    label,
+                                                    description: desc,
+                                                })
                                             })
-                                        })
-                                        .collect::<Vec<_>>()
-                                });
+                                            .collect::<Vec<_>>()
+                                    });
 
                             let params = RegisterApprovalParams {
                                 request_id,

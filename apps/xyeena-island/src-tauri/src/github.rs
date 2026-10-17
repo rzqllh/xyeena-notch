@@ -182,7 +182,10 @@ pub fn parse_gh_pr_view_json(json_str: &str) -> Option<GitHubPrSummary> {
     let title = val.get("title")?.as_str()?.to_string();
     let state = val.get("state")?.as_str()?.to_string();
     let url = val.get("url")?.as_str()?.to_string();
-    let is_draft = val.get("isDraft").and_then(|v| v.as_bool()).unwrap_or(false);
+    let is_draft = val
+        .get("isDraft")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let head_branch = val
         .get("headRefName")
         .and_then(|v| v.as_str())
@@ -208,7 +211,10 @@ pub fn parse_gh_pr_view_json(json_str: &str) -> Option<GitHubPrSummary> {
             for c in checks {
                 let status = c.get("status").and_then(|s| s.as_str()).unwrap_or("");
                 let conclusion = c.get("conclusion").and_then(|s| s.as_str()).unwrap_or("");
-                if conclusion == "FAILURE" || conclusion == "TIMED_OUT" || conclusion == "ACTION_REQUIRED" {
+                if conclusion == "FAILURE"
+                    || conclusion == "TIMED_OUT"
+                    || conclusion == "ACTION_REQUIRED"
+                {
                     has_failure = true;
                 } else if status == "IN_PROGRESS" || status == "QUEUED" {
                     has_pending = true;
@@ -384,8 +390,16 @@ pub fn get_github_status(
     // Check token preference first, then CLI
     let effective_token = token
         .filter(|t| !t.trim().is_empty())
-        .or_else(|| std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.trim().is_empty()))
-        .or_else(|| std::env::var("GH_TOKEN").ok().filter(|t| !t.trim().is_empty()));
+        .or_else(|| {
+            std::env::var("GITHUB_TOKEN")
+                .ok()
+                .filter(|t| !t.trim().is_empty())
+        })
+        .or_else(|| {
+            std::env::var("GH_TOKEN")
+                .ok()
+                .filter(|t| !t.trim().is_empty())
+        });
 
     if let Some(_tok) = effective_token {
         // Direct REST API queries via curl.exe could be wired here if gh CLI is missing.
@@ -452,7 +466,10 @@ mod tests {
             parse_github_remote("https://github.com/owner/project"),
             Some("owner/project".to_string())
         );
-        assert_eq!(parse_github_remote("https://gitlab.com/owner/repo.git"), None);
+        assert_eq!(
+            parse_github_remote("https://gitlab.com/owner/repo.git"),
+            None
+        );
         assert_eq!(parse_github_remote(""), None);
         assert_eq!(parse_github_remote("   "), None);
     }

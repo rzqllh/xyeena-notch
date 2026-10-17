@@ -259,7 +259,10 @@ pub fn open_in_terminal(workspace_root: String) -> Result<(), String> {
             .args([
                 "-NoExit",
                 "-Command",
-                &format!("Set-Location -LiteralPath '{}'", root_str.replace('\'', "''")),
+                &format!(
+                    "Set-Location -LiteralPath '{}'",
+                    root_str.replace('\'', "''")
+                ),
             ])
             .spawn();
 
@@ -282,7 +285,9 @@ pub fn open_in_terminal(workspace_root: String) -> Result<(), String> {
         let _ = root_str;
     }
 
-    Err(format!("Could not launch terminal in workspace: {workspace_root}"))
+    Err(format!(
+        "Could not launch terminal in workspace: {workspace_root}"
+    ))
 }
 
 #[cfg(test)]

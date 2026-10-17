@@ -37,7 +37,9 @@ fn with_manager<F, R>(f: F) -> R
 where
     F: FnOnce(&mut VoiceSessionManager) -> R,
 {
-    let mut guard = VOICE_MANAGER.lock().expect("VoiceSessionManager lock poisoned");
+    let mut guard = VOICE_MANAGER
+        .lock()
+        .expect("VoiceSessionManager lock poisoned");
     let mgr = guard.get_or_insert_with(VoiceSessionManager::default);
     f(mgr)
 }
@@ -83,12 +85,18 @@ pub fn parse_voice_command(transcript: &str) -> VoiceCommandAction {
     }
 
     // 2. Mode commands
-    if text.contains("expand island") || text.contains("open island") || text.contains("show island") {
+    if text.contains("expand island")
+        || text.contains("open island")
+        || text.contains("show island")
+    {
         return VoiceCommandAction::SetMode {
             mode: "expanded".into(),
         };
     }
-    if text.contains("compact island") || text.contains("minimize island") || text.contains("collapse island") {
+    if text.contains("compact island")
+        || text.contains("minimize island")
+        || text.contains("collapse island")
+    {
         return VoiceCommandAction::SetMode {
             mode: "compact".into(),
         };
@@ -105,17 +113,30 @@ pub fn parse_voice_command(transcript: &str) -> VoiceCommandAction {
             panel: "chat".into(),
         };
     }
-    if text.contains("open clipboard") || text.contains("show clips") || text == "clips" || text == "clipboard" {
+    if text.contains("open clipboard")
+        || text.contains("show clips")
+        || text == "clips"
+        || text == "clipboard"
+    {
         return VoiceCommandAction::Navigate {
             panel: "clipboard".into(),
         };
     }
-    if text.contains("open settings") || text.contains("show settings") || text == "settings" || text == "preferences" {
+    if text.contains("open settings")
+        || text.contains("show settings")
+        || text == "settings"
+        || text == "preferences"
+    {
         return VoiceCommandAction::Navigate {
             panel: "preferences".into(),
         };
     }
-    if text.contains("show activity") || text.contains("open activity") || text.contains("show agents") || text == "activity" || text == "agents" {
+    if text.contains("show activity")
+        || text.contains("open activity")
+        || text.contains("show agents")
+        || text == "activity"
+        || text == "agents"
+    {
         return VoiceCommandAction::Navigate {
             panel: "activity".into(),
         };
@@ -172,7 +193,7 @@ pub fn get_microphone_status() -> Result<MicrophoneStatus, String> {
 
         Ok(MicrophoneStatus {
             available,
-            device_name: "Default Windows Recording Endpoint".into(),
+            device_name: "Windows Audio Endpoint (WASAPI Capture Pending)".into(),
             consented: false,
             is_recording,
             session_type,
@@ -188,12 +209,16 @@ pub fn start_consented_recording(
     user_consented: bool,
 ) -> Result<String, String> {
     if !user_consented {
-        return Err("Explicit user consent is strictly required before starting audio recording.".into());
+        return Err(
+            "Explicit user consent is strictly required before starting audio recording.".into(),
+        );
     }
 
     with_manager(|mgr| {
         if mgr.active_session.is_some() {
-            return Err("A recording session is already active. Stop current session first.".into());
+            return Err(
+                "A recording session is already active. Stop current session first.".into(),
+            );
         }
 
         let max_duration = if session_type == "voice_command" {
@@ -203,7 +228,14 @@ pub fn start_consented_recording(
             Duration::from_secs(3600)
         };
 
-        let session_id = format!("rec_{}_{}", session_type, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis());
+        let session_id = format!(
+            "rec_{}_{}",
+            session_type,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        );
 
         mgr.active_session = Some(ActiveRecording {
             session_id: session_id.clone(),
@@ -225,7 +257,10 @@ pub fn stop_consented_recording(session_id: String) -> Result<RecordingSummary, 
                 if active.session_id != session_id {
                     // Put it back
                     mgr.active_session = Some(active);
-                    return Err(format!("Session ID mismatch. Active session: {}", session_id));
+                    return Err(format!(
+                        "Session ID mismatch. Active session: {}",
+                        session_id
+                    ));
                 }
 
                 let elapsed = active.started_at.elapsed();
@@ -261,7 +296,8 @@ mod tests {
 
     #[test]
     fn test_recording_lifecycle_happy_path() {
-        let sid = start_consented_recording("notetaker".into(), true).expect("Must start with consent");
+        let sid =
+            start_consented_recording("notetaker".into(), true).expect("Must start with consent");
         assert!(sid.starts_with("rec_notetaker_"));
 
         let status = get_microphone_status().expect("Must get mic status");
@@ -279,7 +315,8 @@ mod tests {
 
     #[test]
     fn test_duplicate_session_rejected() {
-        let sid = start_consented_recording("voice_command".into(), true).expect("First session starts");
+        let sid =
+            start_consented_recording("voice_command".into(), true).expect("First session starts");
         let duplicate_err = start_consented_recording("voice_command".into(), true);
         assert!(duplicate_err.is_err());
         assert!(duplicate_err.unwrap_err().contains("already active"));
