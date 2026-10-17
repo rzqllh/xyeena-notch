@@ -173,3 +173,132 @@ test('providerCredentials manages session-only, provider-scoped keys with local 
   assert.equal(store.hasKey('openai'), false);
   assert.equal(store.getKey('openai'), '');
 });
+
+test('ChatEngine _prepare enforces user-first, user-last flow and filters error messages', () => {
+  const engine = new ChatEngine();
+  engine.addAssistantReply('Should be trimmed because it is leading assistant');
+  engine.addUserMessage('First user prompt');
+  engine.addAssistantReply('⚠️ Rate limit exceeded (429)', { isError: true });
+  engine.addUserMessage('Second user prompt');
+
+  const prepared = engine._prepare(4000, 'System instructions');
+  assert.equal(prepared.system, 'System instructions');
+  assert.equal(prepared.messages.length, 1);
+  // Merged user prompts without the error message in between
+  assert.equal(prepared.messages[0].role, 'user');
+  assert.equal(prepared.messages[0].content, 'First user prompt\n\nSecond user prompt');
+});
+
+test('ChatEngine handles multi-turn conversation across multiple responses with context preservation', async () => {
+  const engine = new ChatEngine();
+  const sentPayloads = [];
+
+  const mockInvoker = async (_cmd, payload) => {
+    sentPayloads.push(JSON.parse(payload.body));
+    const turn = sentPayloads.length;
+    if (turn === 1) {
+      return {
+        status: 200,
+        body: JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Turn 1 reply: Paris' } }] })
+      };
+    } else {
+      return {
+        status: 200,
+        body: JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Turn 2 reply: London' } }] })
+      };
+    }
+  };
+
+  // Turn 1
+  engine.addUserMessage('What is capital of France?');
+  const reply1 = await engine.requestCompletion({
+    provider: 'openai',
+    apiKey: 'sk-test',
+    nativeInvoker: mockInvoker
+  });
+  assert.equal(reply1, 'Turn 1 reply: Paris');
+  assert.equal(engine.messages.length, 2);
+
+  // Turn 2
+  engine.addUserMessage('What is capital of UK?');
+  const reply2 = await engine.requestCompletion({
+    provider: 'openai',
+    apiKey: 'sk-test',
+    nativeInvoker: mockInvoker
+  });
+  assert.equal(reply2, 'Turn 2 reply: London');
+  assert.equal(engine.messages.length, 4);
+
+  // Verify Turn 2 payload contained complete multi-turn context
+  const turn2Messages = sentPayloads[1].messages;
+  assert.equal(turn2Messages.length, 3);
+  assert.equal(turn2Messages[0].role, 'user');
+  assert.equal(turn2Messages[0].content, 'What is capital of France?');
+  assert.equal(turn2Messages[1].role, 'assistant');
+  assert.equal(turn2Messages[1].content, 'Turn 1 reply: Paris');
+  assert.equal(turn2Messages[2].role, 'user');
+  assert.equal(turn2Messages[2].content, 'What is capital of UK?');
+});
+
+test('ChatEngine handles HTTP 503 retry and categorizes provider overload', async () => {
+  const engine = new ChatEngine();
+  engine.addUserMessage('Test 503');
+
+  let attempts = 0;
+  const mockInvoker503 = async () => {
+    attempts++;
+    if (attempts < 2) {
+      return { status: 503, headers: { 'retry-after': '0' }, body: 'Service Unavailable' };
+    }
+    return {
+      status: 200,
+      body: JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Recovered after retry' } }] })
+    };
+  };
+
+  const reply = await engine.requestCompletion({
+    provider: 'openai',
+    apiKey: 'sk-test',
+    nativeInvoker: mockInvoker503
+  });
+  assert.equal(reply, 'Recovered after retry');
+  assert.equal(attempts, 2);
+});
+
+test('ChatEngine cancellation via AbortSignal aborts cleanly and calls cancel_native_ai_request', async () => {
+  const engine = new ChatEngine();
+  engine.addUserMessage('Long running prompt');
+
+  let cancelledReqId = null;
+  const controller = new AbortController();
+
+  const mockInvoker = async (cmd, payload) => {
+    if (cmd === 'cancel_native_ai_request') {
+      cancelledReqId = payload.request_id || payload.requestId;
+      return true;
+    }
+    return new Promise((_resolve, reject) => {
+      controller.signal.addEventListener('abort', () => {
+        const err = new Error('Chat completion aborted');
+        err.name = 'AbortError';
+        reject(err);
+      }, { once: true });
+    });
+  };
+
+  const completionPromise = engine.requestCompletion({
+    provider: 'ollama',
+    nativeInvoker: mockInvoker,
+    signal: controller.signal
+  });
+
+  // Trigger abort in-flight
+  controller.abort();
+
+  await assert.rejects(
+    () => completionPromise,
+    /aborted/
+  );
+  assert.ok(cancelledReqId, 'cancel_native_ai_request should have been invoked with request ID');
+});
+

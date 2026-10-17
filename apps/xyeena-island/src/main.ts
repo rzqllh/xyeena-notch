@@ -16,7 +16,7 @@ import type {NativeAgentEvent,NativeSessionSnapshot,MonitoredSession,ApprovalSna
 import {RunChangeFeed} from './core/notifications.mjs';
 import {chooseGuardianState,toMascotState,guardianStatus,defineXyeenaGuardian} from './core/mascot.mjs';
 import {inspectFile,convertImageDataUrl} from './core/files.mjs';
-import {ChatEngine,AI_PROVIDERS,renderSafeMarkdown} from './core/ai-chat.mjs';
+import {ChatEngine,AI_PROVIDERS,renderSafeMarkdown,ApiError} from './core/ai-chat.mjs';
 import {KNOWN_ADAPTERS,getAdapter,normalizeSessionSnapshot} from './core/agent-adapters.mjs';
 import {mayForwardDecision} from './core/agent-events.mjs';
 import {buildWeeklyRecap,recapText,recapSvg} from '@xyeena/recap';
@@ -1401,7 +1401,7 @@ const chat=new ChatEngine();
 chat.systemPrompt = `Kamu adalah Xyn, maskot Golden Lion Guardian dari Xyeena Island — penjaga desktop yang sigap, cerdas, bersahabat, dan tanggap mendampingi pengguna di Windows notch. Karaktermu hangat, pragmatis, solutif, dan analitis (gaya Xyeena). Jawab dengan Bahasa Indonesia yang natural, santai tapi cerdas dan lugas (tidak kaku seperti robot/birokrasi, tidak lebay/klise). Berikan bantuan teknis, kode, ringkasan, atau saran yang konkret, jujur, akurat, dan tanpa gimik.`;
 let chatAbortController:AbortController|null=null;
 
-function setXynChatState(state:'idle'|'thinking'|'speaking'|'error'){
+function setXynChatState(state:'idle'|'thinking'|'speaking'|'error', err?: any){
  const sub=q<HTMLElement>('#chat-xyn-status');
  const stopBtn=q<HTMLButtonElement>('#chat-stop');
  const sendBtn=q<HTMLButtonElement>('#chat-send');
@@ -1421,7 +1421,20 @@ function setXynChatState(state:'idle'|'thinking'|'speaking'|'error'){
  }else if(state==='error'){
   chatMascotState='error';
   syncGuardian();
-  if(sub)sub.textContent=prefs.language==='id'?'Xyn mengalami kendala':'Xyn encountered an issue';
+  let errDesc = prefs.language==='id'?'Xyn mengalami kendala':'Xyn encountered an issue';
+  if(err instanceof ApiError){
+   const p = err.provider || chat.activeProvider;
+   if(err.status === 429){
+    errDesc = prefs.language==='id'?`Rate limit ${p} terlampaui (429)`:`${p} rate limit exceeded (429)`;
+   }else if(err.status === 503 || err.status === 529){
+    errDesc = prefs.language==='id'?`${p} sedang sibuk/overloaded (${err.status})`:`${p} overloaded (${err.status})`;
+   }else if(err.status === 401){
+    errDesc = prefs.language==='id'?`API key ${p} tidak valid (401)`:`Invalid API key for ${p} (401)`;
+   }else{
+    errDesc = prefs.language==='id'?`Kendala provider ${p} (${err.status||'error'})`:`Provider ${p} error (${err.status||'error'})`;
+   }
+  }
+  if(sub)sub.textContent=errDesc;
   if(stopBtn)stopBtn.hidden=true;
   if(sendBtn)sendBtn.disabled=false;
   playFeedbackSound('error');
@@ -1598,12 +1611,12 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
   if(thisReqSeq!==chatReqSeq)return;
   chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
   if(err?.name==='AbortError'){
-   chat.addAssistantReply('*Response generation cancelled.*');
+   chat.addAssistantReply('*Response generation cancelled.*', { isError: true });
   }else{
-   chat.addAssistantReply(`⚠️ **Chat error:** ${err?.message||String(err)}`);
+   chat.addAssistantReply(`⚠️ **Chat error:** ${err?.message||String(err)}`, { isError: true });
   }
   renderChatMessages();
-  setXynChatState('error');
+  setXynChatState('error', err);
   setTimeout(()=>{if(thisReqSeq===chatReqSeq)setXynChatState('idle');},4000);
  }finally{
   if(thisReqSeq===chatReqSeq){
