@@ -1,5 +1,6 @@
 //! Xyeena Island MVP: transparent top-edge companion, tray, and opt-in read-only run summaries.
 //! No cursor hooks, agent approval RPC, or autostart. AI requests use opt-in, bounded transport.
+pub mod agent_ipc;
 mod clipboard;
 mod media;
 mod volume;
@@ -914,6 +915,18 @@ fn read_xyeena_runs(project_root: String) -> Result<Vec<RunSummary>, String> {
     Ok(result)
 }
 
+#[tauri::command]
+fn get_agent_ipc_pipe_name() -> String {
+    agent_ipc::get_pipe_name()
+}
+
+#[tauri::command]
+fn get_agent_sessions(
+    registry: tauri::State<'_, agent_ipc::SharedSessionRegistry>,
+) -> Vec<agent_ipc::AgentSession> {
+    registry.all_sessions()
+}
+
 fn show_island(app: &tauri::AppHandle, requested: &str) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = set_mode(&window, Mode::Compact);
@@ -929,7 +942,14 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AiProcessRegistry::default())
+        .manage(agent_ipc::SharedSessionRegistry::new())
         .setup(|app| {
+            let registry = app
+                .state::<agent_ipc::SharedSessionRegistry>()
+                .inner()
+                .clone();
+            let server_handle = agent_ipc::start_agent_pipe_server(app.handle().clone(), registry);
+            app.manage(std::sync::Mutex::new(server_handle));
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| std::io::Error::other("Main Island window missing"))?;
@@ -1005,6 +1025,8 @@ pub fn run() {
             read_dropped_file,
             native_ai_request,
             cancel_native_ai_request,
+            get_agent_ipc_pipe_name,
+            get_agent_sessions,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");
