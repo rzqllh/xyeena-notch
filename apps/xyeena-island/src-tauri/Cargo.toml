@@ -11,6 +11,14 @@ build = "build.rs"
 name = "xyeena_island_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "xyeena-island"
+path = "src/main.rs"
+
+[[bin]]
+name = "xyeena-agent-relay"
+path = "src/bin/relay.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

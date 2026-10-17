@@ -6,6 +6,7 @@
 pub mod event;
 pub mod framing;
 pub mod pipe;
+pub mod provider;
 pub mod session;
 
 pub use event::{

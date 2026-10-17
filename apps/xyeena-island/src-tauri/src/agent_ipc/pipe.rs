@@ -3,6 +3,20 @@
 //! Provides a secured, per-user local Named Pipe endpoint with explicit
 //! rejection of remote clients, bounded message processing, session tracking,
 //! and emission to the Tauri Island frontend.
+//!
+//! # Threat Model & Local Security Boundary
+//!
+//! - **Remote Rejection**: The pipe strictly enforces `PIPE_REJECT_REMOTE_CLIENTS` to
+//!   prevent cross-network and SMB/RPC named pipe connections.
+//! - **Per-User Isolation**: The DACL (`D:P(A;;GRGW;;;OW)`) restricts pipe creation
+//!   and connection to the local owner token, preventing other Windows user sessions
+//!   from snooping or injecting events.
+//! - **Same-User Spoofing Limitation**: Processes running under the *same Windows user session*
+//!   share user token privileges and can connect to this pipe. Therefore, claims
+//!   in the payload (e.g. `provider`, `session_id`, `cwd`) are **untrusted claims** and must
+//!   never be treated as cryptographic proof of provider authenticity without independent
+//!   process verification. In later slices (S05 approvals), authoritative verification
+//!   gates are applied.
 
 use crate::agent_ipc::event::parse_and_normalize;
 use crate::agent_ipc::framing::FrameBuffer;
@@ -391,5 +405,171 @@ mod tests {
         assert_eq!(session.len(), 1);
         assert_eq!(session[0].provider, "claude-code");
         assert_eq!(session[0].session_id, "test-session-pipe-1");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_unauthorized_client_rejection_by_deny_dacl() {
+        use windows::Win32::Storage::FileSystem::{
+            CreateFileW, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_NONE, OPEN_EXISTING,
+        };
+
+        let pipe_name = format!(r"\\.\pipe\xyeena-deny-pipe-{}", std::process::id());
+        let pipe_name_w = HSTRING::from(&pipe_name);
+
+        // Explicit Deny Everyone DACL: "D:P(D;;GA;;;WD)"
+        let sddl = HSTRING::from("D:P(D;;GA;;;WD)");
+        let mut sec_desc = PSECURITY_DESCRIPTOR::default();
+        let _ = unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                &sddl,
+                SDDL_REVISION_1,
+                &mut sec_desc,
+                None,
+            )
+        };
+
+        let sec_attrs = SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: sec_desc.0,
+            bInheritHandle: false.into(),
+        };
+
+        let pipe_handle = unsafe {
+            windows::Win32::System::Pipes::CreateNamedPipeW(
+                &pipe_name_w,
+                PIPE_ACCESS_DUPLEX,
+                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                1,
+                4096,
+                4096,
+                0,
+                Some(&sec_attrs),
+            )
+        };
+        assert_ne!(pipe_handle, INVALID_HANDLE_VALUE);
+
+        // Attempting to connect as client should be rejected with ACCESS_DENIED
+        let client_res = unsafe {
+            CreateFileW(
+                &pipe_name_w,
+                FILE_GENERIC_READ.0 | FILE_GENERIC_WRITE.0,
+                FILE_SHARE_NONE,
+                None,
+                OPEN_EXISTING,
+                Default::default(),
+                None,
+            )
+        };
+
+        assert!(
+            client_res.is_err(),
+            "Access to pipe with Deny Everyone DACL must be rejected"
+        );
+
+        let _ = unsafe { CloseHandle(pipe_handle) };
+        if !sec_desc.0.is_null() {
+            let _ = unsafe {
+                windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(
+                    sec_desc.0,
+                )))
+            };
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_client_abrupt_disconnect_handled_safely() {
+        use windows::Win32::Storage::FileSystem::{
+            CreateFileW, WriteFile, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_NONE,
+            OPEN_EXISTING,
+        };
+
+        let pipe_name = format!(r"\\.\pipe\xyeena-abrupt-pipe-{}", std::process::id());
+        let pipe_name_clone = pipe_name.clone();
+
+        let listener = thread::spawn(move || {
+            let pipe_name_w = HSTRING::from(&pipe_name_clone);
+            let sddl = HSTRING::from("D:P(A;;GRGW;;;OW)");
+            let mut sec_desc = PSECURITY_DESCRIPTOR::default();
+            let _ = unsafe {
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    &sddl,
+                    SDDL_REVISION_1,
+                    &mut sec_desc,
+                    None,
+                )
+            };
+
+            let sec_attrs = SECURITY_ATTRIBUTES {
+                nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+                lpSecurityDescriptor: sec_desc.0,
+                bInheritHandle: false.into(),
+            };
+
+            let h = unsafe {
+                windows::Win32::System::Pipes::CreateNamedPipeW(
+                    &pipe_name_w,
+                    PIPE_ACCESS_DUPLEX,
+                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                    1,
+                    4096,
+                    4096,
+                    0,
+                    Some(&sec_attrs),
+                )
+            };
+            assert_ne!(h, INVALID_HANDLE_VALUE);
+
+            let _ = unsafe { ConnectNamedPipe(h, None) };
+
+            let mut frame_buf = FrameBuffer::new();
+            let mut buf = [0u8; 1024];
+            let mut read = 0u32;
+            let _ = unsafe { ReadFile(h, Some(&mut buf), Some(&mut read), None) };
+
+            if read > 0 {
+                let _ = frame_buf.extend(&buf[..read as usize]);
+                // Client abruptly disconnected before newline delimiter was sent
+                assert!(frame_buf.next_frame().unwrap().is_none());
+            }
+
+            let _ = unsafe { DisconnectNamedPipe(h) };
+            let _ = unsafe { CloseHandle(h) };
+            if !sec_desc.0.is_null() {
+                let _ = unsafe {
+                    windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(
+                        sec_desc.0,
+                    )))
+                };
+            }
+        });
+
+        thread::sleep(std::time::Duration::from_millis(50));
+
+        let pipe_w = HSTRING::from(&pipe_name);
+        let client_h = unsafe {
+            CreateFileW(
+                &pipe_w,
+                FILE_GENERIC_READ.0 | FILE_GENERIC_WRITE.0,
+                FILE_SHARE_NONE,
+                None,
+                OPEN_EXISTING,
+                Default::default(),
+                None,
+            )
+        }
+        .expect("Client connect must succeed");
+
+        // Send partial bytes without newline delimiter
+        let partial_data = b"{\"event\": \"Incomplete";
+        let mut written = 0u32;
+        let _ = unsafe { WriteFile(client_h, Some(partial_data), Some(&mut written), None) };
+
+        // Abruptly close handle
+        let _ = unsafe { CloseHandle(client_h) };
+
+        // Listener must exit cleanly without hanging
+        listener.join().expect("listener must join cleanly");
     }
 }

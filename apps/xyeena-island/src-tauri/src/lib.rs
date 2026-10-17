@@ -927,6 +927,101 @@ fn get_agent_sessions(
     registry.all_sessions()
 }
 
+#[tauri::command]
+fn detect_agent_providers() -> Vec<(
+    agent_ipc::provider::ProviderDef,
+    agent_ipc::provider::DetectionResult,
+)> {
+    agent_ipc::provider::known_providers()
+        .into_iter()
+        .map(|def| {
+            let res = agent_ipc::provider::detect_provider(&def);
+            (def, res)
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn preview_provider_hooks(
+    provider_id: String,
+    workspace_path: Option<String>,
+) -> Result<agent_ipc::provider::HookInstallPreview, String> {
+    if provider_id != "antigravity" {
+        return Err(format!(
+            "Provider '{provider_id}' is not yet supported for hook previews"
+        ));
+    }
+    let config_path = if let Some(ws) = workspace_path {
+        std::path::PathBuf::from(ws)
+            .join(".agents")
+            .join("hooks.json")
+    } else {
+        return Err("A workspace root path is required for workspace hook preview".into());
+    };
+    let relay_exe = agent_ipc::provider::resolve_relay_exe_path().map_err(|e| e.to_string())?;
+    agent_ipc::provider::preview_agy_install(
+        &config_path,
+        agent_ipc::provider::ConfigScope::Workspace,
+        &relay_exe.to_string_lossy(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn install_provider_hooks(
+    provider_id: String,
+    workspace_path: Option<String>,
+    confirmed: bool,
+    expected_relay_path: Option<String>,
+) -> Result<agent_ipc::provider::HookInstallOutcome, String> {
+    if !confirmed {
+        return Err("Explicit user confirmation is required before installing hooks".into());
+    }
+    if provider_id != "antigravity" {
+        return Err(format!(
+            "Provider '{provider_id}' is not yet supported for hook installation"
+        ));
+    }
+    let config_path = if let Some(ws) = workspace_path {
+        let p = std::path::PathBuf::from(ws).join(".agents");
+        let _ = std::fs::create_dir_all(&p);
+        p.join("hooks.json")
+    } else {
+        return Err("A workspace root path is required for workspace hook installation".into());
+    };
+    let relay_exe = agent_ipc::provider::resolve_relay_exe_path().map_err(|e| e.to_string())?;
+    if let Some(expected) = expected_relay_path {
+        let resolved_str = relay_exe.to_string_lossy();
+        if resolved_str != expected {
+            return Err(format!(
+                "Relay path mismatch: preview was '{expected}', resolved '{resolved_str}'"
+            ));
+        }
+    }
+    agent_ipc::provider::install_agy_hooks(&config_path, &relay_exe.to_string_lossy())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn uninstall_provider_hooks(
+    provider_id: String,
+    workspace_path: Option<String>,
+) -> Result<agent_ipc::provider::HookInstallOutcome, String> {
+    if provider_id != "antigravity" {
+        return Err(format!(
+            "Provider '{provider_id}' is not yet supported for hook uninstallation"
+        ));
+    }
+    let config_path = if let Some(ws) = workspace_path {
+        std::path::PathBuf::from(ws)
+            .join(".agents")
+            .join("hooks.json")
+    } else {
+        return Err("A workspace root path is required for workspace hook uninstallation".into());
+    };
+    agent_ipc::provider::uninstall_agy_hooks(&config_path).map_err(|e| e.to_string())
+}
+
 fn show_island(app: &tauri::AppHandle, requested: &str) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = set_mode(&window, Mode::Compact);
@@ -1027,6 +1122,10 @@ pub fn run() {
             cancel_native_ai_request,
             get_agent_ipc_pipe_name,
             get_agent_sessions,
+            detect_agent_providers,
+            preview_provider_hooks,
+            install_provider_hooks,
+            uninstall_provider_hooks,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");
