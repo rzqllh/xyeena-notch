@@ -314,4 +314,100 @@ test('SessionStore preserves working state continuity when one of multiple concu
   assert.equal(store.getAggregateState(20000), 'idle');
 });
 
+test('SessionStore records touchedFiles ticker and bounds to 20 files', () => {
+  const store = new SessionStore();
+
+  for (let i = 0; i < 25; i++) {
+    store.ingestEvent({
+      event_type: 'ToolPre',
+      provider: 'antigravity',
+      session_id: 's-files',
+      tool_name: 'write_to_file',
+      tool_input: {
+        path: `src/file_${i}.ts`
+      },
+      timestamp_ms: 1000 + i
+    });
+  }
+
+  const session = store.getFocusedSession();
+  assert.ok(session);
+  assert.equal(session.touchedFiles.length, 20, 'Should bound touchedFiles to max 20 entries');
+  assert.ok(session.touchedFiles.includes('src/file_24.ts'), 'Should contain the latest file');
+  assert.ok(!session.touchedFiles.includes('src/file_0.ts'), 'Should have shifted the oldest file');
+});
+
+test('SessionStore extracts authentic usage telemetry without synthetic fabrication', () => {
+  const store = new SessionStore();
+
+  store.ingestEvent({
+    event_type: 'ToolPost',
+    provider: 'claude-code',
+    session_id: 'c-usage',
+    tool_name: 'edit',
+    raw: {
+      usage: {
+        input_tokens: 1250,
+        output_tokens: 350,
+        total_tokens: 1600
+      },
+      model: 'claude-3-5-sonnet'
+    },
+    timestamp_ms: 2000
+  });
+
+  const session = store.getFocusedSession();
+  assert.ok(session);
+  assert.ok(session.usage);
+  assert.equal(session.usage.inputTokens, 1250);
+  assert.equal(session.usage.outputTokens, 350);
+  assert.equal(session.usage.totalTokens, 1600);
+  assert.equal(session.usage.model, 'claude-3-5-sonnet');
+});
+
+test('SessionStore derives authentic events for Weekly Recap aggregation', () => {
+  const store = new SessionStore();
+
+  store.ingestEvent({
+    event_type: 'SessionStart',
+    provider: 'antigravity',
+    session_id: 'ag-recap',
+    timestamp_ms: 5000
+  });
+
+  store.ingestEvent({
+    event_type: 'ToolPre',
+    provider: 'antigravity',
+    session_id: 'ag-recap',
+    tool_name: 'replace_file_content',
+    tool_input: { path: 'src/main.ts' },
+    timestamp_ms: 5100
+  });
+
+  store.ingestEvent({
+    event_type: 'ToolPre',
+    provider: 'antigravity',
+    session_id: 'ag-recap',
+    tool_name: 'run_command',
+    tool_input: { command: 'cargo test' },
+    timestamp_ms: 5200
+  });
+
+  store.ingestEvent({
+    event_type: 'SessionEnd',
+    provider: 'antigravity',
+    session_id: 'ag-recap',
+    timestamp_ms: 6000
+  });
+
+  const recapEvents = store.getSessionEventsForRecap(4000);
+  assert.ok(recapEvents.length >= 4);
+
+  const types = recapEvents.map(e => e.type);
+  assert.ok(types.includes('session_start'));
+  assert.ok(types.includes('edit'));
+  assert.ok(types.includes('command'));
+  assert.ok(types.includes('task_finish'));
+});
+
 

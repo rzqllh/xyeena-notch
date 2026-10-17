@@ -6,7 +6,16 @@ export interface SessionEventRecord {
   timestamp: number;
   toolName?: string;
   command?: string;
+  path?: string;
   summary?: string;
+}
+
+export interface SessionUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  totalCost?: number;
+  model?: string;
 }
 
 export interface QuestionOption {
@@ -46,6 +55,8 @@ export interface MonitoredSession {
   activeTool?: string;
   lastCommand?: string;
   lastSummary?: string;
+  touchedFiles: string[];
+  usage?: SessionUsage;
   recentEvents: SessionEventRecord[];
   pendingApproval?: ApprovalSnapshot;
 }
@@ -103,6 +114,13 @@ export declare class SessionStore {
   getActiveSessions(): MonitoredSession[];
   pruneStale(now?: number): void;
   getAggregateState(now?: number): AgentVisualStatus;
+  getSessionEventsForRecap(sinceTimestampMs?: number): Array<{
+    type: string;
+    at: string;
+    agent: string;
+    sessionId: string;
+    eventId: string;
+  }>;
 }
 
 export declare const sessionStore: SessionStore;

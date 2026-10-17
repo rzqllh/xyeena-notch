@@ -169,6 +169,31 @@ root.innerHTML=`
          </div>
          <span id="session-workspace" class="session-workspace-badge"></span>
        </div>
+       <div class="session-nav-actions" id="session-nav-actions">
+         <button id="btn-open-editor" class="file-action-btn" type="button" title="Open workspace in Editor">${icon('folder',13)} Editor</button>
+         <button id="btn-open-terminal" class="file-action-btn" type="button" title="Open terminal in workspace">${icon('activity',13)} Terminal</button>
+         <button id="btn-workspace-diff" class="file-action-btn" type="button" title="Preview workspace git diff">${icon('copy',13)} Diff</button>
+       </div>
+       <div id="session-telemetry-bar" class="session-telemetry-bar">
+         <span id="session-telemetry-duration" class="telemetry-pill">0s</span>
+         <span id="session-telemetry-events" class="telemetry-pill">0 events</span>
+         <span id="session-telemetry-files" class="telemetry-pill">0 files</span>
+         <span id="session-telemetry-usage" class="telemetry-pill">Telemetry: Live</span>
+       </div>
+       <div id="session-files-ticker" class="session-files-ticker" hidden>
+         <div class="ticker-header">
+           <span>${icon('folder',12)} Touched Files (<span id="session-files-count">0</span>)</span>
+         </div>
+         <div id="session-files-list" class="session-files-list"></div>
+       </div>
+       <div id="session-diff-drawer" class="session-diff-drawer" hidden>
+         <div class="diff-drawer-header">
+           <span id="diff-drawer-title">Git Diff</span>
+           <button id="btn-close-diff" class="session-file-btn" type="button">Close</button>
+         </div>
+         <div id="diff-drawer-warning" class="diff-drawer-warning" hidden></div>
+         <pre id="diff-drawer-content" class="diff-drawer-content"></pre>
+       </div>
         <div id="session-approval-box" class="session-approval-box" hidden>
           <div class="session-approval-header">
             <span class="session-approval-badge">${icon('shield',14)} Approval Requested</span>
@@ -688,6 +713,26 @@ window.addEventListener('keydown',e=>{
    setPanel(lastPrimaryPanel);
   }else if(mode==='expanded'||mode==='pinned'){
    apply('collapse');
+  }
+  return;
+ }
+ if(!isInteracting()){
+  if(e.key==='1'){setPanel('now');apply('activate');}
+  else if(e.key==='2'){setPanel('clipboard');apply('activate');}
+  else if(e.key==='3'){setPanel('activity');apply('activate');}
+  else if(e.key==='4'){setPanel('chat');apply('activate');}
+  else if(e.key==='5'){setPanel('preferences');apply('activate');}
+  else{
+   const focused=sessionStore.getFocusedSession();
+   if(focused?.pendingApproval&&focused.pendingApproval.status==='pending'){
+    if(e.key==='a'||e.key==='A'){
+     e.preventDefault();
+     q<HTMLButtonElement>('#btn-approval-allow-once')?.click();
+    }else if(e.key==='d'||e.key==='D'){
+     e.preventDefault();
+     q<HTMLButtonElement>('#btn-approval-deny')?.click();
+    }
+   }
   }
  }
 });
@@ -1634,6 +1679,92 @@ function renderAgentSessions(){
    wsBadge.hidden=true;
   }
 
+  // Developer Productivity: Navigation Actions (F13)
+  const ws=focusedSession.workspaceRoot||focusedSession.cwd||'';
+  const btnEditor=q<HTMLButtonElement>('#btn-open-editor');
+  const btnTerminal=q<HTMLButtonElement>('#btn-open-terminal');
+  const btnDiff=q<HTMLButtonElement>('#btn-workspace-diff');
+
+  btnEditor.onclick=async()=>{
+   if(!ws)return;
+   try{await native('open_in_editor',{workspaceRoot:ws,filePath:null,line:null});}
+   catch(err){console.error('Failed to open editor:',err);}
+  };
+
+  btnTerminal.onclick=async()=>{
+   if(!ws)return;
+   try{await native('open_in_terminal',{workspaceRoot:ws});}
+   catch(err){console.error('Failed to open terminal:',err);}
+  };
+
+  btnDiff.onclick=()=>{
+   if(!ws)return;
+   void loadWorkspaceDiff(ws);
+  };
+
+  // Honest Session Telemetry (F14)
+  const durSec=Math.max(0,Math.round((focusedSession.lastActivity-focusedSession.startedAt)/1000));
+  const durStr=durSec>60?`${Math.floor(durSec/60)}m ${durSec%60}s`:`${durSec}s`;
+  q<HTMLElement>('#session-telemetry-duration').textContent=`Duration: ${durStr}`;
+  q<HTMLElement>('#session-telemetry-events').textContent=`${focusedSession.eventCount} events`;
+  const touched=focusedSession.touchedFiles||[];
+  q<HTMLElement>('#session-telemetry-files').textContent=`${touched.length} files`;
+  
+  const usageEl=q<HTMLElement>('#session-telemetry-usage');
+  if(focusedSession.usage?.totalTokens){
+   usageEl.textContent=`Tokens: ${focusedSession.usage.totalTokens}`;
+  }else if(focusedSession.usage?.inputTokens||focusedSession.usage?.outputTokens){
+   usageEl.textContent=`In: ${focusedSession.usage.inputTokens||0} / Out: ${focusedSession.usage.outputTokens||0}`;
+  }else{
+   usageEl.textContent='Telemetry: Live hook';
+  }
+
+  // File-change Ticker (F12)
+  const tickerBox=q<HTMLElement>('#session-files-ticker');
+  const filesList=q<HTMLElement>('#session-files-list');
+  if(touched.length>0){
+   tickerBox.hidden=false;
+   q<HTMLElement>('#session-files-count').textContent=String(touched.length);
+   filesList.replaceChildren();
+   for(const filePath of touched){
+    const item=document.createElement('div');
+    item.className='session-file-item';
+    
+    const nameSpan=document.createElement('span');
+    nameSpan.className='session-file-name';
+    const base=filePath.replace(/\\/g,'/').split('/').pop()||filePath;
+    nameSpan.textContent=base;
+    nameSpan.title=filePath;
+
+    const btnGroup=document.createElement('div');
+    btnGroup.style.display='flex';
+    btnGroup.style.gap='4px';
+
+    const fileDiffBtn=document.createElement('button');
+    fileDiffBtn.type='button';
+    fileDiffBtn.className='session-file-btn';
+    fileDiffBtn.textContent='Diff';
+    fileDiffBtn.onclick=()=>{
+     void loadWorkspaceDiff(ws,filePath);
+    };
+
+    const fileOpenBtn=document.createElement('button');
+    fileOpenBtn.type='button';
+    fileOpenBtn.className='session-file-btn';
+    fileOpenBtn.textContent='Open';
+    fileOpenBtn.onclick=async()=>{
+     try{await native('open_in_editor',{workspaceRoot:ws,filePath,line:null});}
+     catch(err){console.error('Failed to open file in editor:',err);}
+    };
+
+    btnGroup.append(fileDiffBtn,fileOpenBtn);
+    item.append(nameSpan,btnGroup);
+    filesList.append(item);
+   }
+  }else{
+   tickerBox.hidden=true;
+  }
+
   const approvalBox=q<HTMLElement>('#session-approval-box');
   if(focusedSession.pendingApproval&&focusedSession.pendingApproval.status==='pending'){
    approvalBox.hidden=false;
@@ -1746,6 +1877,49 @@ async function submitDecision(session:MonitoredSession,decision:'allow_once'|'de
   statusEl.textContent=`Decision error: ${String(err)}`;
   statusEl.style.color='#ef4444';
   playFeedbackSound('error');
+ }
+}
+
+async function loadWorkspaceDiff(workspaceRoot:string,filePath?:string){
+ const drawer=q<HTMLElement>('#session-diff-drawer');
+ const titleEl=q<HTMLElement>('#diff-drawer-title');
+ const warningEl=q<HTMLElement>('#diff-drawer-warning');
+ const contentEl=q<HTMLElement>('#diff-drawer-content');
+ const closeBtn=q<HTMLButtonElement>('#btn-close-diff');
+
+ drawer.hidden=false;
+ warningEl.hidden=true;
+ titleEl.textContent=filePath?`Diff: ${filePath.replace(/\\/g,'/').split('/').pop()}`:'Workspace Diff';
+ contentEl.textContent='Loading bounded diff...';
+
+ closeBtn.onclick=()=>{
+  drawer.hidden=true;
+ };
+
+ try{
+  const res=await native('get_workspace_diff',{
+   workspaceRoot,
+   filePath:filePath||null
+  }) as any;
+
+  if(!res||!res.is_git_repo){
+   contentEl.textContent='Workspace is not inside a git repository or git command is not available.';
+   return;
+  }
+
+  if(!res.diff||res.diff.trim().length===0){
+   contentEl.textContent='No uncommitted changes found.';
+   return;
+  }
+
+  if(res.truncated){
+   warningEl.hidden=false;
+   warningEl.textContent='Output bounded to 64KB / 500 lines limit.';
+  }
+
+  contentEl.textContent=res.diff;
+ }catch(err){
+  contentEl.textContent=`Diff error: ${String(err)}`;
  }
 }
 
@@ -1910,6 +2084,12 @@ q<HTMLButtonElement>('#recap-generate-btn').addEventListener('click',()=>{
    });
   }
   // No synthetic approvals or fabricated file counts are inferred from label text
+ }
+
+ // 3. Genuine agent sessions and tool events from SessionStore (F27)
+ const sessionRecapEvents=sessionStore.getSessionEventsForRecap(sevenDaysAgo);
+ for(const ev of sessionRecapEvents){
+  realEvents.push(ev);
  }
 
  if(!realEvents.length){

@@ -1445,6 +1445,161 @@ input[type="range"] {
   margin: 0;
 }
 
+/* Developer Productivity Nav Actions */
+.session-nav-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 2px 0;
+}
+
+.session-nav-actions .file-action-btn {
+  flex: 1;
+  min-width: 60px;
+  justify-content: center;
+  font-size: 10px;
+  padding: 4px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Session Telemetry Bar */
+.session-telemetry-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 9px;
+  font-family: var(--font-mono, monospace);
+  color: var(--sub);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 4px 8px;
+}
+
+.telemetry-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+/* Touched Files Ticker */
+.session-files-ticker {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ticker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--sub);
+}
+
+.session-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 80px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.session-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.session-file-item:hover {
+  background: var(--hover);
+}
+
+.session-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.session-file-btn {
+  font-size: 9px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--sub);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.session-file-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Diff Drawer */
+.session-diff-drawer {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.diff-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.diff-drawer-warning {
+  font-size: 9px;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.diff-drawer-content {
+  font-family: var(--font-mono, monospace);
+  font-size: 9.5px;
+  line-height: 1.35;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 6px 8px;
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre;
+  margin: 0;
+}
+
 /* Empty State Card */
 .no-sessions-card {
   display: flex;

@@ -2,6 +2,7 @@
 //! No cursor hooks, agent approval RPC, or autostart. AI requests use opt-in, bounded transport.
 pub mod agent_ipc;
 mod clipboard;
+pub mod developer;
 mod media;
 mod volume;
 use std::fs;
@@ -1171,6 +1172,9 @@ pub fn run() {
             uninstall_provider_hooks,
             get_pending_approvals,
             submit_approval_decision,
+            developer::get_workspace_diff,
+            developer::open_in_editor,
+            developer::open_in_terminal,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");

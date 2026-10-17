@@ -138,9 +138,14 @@ export class SessionStore {
         startedAt: now,
         lastActivity: now,
         eventCount: 0,
+        touchedFiles: [],
         recentEvents: []
       };
       this.sessions.set(key, session);
+    }
+
+    if (!session.touchedFiles) {
+      session.touchedFiles = [];
     }
 
     session.lastActivity = now;
@@ -151,10 +156,36 @@ export class SessionStore {
     const toolName = event.tool_name;
     const command = event.tool_input?.command;
     const summary = event.tool_input?.summary;
+    const filePath = event.tool_input?.path;
 
     if (toolName) session.activeTool = toolName;
     if (command) session.lastCommand = command;
     if (summary) session.lastSummary = summary;
+
+    if (filePath && typeof filePath === 'string') {
+      const cleanPath = filePath.trim();
+      if (cleanPath && !session.touchedFiles.includes(cleanPath)) {
+        session.touchedFiles.push(cleanPath);
+        if (session.touchedFiles.length > 20) {
+          session.touchedFiles.shift();
+        }
+      }
+    }
+
+    // Honest usage telemetry extraction
+    const rawObj = event.raw;
+    if (rawObj && typeof rawObj === 'object') {
+      const rawUsage = rawObj.usage || rawObj.token_usage || rawObj.stats;
+      if (rawUsage && typeof rawUsage === 'object') {
+        session.usage = {
+          inputTokens: rawUsage.input_tokens || rawUsage.prompt_tokens || rawUsage.inputTokens,
+          outputTokens: rawUsage.output_tokens || rawUsage.completion_tokens || rawUsage.outputTokens,
+          totalTokens: rawUsage.total_tokens || rawUsage.totalTokens,
+          totalCost: rawUsage.total_cost || rawUsage.cost,
+          model: rawObj.model || rawUsage.model
+        };
+      }
+    }
 
     // Record bounded event history
     session.recentEvents.unshift({
@@ -162,6 +193,7 @@ export class SessionStore {
       timestamp: now,
       toolName,
       command,
+      path: filePath,
       summary
     });
     if (session.recentEvents.length > MAX_RECENT_EVENTS) {
@@ -253,6 +285,7 @@ export class SessionStore {
           eventCount: snap.event_count,
           activeTool: snap.last_tool_name,
           lastCommand: snap.last_tool_command,
+          touchedFiles: [],
           recentEvents: []
         });
       } else {
@@ -263,6 +296,7 @@ export class SessionStore {
         existing.lastActivity = Math.max(existing.lastActivity, snap.last_activity_ms);
         if (snap.last_tool_name) existing.activeTool = snap.last_tool_name;
         if (snap.last_tool_command) existing.lastCommand = snap.last_tool_command;
+        if (!existing.touchedFiles) existing.touchedFiles = [];
       }
     }
 
@@ -297,6 +331,7 @@ export class SessionStore {
         activeTool: approval.tool_name,
         lastCommand: approval.tool_command,
         lastSummary: approval.tool_input_summary,
+        touchedFiles: [],
         recentEvents: [],
         pendingApproval: approval
       };
@@ -308,6 +343,7 @@ export class SessionStore {
       if (approval.tool_name) session.activeTool = approval.tool_name;
       if (approval.tool_command) session.lastCommand = approval.tool_command;
       if (approval.tool_input_summary) session.lastSummary = approval.tool_input_summary;
+      if (!session.touchedFiles) session.touchedFiles = [];
       session.pendingApproval = approval;
     }
 
@@ -471,6 +507,75 @@ export class SessionStore {
     }
 
     return 'idle';
+  }
+
+  /**
+   * Return authentic session and tool events formatted for Weekly Recap aggregation.
+   * @param {number} [sinceTimestampMs]
+   * @returns {Array<{type: string, at: string, agent: string, sessionId: string, eventId: string}>}
+   */
+  getSessionEventsForRecap(sinceTimestampMs = 0) {
+    const recapEvents = [];
+    const editTools = ['write_to_file', 'replace_file_content', 'multi_replace_file_content', 'edit', 'write', 'patch'];
+    const commandTools = ['run_command', 'execute_command', 'bash', 'terminal', 'sh', 'cmd', 'powershell'];
+    const questionTools = ['ask_question', 'askuser', 'ask_user', 'question'];
+
+    for (const session of this.sessions.values()) {
+      if (session.startedAt >= sinceTimestampMs) {
+        recapEvents.push({
+          type: 'session_start',
+          at: new Date(session.startedAt).toISOString(),
+          agent: session.provider || 'other',
+          sessionId: session.sessionId,
+          eventId: `session-start-${session.key}`
+        });
+      }
+
+      if (session.state === 'terminated' && session.lastActivity >= sinceTimestampMs) {
+        recapEvents.push({
+          type: 'task_finish',
+          at: new Date(session.lastActivity).toISOString(),
+          agent: session.provider || 'other',
+          sessionId: session.sessionId,
+          eventId: `session-fin-${session.key}`
+        });
+      }
+
+      for (let i = 0; i < session.recentEvents.length; i++) {
+        const ev = session.recentEvents[i];
+        if (ev.timestamp < sinceTimestampMs) continue;
+        const iso = new Date(ev.timestamp).toISOString();
+        const tn = (ev.toolName || '').toLowerCase();
+
+        if (ev.path || editTools.some(t => tn.includes(t))) {
+          recapEvents.push({
+            type: 'edit',
+            at: iso,
+            agent: session.provider || 'other',
+            sessionId: session.sessionId,
+            eventId: `session-edit-${session.key}-${i}`
+          });
+        } else if (ev.command || commandTools.some(t => tn.includes(t))) {
+          recapEvents.push({
+            type: 'command',
+            at: iso,
+            agent: session.provider || 'other',
+            sessionId: session.sessionId,
+            eventId: `session-cmd-${session.key}-${i}`
+          });
+        } else if (questionTools.some(t => tn.includes(t)) || ev.eventType === 'askuser') {
+          recapEvents.push({
+            type: 'question',
+            at: iso,
+            agent: session.provider || 'other',
+            sessionId: session.sessionId,
+            eventId: `session-q-${session.key}-${i}`
+          });
+        }
+      }
+    }
+
+    return recapEvents;
   }
 }
 
