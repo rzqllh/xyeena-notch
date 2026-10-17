@@ -572,4 +572,123 @@ mod tests {
         // Listener must exit cleanly without hanging
         listener.join().expect("listener must join cleanly");
     }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_relay_binary_process_to_pipe_end_to_end() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let pipe_name = get_pipe_name();
+        let registry = SharedSessionRegistry::new();
+        let registry_clone = registry.clone();
+        let pipe_name_clone = pipe_name.clone();
+
+        let listener = thread::spawn(move || {
+            let pipe_w = HSTRING::from(&pipe_name_clone);
+            let sddl = HSTRING::from("D:P(A;;GRGW;;;OW)");
+            let mut sec_desc = PSECURITY_DESCRIPTOR::default();
+            let _ = unsafe {
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    &sddl,
+                    SDDL_REVISION_1,
+                    &mut sec_desc,
+                    None,
+                )
+            };
+            let sec_attrs = SECURITY_ATTRIBUTES {
+                nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+                lpSecurityDescriptor: sec_desc.0,
+                bInheritHandle: false.into(),
+            };
+
+            let h = unsafe {
+                windows::Win32::System::Pipes::CreateNamedPipeW(
+                    &pipe_w,
+                    PIPE_ACCESS_DUPLEX,
+                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                    1,
+                    65536,
+                    65536,
+                    0,
+                    Some(&sec_attrs),
+                )
+            };
+            if h == INVALID_HANDLE_VALUE {
+                return;
+            }
+
+            let connected = unsafe { ConnectNamedPipe(h, None) };
+            if connected.is_ok() {
+                let mut frame_buf = FrameBuffer::new();
+                let mut read_buf = [0u8; 4096];
+                let mut read = 0u32;
+                let _ = unsafe { ReadFile(h, Some(&mut read_buf), Some(&mut read), None) };
+                if read > 0 {
+                    let _ = frame_buf.extend(&read_buf[..read as usize]);
+                    if let Ok(Some(frame)) = frame_buf.next_frame() {
+                        if let Ok(event) = parse_and_normalize(&frame) {
+                            registry_clone.handle_event(&event);
+                        }
+                    }
+                }
+                let _ = unsafe { DisconnectNamedPipe(h) };
+            }
+            let _ = unsafe { CloseHandle(h) };
+            if !sec_desc.0.is_null() {
+                let _ = unsafe {
+                    windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(
+                        sec_desc.0,
+                    )))
+                };
+            }
+        });
+
+        thread::sleep(std::time::Duration::from_millis(50));
+
+        // Locate xyeena-agent-relay.exe
+        let relay_exe = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("xyeena-agent-relay.exe");
+
+        let exe_to_run = if relay_exe.exists() {
+            relay_exe
+        } else {
+            std::path::PathBuf::from("target/debug/xyeena-agent-relay.exe")
+        };
+
+        if !exe_to_run.exists() {
+            return;
+        }
+
+        let mut child = Command::new(&exe_to_run)
+            .arg("PostToolUse")
+            .arg("--provider")
+            .arg("antigravity")
+            .arg("--session-id")
+            .arg("session-antigravity-live-test")
+            .arg("--check-delivery")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("spawn relay child process");
+
+        let input_payload = r#"{"tool_name": "read_file", "cwd": "C:\\test\\workspace"}"#;
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(input_payload.as_bytes());
+        }
+
+        let output = child.wait_with_output().expect("wait child");
+        assert!(output.status.success(), "relay exit must be success");
+
+        listener.join().expect("join listener");
+
+        // Verify session was registered in registry
+        let sessions = registry.active_sessions();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].provider, "antigravity");
+        assert_eq!(sessions[0].session_id, "session-antigravity-live-test");
+    }
 }
