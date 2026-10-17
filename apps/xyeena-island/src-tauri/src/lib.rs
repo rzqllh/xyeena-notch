@@ -3,6 +3,8 @@
 pub mod agent_ipc;
 mod clipboard;
 pub mod developer;
+pub mod github;
+pub mod integrations;
 mod media;
 mod volume;
 use std::fs;
@@ -367,12 +369,12 @@ struct NativeAiPayload {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct NativeAiResponse {
-    status: u16,
+pub struct NativeAiResponse {
+    pub status: u16,
     #[serde(default)]
-    headers: std::collections::HashMap<String, String>,
-    body: String,
-    ok: bool,
+    pub headers: std::collections::HashMap<String, String>,
+    pub body: String,
+    pub ok: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -755,7 +757,7 @@ fn execute_native_ai_request(
     parse_curl_http_response(&raw, output.status.success(), &stderr)
 }
 
-fn parse_curl_http_response(
+pub fn parse_curl_http_response(
     raw: &str,
     success: bool,
     stderr: &str,
@@ -1231,6 +1233,9 @@ pub fn run() {
             developer::get_workspace_diff,
             developer::open_in_editor,
             developer::open_in_terminal,
+            github::get_github_status,
+            integrations::list_supported_integrations,
+            integrations::check_integration_status,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");

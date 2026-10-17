@@ -21,6 +21,7 @@ import {KNOWN_ADAPTERS,getAdapter,normalizeSessionSnapshot} from './core/agent-a
 import {mayForwardDecision} from './core/agent-events.mjs';
 import {buildWeeklyRecap,recapText,recapSvg} from '@xyeena/recap';
 import {icon} from './core/icons.mjs';
+import {SUPPORTED_INTEGRATIONS,normalizeGitHubStatus,normalizeIntegrationResult} from './core/integrations.mjs';
 import './style.css';
 
 defineXyeenaGuardian();
@@ -381,8 +382,49 @@ root.innerHTML=`
       </div>
 
       <div class="settings-section" id="setsec-integrations" hidden>
-        <div class="setting"><span><strong>CLI Service Integrations</strong><small>GitHub, Vercel, n8n, Notion</small></span><span class="badge-tag">Configured via CLI</span></div>
-        <p class="explain" style="padding:6px 0">Service integrations connect securely through the Xyeena CLI using environment tokens. The desktop Island maintains a read-only session boundary without storing external OAuth credentials.</p>
+        <div class="integration-group-header" style="padding:4px 0 6px;">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">GITHUB WORKSPACE REPOSITORY</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Read-only pull requests, status check rollups, and recent GitHub Actions workflows.</p>
+        </div>
+
+        <div class="setting" style="align-items:center;">
+          <span>
+            <strong id="github-repo-slug">Repository: inspecting...</strong>
+            <small id="github-branch-name" style="display:block;">Branch: —</small>
+          </span>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button class="minor-btn" id="github-refresh-btn" type="button">Refresh</button>
+            <button class="minor-btn" id="github-open-repo-btn" type="button" hidden>Open Repo</button>
+          </div>
+        </div>
+
+        <div id="github-pr-container" style="padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:var(--r-md,8px);margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:11px;font-weight:600;color:var(--text);" id="github-pr-title">No active pull request</span>
+            <span class="badge-tag" id="github-pr-badge" hidden>Draft</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <small id="github-pr-meta" style="color:var(--sub);font-size:10px;">Checks: — · Review: —</small>
+            <button class="minor-btn" id="github-open-pr-btn" type="button" style="padding:2px 8px;font-size:10px;" hidden>View PR</button>
+          </div>
+        </div>
+
+        <div id="github-ci-container" style="padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:var(--r-md,8px);margin-bottom:8px;">
+          <div style="font-size:10px;font-weight:600;color:var(--sub);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Recent CI Workflow Runs</div>
+          <div id="github-runs-list" style="display:flex;flex-direction:column;gap:4px;">
+            <small style="color:var(--muted);font-size:10px;">No recent runs loaded</small>
+          </div>
+        </div>
+
+        <p class="status-line" id="github-status-line" role="status" style="margin-bottom:8px;"></p>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">CONNECTED DEVELOPER SERVICES</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Provider-scoped read-only status checks via environment tokens or credentials.</p>
+        </div>
+
+        <div id="integrations-list" style="display:flex;flex-direction:column;gap:4px;">
+        </div>
       </div>
 
       <div class="settings-section" id="setsec-recap" hidden>
@@ -2037,6 +2079,9 @@ for(const pill of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
   for(const sec of root.querySelectorAll<HTMLElement>('.settings-section')){
    sec.hidden=sec.id!==`setsec-${section}`;
   }
+  if(section==='integrations'){
+   void refreshGitHubIntegration();
+  }
  });
 }
 
@@ -2386,10 +2431,206 @@ q<HTMLInputElement>('#installer-consent-check')?.addEventListener('change',e=>{
 q<HTMLButtonElement>('#btn-install-hooks')?.addEventListener('click',()=>void installHooks());
 q<HTMLButtonElement>('#btn-uninstall-hooks')?.addEventListener('click',()=>void uninstallHooks());
 
+let activePrUrl = '';
+let activeRepoUrl = '';
+
+async function refreshGitHubIntegration() {
+ const slugEl = q<HTMLElement>('#github-repo-slug');
+ const branchEl = q<HTMLElement>('#github-branch-name');
+ const prTitle = q<HTMLElement>('#github-pr-title');
+ const prBadge = q<HTMLElement>('#github-pr-badge');
+ const prMeta = q<HTMLElement>('#github-pr-meta');
+ const openPrBtn = q<HTMLButtonElement>('#github-open-pr-btn');
+ const openRepoBtn = q<HTMLButtonElement>('#github-open-repo-btn');
+ const runsList = q<HTMLElement>('#github-runs-list');
+ const statusLine = q<HTMLElement>('#github-status-line');
+
+ if (slugEl) slugEl.textContent = 'Repository: inspecting...';
+ if (statusLine) statusLine.textContent = 'Querying GitHub status...';
+
+ try {
+  const raw = await native('get_github_status', { workspaceRoot: null, token: null });
+  const norm = normalizeGitHubStatus(raw);
+
+  if (norm.repoSlug) {
+   if (slugEl) slugEl.textContent = `Repository: ${norm.repoSlug}`;
+   activeRepoUrl = `https://github.com/${norm.repoSlug}`;
+   if (openRepoBtn) openRepoBtn.hidden = false;
+  } else {
+   if (slugEl) slugEl.textContent = 'Repository: (none or non-GitHub)';
+   if (openRepoBtn) openRepoBtn.hidden = true;
+  }
+
+  if (branchEl) {
+   branchEl.textContent = norm.branch ? `Branch: ${norm.branch}` : 'Branch: —';
+  }
+
+  if (norm.pr) {
+   activePrUrl = norm.pr.url;
+   if (prTitle) prTitle.textContent = `#${norm.pr.number} ${norm.pr.title}`;
+   if (prBadge) {
+    prBadge.hidden = false;
+    prBadge.textContent = norm.pr.isDraft ? 'Draft' : norm.pr.state;
+   }
+   if (prMeta) {
+    const review = norm.pr.reviewDecision ? `Review: ${norm.pr.reviewDecision}` : 'Review: None';
+    const checks = norm.pr.checksConclusion ? `Checks: ${norm.pr.checksConclusion}` : 'Checks: None';
+    prMeta.textContent = `${review} · ${checks}`;
+   }
+   if (openPrBtn) openPrBtn.hidden = !activePrUrl;
+  } else {
+   activePrUrl = '';
+   if (prTitle) prTitle.textContent = 'No open pull request for active branch';
+   if (prBadge) prBadge.hidden = true;
+   if (prMeta) prMeta.textContent = 'Checks: — · Review: —';
+   if (openPrBtn) openPrBtn.hidden = true;
+  }
+
+  if (runsList) {
+   runsList.innerHTML = '';
+   if (norm.recentRuns.length > 0) {
+    for (const run of norm.recentRuns) {
+     const runItem = document.createElement('div');
+     runItem.style.display = 'flex';
+     runItem.style.justifyContent = 'space-between';
+     runItem.style.alignItems = 'center';
+     runItem.style.fontSize = '10px';
+     const conclusionText = run.conclusion ? run.conclusion.toUpperCase() : run.status.toUpperCase();
+     const conclusionColor = run.conclusion === 'success' ? '#51d9a7' : run.conclusion === 'failure' ? '#f87171' : 'var(--sub)';
+     runItem.innerHTML = `
+      <span>${run.name} (${run.event})</span>
+      <span style="color:${conclusionColor};font-weight:600;">${conclusionText}</span>
+     `;
+     runsList.appendChild(runItem);
+    }
+   } else {
+    runsList.innerHTML = '<small style="color:var(--muted);font-size:10px;">No recent workflow runs found</small>';
+   }
+  }
+
+  if (statusLine) {
+   if (norm.configured) {
+    statusLine.textContent = `Authenticated via ${norm.configMethod === 'gh_cli' ? 'GitHub CLI (gh)' : 'token'}`;
+    statusLine.style.color = 'var(--accent)';
+   } else {
+    statusLine.textContent = norm.error || 'Unconfigured';
+    statusLine.style.color = 'var(--muted)';
+   }
+  }
+ } catch (err) {
+  if (statusLine) {
+   statusLine.textContent = `Status check failed: ${err}`;
+   statusLine.style.color = '#ef4444';
+  }
+ }
+}
+
+async function checkSingleIntegration(provider: string) {
+ const statusSpan = q<HTMLElement>(`#integ-status-${provider}`);
+ const badge = q<HTMLElement>(`#integ-badge-${provider}`);
+ if (statusSpan) statusSpan.textContent = 'Checking connectivity...';
+ if (badge) {
+  badge.textContent = 'Checking';
+  badge.className = 'badge-tag';
+ }
+ try {
+  const res = await native('check_integration_status', { provider, apiKey: null, baseUrl: null }) as any;
+  const norm = normalizeIntegrationResult(res, provider);
+  if (norm.status === 'connected') {
+   if (statusSpan) statusSpan.textContent = norm.summary || 'Connected & verified';
+   if (badge) {
+    badge.textContent = 'Connected';
+    badge.className = 'badge-tag';
+    badge.style.borderColor = '#51d9a7';
+    badge.style.color = '#51d9a7';
+   }
+  } else if (norm.status === 'unconfigured') {
+   if (statusSpan) statusSpan.textContent = norm.error || 'Token not configured';
+   if (badge) {
+    badge.textContent = 'Unconfigured';
+    badge.className = 'badge-tag';
+    badge.style.borderColor = '';
+    badge.style.color = '';
+   }
+  } else if (norm.status === 'auth_error') {
+   if (statusSpan) statusSpan.textContent = norm.error || 'Authentication rejected';
+   if (badge) {
+    badge.textContent = 'Auth Error';
+    badge.className = 'badge-tag';
+    badge.style.borderColor = '#ef4444';
+    badge.style.color = '#ef4444';
+   }
+  } else if (norm.status === 'rate_limited') {
+   if (statusSpan) statusSpan.textContent = norm.error || 'Rate limit exceeded';
+   if (badge) {
+    badge.textContent = 'Rate Limited';
+    badge.className = 'badge-tag';
+    badge.style.borderColor = '#fbbf24';
+    badge.style.color = '#fbbf24';
+   }
+  } else {
+   if (statusSpan) statusSpan.textContent = norm.error || 'Connection error';
+   if (badge) {
+    badge.textContent = 'Error';
+    badge.className = 'badge-tag';
+    badge.style.borderColor = '#ef4444';
+    badge.style.color = '#ef4444';
+   }
+  }
+ } catch (err) {
+  if (statusSpan) statusSpan.textContent = String(err);
+  if (badge) {
+   badge.textContent = 'Failed';
+   badge.className = 'badge-tag';
+   badge.style.borderColor = '#ef4444';
+   badge.style.color = '#ef4444';
+  }
+ }
+}
+
+function renderConnectedServicesList() {
+ const container = q<HTMLElement>('#integrations-list');
+ if (!container) return;
+ container.innerHTML = '';
+ for (const svc of SUPPORTED_INTEGRATIONS) {
+  const item = document.createElement('div');
+  item.className = 'setting';
+  item.style.alignItems = 'center';
+  item.innerHTML = `
+   <span>
+    <strong>${svc.name}</strong>
+    <small>${svc.description} · ${svc.envVar}</small>
+    <span class="integ-status-text" id="integ-status-${svc.id}" style="display:block;font-size:10px;color:var(--muted);margin-top:2px;">Status: Unchecked</span>
+   </span>
+   <div style="display:flex;gap:6px;align-items:center;">
+    <span class="badge-tag" id="integ-badge-${svc.id}">Unchecked</span>
+    <button class="minor-btn" type="button" id="integ-btn-${svc.id}" style="padding:3px 8px;font-size:10px;">Check</button>
+   </div>
+  `;
+  const btn = item.querySelector<HTMLButtonElement>(`#integ-btn-${svc.id}`);
+  if (btn) {
+   btn.addEventListener('click', () => void checkSingleIntegration(svc.id));
+  }
+  container.appendChild(item);
+ }
+}
+
+q<HTMLButtonElement>('#github-refresh-btn')?.addEventListener('click', () => void refreshGitHubIntegration());
+q<HTMLButtonElement>('#github-open-repo-btn')?.addEventListener('click', () => {
+ if (activeRepoUrl) {
+  window.open(activeRepoUrl, '_blank');
+ }
+});
+q<HTMLButtonElement>('#github-open-pr-btn')?.addEventListener('click', () => {
+ if (activePrUrl) {
+  window.open(activePrUrl, '_blank');
+ }
+});
+
 async function initialize(){
  const startupProv=q<HTMLSelectElement>('#chat-provider-select')?.value||'gemini';
  onProviderChange(startupProv);
- setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentSessions();renderChatMessages();
+ setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentSessions();renderChatMessages();renderConnectedServicesList();
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
   try{
