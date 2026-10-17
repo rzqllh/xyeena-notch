@@ -9,6 +9,29 @@ export interface SessionEventRecord {
   summary?: string;
 }
 
+export interface QuestionOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface ApprovalSnapshot {
+  request_id: string;
+  provider: string;
+  session_id: string;
+  workspace_root?: string;
+  tool_name: string;
+  tool_command?: string;
+  tool_input_summary?: string;
+  question?: string;
+  options?: QuestionOption[];
+  action_fingerprint: string;
+  auth_token: string;
+  created_at_ms: number;
+  expires_at_ms: number;
+  status: 'pending' | 'allowed_once' | 'denied' | 'answered' | 'expired' | 'cancelled';
+}
+
 export interface MonitoredSession {
   key: string;
   provider: string;
@@ -24,6 +47,7 @@ export interface MonitoredSession {
   lastCommand?: string;
   lastSummary?: string;
   recentEvents: SessionEventRecord[];
+  pendingApproval?: ApprovalSnapshot;
 }
 
 export interface NativeAgentEvent {
@@ -69,6 +93,9 @@ export declare class SessionStore {
   notify(): void;
   ingestEvent(event: NativeAgentEvent): void;
   hydrateSessions(snapshots: NativeSessionSnapshot[]): void;
+  setPendingApproval(approval: ApprovalSnapshot): void;
+  resolvePendingApproval(requestId: string, status?: string): void;
+  getPendingApprovals(): ApprovalSnapshot[];
   setFocus(key: string | null): void;
   getFocusedSession(): MonitoredSession | null;
   autoSelectFocusedKey(): string | null;

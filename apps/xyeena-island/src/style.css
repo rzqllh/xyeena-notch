@@ -1362,6 +1362,89 @@ input[type="range"] {
   overflow-y: auto;
 }
 
+/* Interactive Agent Approval Box (Allow Once / Deny / Answer only) */
+.session-approval-box {
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.session-approval-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.session-approval-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.session-approval-question {
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.session-approval-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0;
+}
+
+.session-approval-option-btn {
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 5px 8px;
+  font-size: 10px;
+  color: var(--text);
+  cursor: pointer;
+  transition: all var(--dur-fast);
+}
+
+.session-approval-option-btn:hover {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.session-approval-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.file-action-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.file-action-danger:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+}
+
+.session-approval-status {
+  font-size: 9px;
+  color: var(--sub);
+  margin: 0;
+}
+
 /* Empty State Card */
 .no-sessions-card {
   display: flex;

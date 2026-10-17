@@ -12,7 +12,7 @@ import {DEFAULT_SETTINGS,STORAGE_KEY,sanitizeSettings} from './core/settings.mjs
 import {normalizeRuns} from './core/run-summaries.mjs';
 import {normalizeSessions,pickSession,sourceLabel} from './core/media-sessions.mjs';
 import {sessionStore} from './core/session-store.mjs';
-import type {NativeAgentEvent,NativeSessionSnapshot,MonitoredSession} from './core/session-store.d.mts';
+import type {NativeAgentEvent,NativeSessionSnapshot,MonitoredSession,ApprovalSnapshot} from './core/session-store.d.mts';
 import {RunChangeFeed} from './core/notifications.mjs';
 import {chooseGuardianState,toMascotState,guardianStatus,defineXyeenaGuardian} from './core/mascot.mjs';
 import {inspectFile,convertImageDataUrl} from './core/files.mjs';
@@ -169,6 +169,19 @@ root.innerHTML=`
          </div>
          <span id="session-workspace" class="session-workspace-badge"></span>
        </div>
+        <div id="session-approval-box" class="session-approval-box" hidden>
+          <div class="session-approval-header">
+            <span class="session-approval-badge">${icon('shield',14)} Approval Requested</span>
+            <span id="session-approval-time" class="clock"></span>
+          </div>
+          <div id="session-approval-question" class="session-approval-question"></div>
+          <div id="session-approval-options" class="session-approval-options" hidden></div>
+          <div class="session-approval-actions" id="session-approval-actions">
+            <button id="btn-approval-allow-once" class="file-action-btn file-action-accent" type="button">Allow Once</button>
+            <button id="btn-approval-deny" class="file-action-btn file-action-danger" type="button">Deny</button>
+          </div>
+          <p id="session-approval-status" class="session-approval-status" role="status"></p>
+        </div>
        <div id="session-tool-box" class="session-tool-box" hidden>
          <div class="session-tool-header">
            <span id="session-tool-name">tool</span>
@@ -1618,6 +1631,54 @@ function renderAgentSessions(){
    wsBadge.hidden=true;
   }
 
+  const approvalBox=q<HTMLElement>('#session-approval-box');
+  if(focusedSession.pendingApproval&&focusedSession.pendingApproval.status==='pending'){
+   approvalBox.hidden=false;
+   const ap=focusedSession.pendingApproval;
+   q<HTMLElement>('#session-approval-time').textContent=new Date(ap.created_at_ms).toLocaleTimeString();
+   
+   const questionEl=q<HTMLElement>('#session-approval-question');
+   const promptText=ap.question||ap.tool_input_summary||(ap.tool_command?`Execute: ${ap.tool_command}`:`Permission requested for ${ap.tool_name}`);
+   questionEl.textContent=promptText;
+
+   const optionsEl=q<HTMLElement>('#session-approval-options');
+   optionsEl.replaceChildren();
+
+   if(ap.options&&ap.options.length>0){
+    optionsEl.hidden=false;
+    for(const opt of ap.options){
+     const optBtn=document.createElement('button');
+     optBtn.type='button';
+     optBtn.className='session-approval-option-btn';
+     optBtn.textContent=opt.label;
+     if(opt.description){
+      const descSpan=document.createElement('span');
+      descSpan.style.display='block';
+      descSpan.style.fontSize='9px';
+      descSpan.style.color='var(--muted)';
+      descSpan.textContent=opt.description;
+      optBtn.append(descSpan);
+     }
+     optBtn.addEventListener('click',()=>{
+      void submitDecision(focusedSession,{answer:opt.id||opt.label});
+     });
+     optionsEl.append(optBtn);
+    }
+   }else{
+    optionsEl.hidden=true;
+   }
+
+   q<HTMLButtonElement>('#btn-approval-allow-once').onclick=()=>{
+    void submitDecision(focusedSession,'allow_once');
+   };
+   q<HTMLButtonElement>('#btn-approval-deny').onclick=()=>{
+    void submitDecision(focusedSession,'deny');
+   };
+   q<HTMLElement>('#session-approval-status').textContent='';
+  }else{
+   approvalBox.hidden=true;
+  }
+
   const toolBox=q<HTMLElement>('#session-tool-box');
   if(focusedSession.activeTool){
    toolBox.hidden=false;
@@ -1655,6 +1716,36 @@ function renderAgentSessions(){
  updateCompact();
 }
 
+async function submitDecision(session:MonitoredSession,decision:'allow_once'|'deny'|{answer:string}){
+ if(!session.pendingApproval)return;
+ const ap=session.pendingApproval;
+ const statusEl=q<HTMLElement>('#session-approval-status');
+ statusEl.textContent='Submitting decision...';
+ statusEl.style.color='var(--muted)';
+
+ try{
+  const outcome=await native('submit_approval_decision',{
+   payload:{
+    request_id:ap.request_id,
+    auth_token:ap.auth_token,
+    action_fingerprint:ap.action_fingerprint,
+    decision:typeof decision==='string'?decision:decision
+   }
+  }) as any;
+
+  sessionStore.resolvePendingApproval(ap.request_id,outcome.status);
+  playFeedbackSound('chime');
+  const provName=getAdapter(session.provider)?.name||session.provider;
+  const decStr=typeof decision==='string'?decision:`Answer: ${decision.answer}`;
+  feed.recordEvent('Approval decision',`${provName}: ${decStr}`,'AGENT');
+  renderAlerts();
+ }catch(err){
+  statusEl.textContent=`Decision error: ${String(err)}`;
+  statusEl.style.color='#ef4444';
+  playFeedbackSound('error');
+ }
+}
+
 q<HTMLButtonElement>('#btn-open-hook-settings')?.addEventListener('click',()=>{
  setPanel('preferences');
  const aiPill=root.querySelector<HTMLButtonElement>('.settings-pill[data-section="ai"]');
@@ -1666,6 +1757,12 @@ q<HTMLButtonElement>('#refresh-activity-btn')?.addEventListener('click',async ()
   try{
    const raw=await native('get_agent_sessions') as NativeSessionSnapshot[];
    sessionStore.hydrateSessions(raw);
+   const rawApprovals=await native('get_pending_approvals') as ApprovalSnapshot[];
+   if(Array.isArray(rawApprovals)){
+    for(const snap of rawApprovals){
+     sessionStore.setPendingApproval(snap);
+    }
+   }
   }catch(err){console.error('Failed to refresh agent sessions:',err);}
  }
 });
@@ -2052,10 +2149,25 @@ async function initialize(){
    await listen<NativeAgentEvent>('island:agent-event',e=>{
     sessionStore.ingestEvent(e.payload);
    });
+   await listen<ApprovalSnapshot>('island:approval-requested',e=>{
+    sessionStore.setPendingApproval(e.payload);
+    playFeedbackSound('tap');
+   });
+   await listen<{request_id:string,status:string}>('island:approval-resolved',e=>{
+    sessionStore.resolvePendingApproval(e.payload.request_id,e.payload.status);
+   });
    try{
     const rawSessions=await native('get_agent_sessions') as NativeSessionSnapshot[];
     if(Array.isArray(rawSessions)){
      sessionStore.hydrateSessions(rawSessions);
+    }
+   }catch{}
+   try{
+    const rawApprovals=await native('get_pending_approvals') as ApprovalSnapshot[];
+    if(Array.isArray(rawApprovals)){
+     for(const snap of rawApprovals){
+      sessionStore.setPendingApproval(snap);
+     }
     }
    }catch{}
    await native('set_window_priority',{enabled:prefs.alwaysOnTop});

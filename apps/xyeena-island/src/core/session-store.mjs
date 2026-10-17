@@ -195,9 +195,18 @@ export class SessionStore {
         session.status = 'error';
         break;
 
+      case 'permissionrequest':
+      case 'approvalrequest':
+      case 'askuser':
+        session.state = 'active';
+        session.status = 'approval';
+        this.focusedKey = key;
+        break;
+
       case 'sessionend':
         session.state = 'terminated';
         session.status = 'idle';
+        session.pendingApproval = undefined;
         this.lastFinishedTimestamp = now;
         break;
 
@@ -265,6 +274,86 @@ export class SessionStore {
   }
 
   /**
+   * Set pending approval snapshot for a session and focus it.
+   * @param {import('./session-store.d.mts').ApprovalSnapshot} approval
+   */
+  setPendingApproval(approval) {
+    if (!approval || !approval.provider || !approval.session_id) return;
+    const key = sessionKey(approval.provider, approval.session_id);
+    let session = this.sessions.get(key);
+    const now = approval.created_at_ms || Date.now();
+
+    if (!session) {
+      session = {
+        key,
+        provider: approval.provider,
+        sessionId: approval.session_id,
+        state: 'active',
+        status: 'approval',
+        workspaceRoot: approval.workspace_root,
+        startedAt: now,
+        lastActivity: now,
+        eventCount: 1,
+        activeTool: approval.tool_name,
+        lastCommand: approval.tool_command,
+        lastSummary: approval.tool_input_summary,
+        recentEvents: [],
+        pendingApproval: approval
+      };
+      this.sessions.set(key, session);
+    } else {
+      session.state = 'active';
+      session.status = 'approval';
+      session.lastActivity = now;
+      if (approval.tool_name) session.activeTool = approval.tool_name;
+      if (approval.tool_command) session.lastCommand = approval.tool_command;
+      if (approval.tool_input_summary) session.lastSummary = approval.tool_input_summary;
+      session.pendingApproval = approval;
+    }
+
+    this.focusedKey = key;
+    this.notify();
+  }
+
+  /**
+   * Resolve or clear a pending approval for a request ID.
+   * @param {string} requestId
+   * @param {string} [status]
+   */
+  resolvePendingApproval(requestId, status = 'resolved') {
+    if (!requestId) return;
+    let changed = false;
+
+    for (const session of this.sessions.values()) {
+      if (session.pendingApproval && session.pendingApproval.request_id === requestId) {
+        session.pendingApproval = undefined;
+        if (session.status === 'approval') {
+          session.status = session.state === 'terminated' ? 'idle' : 'working';
+        }
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.notify();
+    }
+  }
+
+  /**
+   * Return all currently pending approval snapshots.
+   * @returns {import('./session-store.d.mts').ApprovalSnapshot[]}
+   */
+  getPendingApprovals() {
+    const approvals = [];
+    for (const session of this.sessions.values()) {
+      if (session.pendingApproval) {
+        approvals.push(session.pendingApproval);
+      }
+    }
+    return approvals;
+  }
+
+  /**
    * Set user focus to a specific session key.
    * @param {string | null} key
    */
@@ -298,6 +387,11 @@ export class SessionStore {
     if (!all.length) return null;
 
     all.sort((a, b) => {
+      // 0. Pending approval first
+      const aApproval = a.status === 'approval' || Boolean(a.pendingApproval);
+      const bApproval = b.status === 'approval' || Boolean(b.pendingApproval);
+      if (aApproval !== bApproval) return aApproval ? -1 : 1;
+
       // 1. Working / thinking first
       const aWorking = a.state === 'active' && (a.status === 'working' || a.status === 'thinking');
       const bWorking = b.state === 'active' && (b.status === 'working' || b.status === 'thinking');

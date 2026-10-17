@@ -3,12 +3,18 @@
 //! Provides bounded message framing, event normalization across CLI/IDE agents,
 //! and session lifecycle tracking for observation.
 
+pub mod approval;
 pub mod event;
 pub mod framing;
 pub mod pipe;
 pub mod provider;
 pub mod session;
 
+pub use approval::{
+    ApprovalDecision, ApprovalError, ApprovalRegistry, ApprovalSnapshot, ApprovalStatus,
+    PendingApproval, QuestionOption, RegisterApprovalParams, SharedApprovalRegistry,
+    compute_action_fingerprint, is_provider_interactive,
+};
 pub use event::{
     parse_and_normalize, EventParseError, NormalizedEvent, NormalizedEventType,
     NormalizedToolInput, MAX_FIELD_LEN, MAX_IDENTIFIER_LEN,

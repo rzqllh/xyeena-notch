@@ -22,6 +22,7 @@ pub enum NormalizedEventType {
     ToolPre,
     ToolPost,
     Notification,
+    PermissionRequest,
     Other(String),
 }
 
@@ -34,6 +35,7 @@ impl fmt::Display for NormalizedEventType {
             Self::ToolPre => write!(f, "tool_pre"),
             Self::ToolPost => write!(f, "tool_post"),
             Self::Notification => write!(f, "notification"),
+            Self::PermissionRequest => write!(f, "permission_request"),
             Self::Other(s) => write!(f, "other({s})"),
         }
     }
@@ -164,6 +166,11 @@ pub fn parse_and_normalize(raw: &serde_json::Value) -> Result<NormalizedEvent, E
             NormalizedEventType::ToolPost
         }
         "notification" | "notify" | "alert" => NormalizedEventType::Notification,
+        "permissionrequest"
+        | "permissionrequested"
+        | "approvalrequest"
+        | "approvalrequested"
+        | "askuser" => NormalizedEventType::PermissionRequest,
         _ => NormalizedEventType::Other(event_name),
     };
 

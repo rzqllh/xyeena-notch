@@ -18,7 +18,10 @@
 //!   process verification. In later slices (S05 approvals), authoritative verification
 //!   gates are applied.
 
-use crate::agent_ipc::event::parse_and_normalize;
+use crate::agent_ipc::approval::{
+    is_provider_interactive, QuestionOption, RegisterApprovalParams, SharedApprovalRegistry,
+};
+use crate::agent_ipc::event::{parse_and_normalize, NormalizedEventType};
 use crate::agent_ipc::framing::FrameBuffer;
 use crate::agent_ipc::SharedSessionRegistry;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -117,6 +120,7 @@ impl Drop for NamedPipeServerHandle {
 pub fn start_agent_pipe_server<R: Runtime + 'static>(
     app: tauri::AppHandle<R>,
     registry: SharedSessionRegistry,
+    approval_registry: SharedApprovalRegistry,
 ) -> NamedPipeServerHandle {
     let pipe_name = get_pipe_name();
     let running = Arc::new(AtomicBool::new(true));
@@ -127,7 +131,7 @@ pub fn start_agent_pipe_server<R: Runtime + 'static>(
     let thread_handle = thread::Builder::new()
         .name("xyeena-agent-ipc".into())
         .spawn(move || {
-            run_server_loop(app, registry, pipe_name_clone, running_clone);
+            run_server_loop(app, registry, approval_registry, pipe_name_clone, running_clone);
         })
         .expect("Failed to spawn agent IPC thread");
 
@@ -142,6 +146,7 @@ pub fn start_agent_pipe_server<R: Runtime + 'static>(
 fn run_server_loop<R: Runtime>(
     app: tauri::AppHandle<R>,
     registry: SharedSessionRegistry,
+    approval_registry: SharedApprovalRegistry,
     pipe_name: String,
     running: Arc<AtomicBool>,
 ) {
@@ -204,7 +209,7 @@ fn run_server_loop<R: Runtime>(
         }
 
         // Handle client stream
-        handle_pipe_client(pipe_handle, &app, &registry);
+        handle_pipe_client(pipe_handle, &app, &registry, &approval_registry);
 
         let _ = unsafe { DisconnectNamedPipe(pipe_handle) };
         let _ = unsafe { CloseHandle(pipe_handle) };
@@ -223,6 +228,7 @@ fn run_server_loop<R: Runtime>(
 fn run_server_loop<R: Runtime>(
     _app: tauri::AppHandle<R>,
     _registry: SharedSessionRegistry,
+    _approval_registry: SharedApprovalRegistry,
     _pipe_name: String,
     _running: Arc<AtomicBool>,
 ) {
@@ -234,6 +240,7 @@ fn handle_pipe_client<R: Runtime>(
     pipe_handle: HANDLE,
     app: &tauri::AppHandle<R>,
     registry: &SharedSessionRegistry,
+    approval_registry: &SharedApprovalRegistry,
 ) {
     let mut frame_buf = FrameBuffer::new();
     let mut read_buf = [0u8; 8192];
@@ -266,6 +273,69 @@ fn handle_pipe_client<R: Runtime>(
                     if let Ok(event) = parse_and_normalize(&raw_value) {
                         registry.handle_event(&event);
                         let _ = app.emit("island:agent-event", &event);
+
+                        if event.event_type == NormalizedEventType::SessionEnd {
+                            approval_registry.cancel_session_requests(&event.provider, &event.session_id);
+                        } else if event.event_type == NormalizedEventType::PermissionRequest
+                            && is_provider_interactive(&event.provider)
+                        {
+                            let request_id = raw_value
+                                .get("request_id")
+                                .or_else(|| raw_value.get("requestId"))
+                                .or_else(|| raw_value.get("id"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| format!("{}-{}", event.session_id, event.timestamp_ms));
+
+                            let tool_name = event.tool_name.clone().unwrap_or_else(|| "Tool".into());
+                            let tool_cmd = event.tool_input.as_ref().and_then(|i| i.command.clone());
+                            let tool_summary = event.tool_input.as_ref().and_then(|i| i.summary.clone());
+
+                            let question = raw_value
+                                .get("question")
+                                .or_else(|| raw_value.get("prompt"))
+                                .or_else(|| raw_value.get("message"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+
+                            let options = raw_value
+                                .get("options")
+                                .and_then(|v| v.as_array())
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|item| {
+                                            let id = item.get("id")?.as_str()?.to_string();
+                                            let label = item.get("label")?.as_str()?.to_string();
+                                            let desc = item
+                                                .get("description")
+                                                .and_then(|d| d.as_str())
+                                                .map(|s| s.to_string());
+                                            Some(QuestionOption {
+                                                id,
+                                                label,
+                                                description: desc,
+                                            })
+                                        })
+                                        .collect::<Vec<_>>()
+                                });
+
+                            let params = RegisterApprovalParams {
+                                request_id,
+                                provider: event.provider.clone(),
+                                session_id: event.session_id.clone(),
+                                workspace_root: event.workspace_root.clone(),
+                                tool_name,
+                                tool_command: tool_cmd,
+                                tool_input_summary: tool_summary,
+                                question,
+                                options,
+                                timeout_ms: None,
+                            };
+
+                            if let Ok(snapshot) = approval_registry.register_request(params) {
+                                let _ = app.emit("island:approval-requested", &snapshot);
+                            }
+                        }
                     }
                 }
                 Ok(None) => break,

@@ -1022,6 +1022,40 @@ fn uninstall_provider_hooks(
     agent_ipc::provider::uninstall_agy_hooks(&config_path).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_pending_approvals(
+    approval_registry: tauri::State<'_, agent_ipc::SharedApprovalRegistry>,
+) -> Vec<agent_ipc::ApprovalSnapshot> {
+    approval_registry.pending_snapshots()
+}
+
+#[derive(serde::Deserialize)]
+struct SubmitApprovalPayload {
+    request_id: String,
+    auth_token: String,
+    action_fingerprint: String,
+    decision: agent_ipc::ApprovalDecision,
+}
+
+#[tauri::command]
+fn submit_approval_decision(
+    payload: SubmitApprovalPayload,
+    approval_registry: tauri::State<'_, agent_ipc::SharedApprovalRegistry>,
+    app: tauri::AppHandle,
+) -> Result<agent_ipc::PendingApproval, String> {
+    let resolved = approval_registry
+        .submit_decision(
+            &payload.request_id,
+            &payload.auth_token,
+            &payload.action_fingerprint,
+            payload.decision,
+        )
+        .map_err(|e| e.to_string())?;
+
+    let _ = app.emit("island:approval-resolved", &resolved);
+    Ok(resolved)
+}
+
 fn show_island(app: &tauri::AppHandle, requested: &str) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = set_mode(&window, Mode::Compact);
@@ -1038,12 +1072,21 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AiProcessRegistry::default())
         .manage(agent_ipc::SharedSessionRegistry::new())
+        .manage(agent_ipc::SharedApprovalRegistry::new())
         .setup(|app| {
             let registry = app
                 .state::<agent_ipc::SharedSessionRegistry>()
                 .inner()
                 .clone();
-            let server_handle = agent_ipc::start_agent_pipe_server(app.handle().clone(), registry);
+            let approval_registry = app
+                .state::<agent_ipc::SharedApprovalRegistry>()
+                .inner()
+                .clone();
+            let server_handle = agent_ipc::start_agent_pipe_server(
+                app.handle().clone(),
+                registry,
+                approval_registry,
+            );
             app.manage(std::sync::Mutex::new(server_handle));
             let window = app
                 .get_webview_window("main")
@@ -1126,6 +1169,8 @@ pub fn run() {
             preview_provider_hooks,
             install_provider_hooks,
             uninstall_provider_hooks,
+            get_pending_approvals,
+            submit_approval_decision,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");

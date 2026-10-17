@@ -193,3 +193,79 @@ test('SessionStore hydrates snapshots from Rust get_agent_sessions', () => {
   assert.equal(session.lastCommand, 'npm test');
   assert.equal(session.status, 'working');
 });
+
+test('SessionStore handles interactive approval lifecycle: set, focus priority, resolve', () => {
+  const store = new SessionStore();
+  let notifications = 0;
+  store.subscribe(() => { notifications += 1; });
+
+  // 1. Initial working session
+  store.ingestEvent({
+    event_type: 'ToolPre',
+    provider: 'claude-code',
+    session_id: 'c-1',
+    tool_name: 'Bash',
+    timestamp_ms: 1000
+  });
+
+  assert.equal(store.getFocusedSession()?.status, 'working');
+
+  // 2. Set pending approval
+  store.setPendingApproval({
+    request_id: 'req-100',
+    provider: 'claude-code',
+    session_id: 'c-1',
+    tool_name: 'Bash',
+    tool_command: 'rm -rf dist',
+    action_fingerprint: 'fp-123',
+    auth_token: 'tok-abc',
+    created_at_ms: 1500,
+    expires_at_ms: 61500,
+    status: 'pending'
+  });
+
+  const session = store.getFocusedSession();
+  assert.ok(session);
+  assert.equal(session.status, 'approval');
+  assert.ok(session.pendingApproval);
+  assert.equal(session.pendingApproval.request_id, 'req-100');
+  assert.equal(session.lastCommand, 'rm -rf dist');
+  assert.equal(store.getPendingApprovals().length, 1);
+  assert.equal(store.getAggregateState(), 'approval');
+
+  // 3. Resolve pending approval
+  store.resolvePendingApproval('req-100', 'allowed_once');
+  assert.equal(session.pendingApproval, undefined);
+  assert.equal(session.status, 'working');
+  assert.equal(store.getPendingApprovals().length, 0);
+  assert.equal(store.getAggregateState(), 'working');
+});
+
+test('SessionStore auto-focuses session with pending approval over other active sessions', () => {
+  const store = new SessionStore();
+
+  // Active working session
+  store.ingestEvent({
+    event_type: 'ToolPre',
+    provider: 'antigravity',
+    session_id: 'ag-1',
+    timestamp_ms: 5000
+  });
+
+  // Another session receives approval request
+  store.setPendingApproval({
+    request_id: 'req-200',
+    provider: 'claude-code',
+    session_id: 'c-2',
+    tool_name: 'Bash',
+    action_fingerprint: 'fp-456',
+    auth_token: 'tok-def',
+    created_at_ms: 2000,
+    expires_at_ms: 62000,
+    status: 'pending'
+  });
+
+  assert.equal(store.getFocusedSession()?.sessionId, 'c-2');
+  assert.equal(store.autoSelectFocusedKey(), 'claude-code:c-2');
+});
+
