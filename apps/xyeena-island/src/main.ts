@@ -145,6 +145,8 @@ root.innerHTML=`
        <button class="file-action-btn file-action-accent" id="file-convert-webp" type="button">Convert to WebP</button>
        <button class="file-action-btn" id="file-convert-png" type="button">PNG</button>
        <button class="file-action-btn" id="file-convert-jpeg" type="button">JPEG</button>
+       <button class="file-action-btn" id="file-open-editor" type="button" hidden>Open in Editor</button>
+       <button class="file-action-btn" id="file-ask-xyn" type="button">Ask Xyn</button>
        <button class="file-action-btn" id="file-copy-info" type="button">Copy Info</button>
      </div>
     </div>
@@ -739,9 +741,13 @@ window.addEventListener('keydown',e=>{
 
 let activeFileDataUrl='';
 let activeFileName='';
+let activeFilePath='';
+let activeFilePreview='';
 function closeFileCard(){
  const card=q<HTMLElement>('#file-card');
- card.hidden=true;activeFileDataUrl='';activeFileName='';
+ card.hidden=true;activeFileDataUrl='';activeFileName='';activeFilePath='';activeFilePreview='';
+ const openEditorBtn=q<HTMLButtonElement>('#file-open-editor');
+ if(openEditorBtn)openEditorBtn.hidden=true;
 }
 q<HTMLButtonElement>('#file-close').addEventListener('click',closeFileCard);
 
@@ -752,6 +758,10 @@ async function handleFileDrop(file:File){
   renderAlerts();return;
  }
  activeFileName=meta.name;
+ activeFilePath='';
+ activeFilePreview='';
+ const openEditorBtn=q<HTMLButtonElement>('#file-open-editor');
+ if(openEditorBtn)openEditorBtn.hidden=true;
  const card=q<HTMLElement>('#file-card');
  const title=q<HTMLElement>('#file-title');
  const info=q<HTMLElement>('#file-meta');
@@ -822,6 +832,35 @@ q<HTMLButtonElement>('#file-copy-info').addEventListener('click',async()=>{
   renderAlerts();
  }catch{}
 });
+q<HTMLButtonElement>('#file-open-editor').addEventListener('click',async()=>{
+ if(!activeFilePath)return;
+ try{
+  const lastSlash=Math.max(activeFilePath.lastIndexOf('/'),activeFilePath.lastIndexOf('\\'));
+  const wsRoot=lastSlash>0?activeFilePath.slice(0,lastSlash):activeFilePath;
+  const relFile=lastSlash>0?activeFilePath.slice(lastSlash+1):null;
+  await native('open_in_editor',{workspaceRoot:wsRoot,filePath:relFile,line:null});
+  feed.recordEvent('Opened in editor',activeFileName||activeFilePath,'FILE');
+  renderAlerts();
+ }catch(err){
+  feed.recordEvent('Editor open failed',String(err),'ERROR');
+  renderAlerts();
+ }
+});
+q<HTMLButtonElement>('#file-ask-xyn').addEventListener('click',()=>{
+ const prompt=activeFilePreview
+  ?`Please examine this file (${activeFileName}):\n\n\`\`\`\n${activeFilePreview}\n\`\`\`\n`
+  :`Please help me analyze this file: ${activeFileName}`;
+ closeFileCard();
+ setPanel('chat');
+ apply('activate');
+ const input=q<HTMLTextAreaElement>('#chat-input');
+ if(input){
+  input.value=prompt;
+  input.style.height='auto';
+  input.style.height=Math.min(input.scrollHeight,120)+'px';
+  input.focus();
+ }
+});
 
 window.addEventListener('dragenter',e=>{
  e.preventDefault();
@@ -858,6 +897,10 @@ async function handleNativePathDrop(filePath:string){
   };
   if(!dropped)return;
   activeFileName=dropped.name;
+  activeFilePath=filePath;
+  activeFilePreview=dropped.textPreview||'';
+  const openEditorBtn=q<HTMLButtonElement>('#file-open-editor');
+  if(openEditorBtn)openEditorBtn.hidden=!isTauri||!activeFilePath;
   const card=q<HTMLElement>('#file-card');
   const title=q<HTMLElement>('#file-title');
   const info=q<HTMLElement>('#file-meta');
