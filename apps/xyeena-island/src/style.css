@@ -1750,6 +1750,130 @@ input[type="range"] {
   white-space: pre-wrap;
 }
 
+/* Agent Provider Hook Installer */
+.installer-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.installer-heading {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  display: block;
+}
+
+.installer-sub {
+  font-size: 10px;
+  color: var(--muted);
+  display: block;
+}
+
+.installer-preview-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  margin: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.installer-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.installer-preview-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--sub);
+  word-break: break-all;
+}
+
+.installer-preview-meta strong {
+  color: var(--text);
+}
+
+.installer-warning {
+  color: #f59e0b;
+  font-size: 10px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 4px;
+  padding: 4px 6px;
+  white-space: pre-wrap;
+}
+
+.installer-diff-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.installer-diff-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--sub);
+}
+
+.installer-diff-box {
+  background: var(--base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  max-height: 120px;
+  overflow-y: auto;
+  color: var(--text);
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.installer-consent-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+}
+
+.installer-consent-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.installer-consent-label input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.installer-btn-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 2px;
+}
+
 .settings-end {
   display: flex;
   align-items: center;

@@ -270,7 +270,63 @@ root.innerHTML=`
         <div class="setting"><span><strong>Local server endpoint</strong><small>Ollama / LM Studio URL</small></span><input type="text" id="setting-ai-local-url" value="http://localhost:11434" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
         <div class="setting"><span><strong>Provider API Key (BYOK)</strong><small>Session memory; never logged or exported</small></span><input type="password" id="setting-ai-api-key" placeholder="Enter API key" autocomplete="off" spellcheck="false" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
         <div class="setting"><span><strong>Credential safety</strong><small>In-memory session key (opt-in BYOK)</small></span><span class="badge-tag" id="badge-ai-creds">Session Memory</span></div>
-        <div class="setting"><span><strong>Agent access boundary</strong><small>Read-only IPC snapshots; no hook writing</small></span><span class="badge-tag">Read-only IPC</span></div>
+
+        <div class="installer-section-header">
+          <div>
+            <strong class="installer-heading">Agent Provider Hook Installer</strong>
+            <small class="installer-sub">Opt-in local hook configuration for Antigravity &amp; IDE agents</small>
+          </div>
+          <button class="minor-btn" id="btn-detect-providers" type="button">Detect Providers</button>
+        </div>
+        <div class="setting">
+          <span><strong>Target Provider</strong><small id="provider-detect-detail">Detecting installed agents...</small></span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="installer-provider-select" aria-label="Target Provider">
+              <option value="antigravity">Antigravity (AGY)</option>
+              <option value="claude-code" disabled>Claude Code (Coming soon)</option>
+              <option value="gemini-cli" disabled>Gemini CLI (Unverified)</option>
+            </select>
+            <span class="badge-tag" id="provider-detect-badge">Checking</span>
+          </div>
+        </div>
+        <div class="setting" style="flex-direction:column;align-items:stretch;gap:6px">
+          <span><strong>Workspace Root Path</strong><small>Directory containing .agents/hooks.json</small></span>
+          <div class="path-row">
+            <label class="path-wrap">
+              ${icon('folder',16)}
+              <input id="installer-workspace-path" type="text" placeholder="C:\\path\\to\\workspace" spellcheck="false" autocomplete="off" />
+            </label>
+            <button class="action-btn" id="btn-preview-hooks" type="button">Preview</button>
+          </div>
+        </div>
+
+        <div id="installer-preview-card" class="installer-preview-card" hidden>
+          <div class="installer-preview-header">
+            <strong id="installer-action-badge">Install Preview</strong>
+            <span id="installer-scope-badge" class="badge-tag">Workspace</span>
+          </div>
+          <div class="installer-preview-meta">
+            <div><strong>Target:</strong> <span id="installer-target-path">.agents/hooks.json</span></div>
+            <div><strong>Backup:</strong> <span id="installer-backup-path">.agents/hooks.json.xyeena-notch.bak</span></div>
+            <div><strong>Preserved groups:</strong> <span id="installer-preserved-groups">None</span></div>
+          </div>
+          <div id="installer-warnings-box" class="installer-warning" hidden></div>
+          <div class="installer-diff-wrap">
+            <span class="installer-diff-label">Configuration to apply (xyeena-notch):</span>
+            <pre id="installer-diff-text" class="installer-diff-box"></pre>
+          </div>
+          <div class="installer-consent-row">
+            <label class="installer-consent-label">
+              <input type="checkbox" id="installer-consent-check" />
+              <span>I approve writing only the <code>xyeena-notch</code> group to this configuration file</span>
+            </label>
+          </div>
+          <div class="installer-btn-row">
+            <button class="action-btn" id="btn-install-hooks" type="button" disabled>Install Hooks</button>
+            <button class="minor-btn" id="btn-uninstall-hooks" type="button">Uninstall Hooks</button>
+          </div>
+        </div>
+        <p class="status-line" id="installer-status-line" role="status"></p>
       </div>
 
       <div class="settings-section" id="setsec-integrations" hidden>
@@ -553,6 +609,7 @@ function setPanel(next:Panel){
  if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();renderAgentPills();}
  if(next==='clipboard')renderClipboard();
  if(next==='chat'){checkChatInlineSetup();renderChatMessages();}
+ if(next==='preferences'){void runProviderDetection();}
 }
 for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
  tab.addEventListener('click',()=>setPanel(tab.dataset.panel as Panel));
@@ -1740,6 +1797,153 @@ q<HTMLButtonElement>('#btn-export-diagnostics').addEventListener('click',async()
  }
  renderAlerts();
 });
+
+// S03: Agent Provider Hook Installer
+let detectedProviders: Array<[any, any]> = [];
+let currentHookPreview: any = null;
+
+async function runProviderDetection(){
+ if(!isTauri)return;
+ const badge=q<HTMLElement>('#provider-detect-badge');
+ const detail=q<HTMLElement>('#provider-detect-detail');
+ badge.textContent='Detecting...';
+ badge.className='badge-tag';
+ try{
+  detectedProviders=await native('detect_agent_providers') as Array<[any, any]>;
+  const agy=detectedProviders.find(([def])=>def.id==='antigravity');
+  if(agy){
+   const [,res]=agy;
+   if(res.status==='installed'){
+    badge.textContent='Installed';
+    badge.style.color='var(--accent)';
+    detail.textContent=`Antigravity detected (${res.path})`;
+   }else{
+    badge.textContent='Not Found';
+    badge.style.color='var(--muted)';
+    detail.textContent='Antigravity CLI was not detected at standard locations';
+   }
+  }
+ }catch(err){
+  badge.textContent='Error';
+  detail.textContent=String(err);
+ }
+}
+
+async function previewHooks(){
+ const statusLine=q<HTMLElement>('#installer-status-line');
+ const providerId=q<HTMLSelectElement>('#installer-provider-select').value;
+ let wsPath=q<HTMLInputElement>('#installer-workspace-path').value.trim();
+ if(!wsPath){
+  const projInput=q<HTMLInputElement>('#project-root');
+  if(projInput&&projInput.value.trim()){
+   wsPath=projInput.value.trim();
+   q<HTMLInputElement>('#installer-workspace-path').value=wsPath;
+  }
+ }
+ if(!wsPath){
+  statusLine.textContent='Please provide an absolute workspace root path';
+  statusLine.style.color='#ef4444';
+  return;
+ }
+ statusLine.textContent='Loading configuration preview...';
+ statusLine.style.color='var(--muted)';
+ try{
+  const preview=await native('preview_provider_hooks',{
+   providerId,
+   workspacePath:wsPath
+  }) as any;
+  currentHookPreview=preview;
+  const card=q<HTMLElement>('#installer-preview-card');
+  card.hidden=false;
+  q<HTMLElement>('#installer-action-badge').textContent=preview.existing_group_present?'Repair / Update Preview':'Install Preview';
+  q<HTMLElement>('#installer-scope-badge').textContent=preview.scope;
+  q<HTMLElement>('#installer-target-path').textContent=preview.config_path;
+  q<HTMLElement>('#installer-backup-path').textContent=preview.backup_path;
+  q<HTMLElement>('#installer-preserved-groups').textContent=preview.preserved_groups.length?preview.preserved_groups.join(', '):'None (Fresh config)';
+
+  const warnBox=q<HTMLElement>('#installer-warnings-box');
+  if(preview.warnings&&preview.warnings.length>0){
+   warnBox.hidden=false;
+   warnBox.textContent=preview.warnings.join('\n');
+  }else{
+   warnBox.hidden=true;
+  }
+
+  q<HTMLElement>('#installer-diff-text').textContent=JSON.stringify(preview.group_to_add,null,2);
+
+  const consent=q<HTMLInputElement>('#installer-consent-check');
+  consent.checked=false;
+  const installBtn=q<HTMLButtonElement>('#btn-install-hooks');
+  installBtn.disabled=true;
+  installBtn.textContent=preview.existing_group_present?'Repair Hooks':'Install Hooks';
+
+  statusLine.textContent=preview.safe?'Preview ready. Check approval to proceed.':'Warning: Preview has unresolved notices.';
+  statusLine.style.color=preview.safe?'var(--sub)':'#f59e0b';
+ }catch(err){
+  statusLine.textContent=`Preview error: ${String(err)}`;
+  statusLine.style.color='#ef4444';
+ }
+}
+
+async function installHooks(){
+ const statusLine=q<HTMLElement>('#installer-status-line');
+ const providerId=q<HTMLSelectElement>('#installer-provider-select').value;
+ const wsPath=q<HTMLInputElement>('#installer-workspace-path').value.trim();
+ const consent=q<HTMLInputElement>('#installer-consent-check').checked;
+ if(!consent){
+  statusLine.textContent='Explicit user consent is required before installing hooks';
+  statusLine.style.color='#ef4444';
+  return;
+ }
+ statusLine.textContent='Applying configuration...';
+ statusLine.style.color='var(--muted)';
+ try{
+  const outcome=await native('install_provider_hooks',{
+   providerId,
+   workspacePath:wsPath,
+   confirmed:true
+  }) as any;
+  statusLine.textContent=`Success: ${outcome.message}`;
+  statusLine.style.color='var(--accent)';
+  feed.recordEvent('Hooks installed',`Provider: ${providerId}, action: ${outcome.action}`,'AGENT');
+  renderAlerts();
+  void previewHooks();
+ }catch(err){
+  statusLine.textContent=`Install error: ${String(err)}`;
+  statusLine.style.color='#ef4444';
+ }
+}
+
+async function uninstallHooks(){
+ const statusLine=q<HTMLElement>('#installer-status-line');
+ const providerId=q<HTMLSelectElement>('#installer-provider-select').value;
+ const wsPath=q<HTMLInputElement>('#installer-workspace-path').value.trim();
+ statusLine.textContent='Removing hooks...';
+ statusLine.style.color='var(--muted)';
+ try{
+  const outcome=await native('uninstall_provider_hooks',{
+   providerId,
+   workspacePath:wsPath
+  }) as any;
+  statusLine.textContent=`Success: ${outcome.message}`;
+  statusLine.style.color='var(--accent)';
+  feed.recordEvent('Hooks uninstalled',`Provider: ${providerId}`,'AGENT');
+  renderAlerts();
+  void previewHooks();
+ }catch(err){
+  statusLine.textContent=`Uninstall error: ${String(err)}`;
+  statusLine.style.color='#ef4444';
+ }
+}
+
+q<HTMLButtonElement>('#btn-detect-providers')?.addEventListener('click',()=>void runProviderDetection());
+q<HTMLButtonElement>('#btn-preview-hooks')?.addEventListener('click',()=>void previewHooks());
+q<HTMLInputElement>('#installer-consent-check')?.addEventListener('change',e=>{
+ const checked=(e.target as HTMLInputElement).checked;
+ q<HTMLButtonElement>('#btn-install-hooks').disabled=!checked;
+});
+q<HTMLButtonElement>('#btn-install-hooks')?.addEventListener('click',()=>void installHooks());
+q<HTMLButtonElement>('#btn-uninstall-hooks')?.addEventListener('click',()=>void uninstallHooks());
 
 async function initialize(){
  const startupProv=q<HTMLSelectElement>('#chat-provider-select')?.value||'gemini';
