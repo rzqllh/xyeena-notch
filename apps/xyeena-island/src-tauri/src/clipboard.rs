@@ -358,3 +358,48 @@ pub fn base64_decode(s: &str) -> Option<Vec<u8>> {
     }
     Some(out)
 }
+
+#[tauri::command]
+pub fn get_clipboard_sequence_number() -> u32 {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        windows::Win32::System::DataExchange::GetClipboardSequenceNumber()
+    }
+    #[cfg(not(target_os = "windows"))]
+    0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_base64_encode_and_decode_roundtrip() {
+        let original = b"Hello, Windows Clipboard Parity!";
+        let encoded = simple_base64_encode(original);
+        let decoded = base64_decode(&encoded).expect("Decode should succeed");
+        assert_eq!(original.as_slice(), decoded.as_slice());
+    }
+
+    #[test]
+    fn test_base64_decode_handles_padding() {
+        assert_eq!(base64_decode("YQ==").unwrap(), b"a");
+        assert_eq!(base64_decode("YWI=").unwrap(), b"ab");
+        assert_eq!(base64_decode("YWJj").unwrap(), b"abc");
+    }
+
+    #[test]
+    fn test_dib_to_bmp_rejects_truncated_header() {
+        let truncated = vec![0u8; 20];
+        assert!(dib_to_bmp(&truncated).is_none());
+    }
+
+    #[test]
+    fn test_clipboard_sequence_number_is_callable() {
+        let seq = get_clipboard_sequence_number();
+        #[cfg(target_os = "windows")]
+        assert!(seq > 0, "Sequence number on Windows should be non-zero");
+        #[cfg(not(target_os = "windows"))]
+        assert_eq!(seq, 0);
+    }
+}

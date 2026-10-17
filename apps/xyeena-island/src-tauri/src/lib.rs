@@ -1160,6 +1160,7 @@ pub fn run() {
             read_island_cursor,
             read_native_clipboard,
             write_native_image,
+            clipboard::get_clipboard_sequence_number,
             save_file_to_downloads,
             read_dropped_file,
             native_ai_request,

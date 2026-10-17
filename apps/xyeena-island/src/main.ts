@@ -1287,11 +1287,21 @@ function renderClipboard(){
  }
 }
 
+let lastClipboardSeq=0;
 async function observeClipboard(){
  if(clipBusy||!clipboard.enabled)return;
  clipBusy=true;
  try{
   if(isTauri){
+   try{
+    const seq=await native('get_clipboard_sequence_number') as number;
+    if(typeof seq==='number'&&seq>0&&seq===lastClipboardSeq){
+     return;
+    }
+    lastClipboardSeq=seq;
+   }catch{
+    // sequence number check optional fallback
+   }
    const nativeItem=await native('read_native_clipboard') as any;
    if(nativeItem){
     if(clipboard.accept(nativeItem))renderClipboard();
