@@ -417,7 +417,10 @@ function syncActiveGuardian(targetMode:IslandMode){
 }
 
 function syncGuardian(){
- const activeState=chatMascotState||chooseGuardianState({agentState:sessionStore.getAggregateState(),mediaPlaying:selectedMedia.playing,runs,mode});
+ const agentState=sessionStore.getAggregateState();
+ const activeState=agentState==='approval'
+  ?'attention'
+  :(chatMascotState||chooseGuardianState({agentState,mediaPlaying:selectedMedia.playing,runs,mode}));
  const visualState=toMascotState(activeState);
  shell.dataset.fold=activeState;
  shell.dataset.guardian=activeState;

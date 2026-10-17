@@ -269,3 +269,49 @@ test('SessionStore auto-focuses session with pending approval over other active 
   assert.equal(store.autoSelectFocusedKey(), 'claude-code:c-2');
 });
 
+test('SessionStore preserves working state continuity when one of multiple concurrent sessions ends', () => {
+  const store = new SessionStore();
+
+  // Session 1: Codex working
+  store.ingestEvent({
+    event_type: 'ToolPre',
+    provider: 'codex',
+    session_id: 'codex-1',
+    tool_name: 'exec',
+    timestamp_ms: 1000
+  });
+
+  // Session 2: Antigravity thinking
+  store.ingestEvent({
+    event_type: 'SessionStart',
+    provider: 'antigravity',
+    session_id: 'ag-1',
+    timestamp_ms: 2000
+  });
+
+  assert.equal(store.getAggregateState(2500), 'working');
+
+  // Antigravity ends
+  store.ingestEvent({
+    event_type: 'SessionEnd',
+    provider: 'antigravity',
+    session_id: 'ag-1',
+    timestamp_ms: 3000
+  });
+
+  // Codex is still active and working: must NOT switch to finished or idle!
+  assert.equal(store.getAggregateState(3100), 'working');
+
+  // Codex ends -> now finished transient (< 8s)
+  store.ingestEvent({
+    event_type: 'SessionEnd',
+    provider: 'codex',
+    session_id: 'codex-1',
+    timestamp_ms: 4000
+  });
+
+  assert.equal(store.getAggregateState(5000), 'finished');
+  assert.equal(store.getAggregateState(20000), 'idle');
+});
+
+
