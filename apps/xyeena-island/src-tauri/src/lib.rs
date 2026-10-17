@@ -7,6 +7,7 @@ pub mod flow;
 pub mod github;
 pub mod integrations;
 mod media;
+pub mod voice;
 mod volume;
 use std::fs;
 use std::path::Path;
@@ -1238,6 +1239,10 @@ pub fn run() {
             integrations::list_supported_integrations,
             integrations::check_integration_status,
             flow::get_flow_engine_status,
+            voice::get_microphone_status,
+            voice::start_consented_recording,
+            voice::stop_consented_recording,
+            voice::parse_voice_intent,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");

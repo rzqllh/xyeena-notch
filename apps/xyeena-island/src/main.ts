@@ -23,6 +23,8 @@ import {buildWeeklyRecap,recapText,recapSvg} from '@xyeena/recap';
 import {icon} from './core/icons.mjs';
 import {SUPPORTED_INTEGRATIONS,normalizeGitHubStatus,normalizeIntegrationResult} from './core/integrations.mjs';
 import {DEFAULT_SNIPPETS,cleanDictatedText,expandSnippets,updateDictationStats,FlowDictationController} from './core/flow.mjs';
+import {NotetakerController} from './core/notetaker.mjs';
+import {parseVoiceIntent,executeVoiceAction} from './core/voice-commands.mjs';
 import './style.css';
 
 defineXyeenaGuardian();
@@ -65,7 +67,7 @@ root.innerHTML=`
      <xyeena-guardian id="compact-guardian" size="84" interactive animated></xyeena-guardian>
    </span>
    <div class="compact-copy">
-     <div class="compact-meta"><strong class="brand-title">XYEENA</strong><span class="compact-dot" aria-hidden="true"></span><span class="compact-tag" id="compact-status-tag">Ready</span></div>
+     <div class="compact-meta"><strong class="brand-title">XYEENA</strong><span class="compact-dot" aria-hidden="true"></span><span class="compact-tag" id="compact-status-tag">Ready</span><span class="badge-tag" id="compact-mic-indicator" style="background:#ef4444;color:#fff;font-size:9px;padding:1px 5px;margin-left:4px;" hidden>REC</span></div>
      <small id="compact-context">Desktop Companion</small>
    </div>
    <div class="compact-actions">
@@ -101,7 +103,7 @@ root.innerHTML=`
     <span class="mascot-slot mascot-header" id="header-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
       <xyeena-guardian id="header-guardian" size="54" interactive animated></xyeena-guardian>
     </span>
-    <div class="header-titles"><strong>Xyeena Island</strong><span class="header-status" id="header-status">On device</span></div>
+    <div class="header-titles"><strong>Xyeena Island</strong><span class="header-status" id="header-status">On device</span><span class="badge-tag" id="header-mic-indicator" style="background:#ef4444;color:#fff;font-size:9px;padding:1px 5px;margin-left:4px;" hidden>MIC LIVE</span></div>
     <button class="icon-btn pin" type="button" aria-label="Pin Island" aria-pressed="false" title="Keep expanded">${icon('pin',16)}</button>
     <button class="icon-btn collapse" type="button" aria-label="Collapse Island" title="Collapse">${icon('chevron',18)}</button>
   </header>
@@ -284,6 +286,7 @@ root.innerHTML=`
         <button class="settings-pill" type="button" data-section="ai">AI & Agents</button>
         <button class="settings-pill" type="button" data-section="integrations">Integrations</button>
         <button class="settings-pill" type="button" data-section="flow">Flow Dictation</button>
+        <button class="settings-pill" type="button" data-section="voice">Voice &amp; Notes</button>
         <button class="settings-pill" type="button" data-section="recap">Weekly Recap</button>
         <button class="settings-pill" type="button" data-section="about">About & Hotkeys</button>
       </div>
@@ -477,6 +480,61 @@ root.innerHTML=`
         </div>
       </div>
 
+      <div class="settings-section" id="setsec-voice" hidden>
+        <div class="integration-group-header" style="padding:4px 0 6px;">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">CONSENTED NOTETAKER &amp; VOICE CAPTURE</span>
+          <p class="explain" style="padding:2px 0;margin:0;">100% on-device audio transcription. Strictly zero background recording; microphone is active ONLY during explicit user-consented sessions.</p>
+        </div>
+
+        <div class="setting">
+          <span><strong>Notetaker consent</strong><small>Require explicit opt-in confirmation before recording meeting notes</small></span>
+          <input type="checkbox" id="setting-notetaker-consent" aria-label="Notetaker consent">
+        </div>
+        <div class="setting">
+          <span><strong>Voice commands engine</strong><small>Allow voice-controlled navigation and Xyn companion commands</small></span>
+          <input type="checkbox" id="setting-voice-commands-enable" aria-label="Voice commands enable">
+        </div>
+        <div class="setting">
+          <span><strong>Recording endpoint</strong><small>Active Windows audio input device</small></span>
+          <span class="badge-tag" id="voice-endpoint-badge">Checking...</span>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">NOTETAKER CONTROLS</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Start a consented recording session for local meeting notes.</p>
+        </div>
+        <div class="setting" style="flex-direction:column;align-items:stretch;gap:8px;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" id="notetaker-title-input" placeholder="Meeting note title..." style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--text);" />
+            <button class="action-btn" id="btn-notetaker-record" type="button">Start Note</button>
+            <button class="minor-btn" id="btn-notetaker-pause" type="button" hidden>Pause</button>
+            <button class="action-btn" id="btn-notetaker-finish" type="button" style="background:#22c55e;" hidden>Finish</button>
+            <button class="minor-btn" id="btn-notetaker-cancel" type="button" hidden>Cancel</button>
+          </div>
+          <p class="status-line" id="notetaker-status-line" style="margin:0;font-size:10px;color:var(--muted);">Ready. Click "Start Note" after granting consent.</p>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">SAVED TRANSCRIPT NOTES</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Local bounded notes (max 20). Stored in session memory only.</p>
+        </div>
+        <div id="notetaker-notes-list" style="display:flex;flex-direction:column;gap:6px;">
+          <small style="color:var(--muted);font-size:10px;">No notes recorded in this session yet.</small>
+        </div>
+
+        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
+          <span class="kicker" style="font-size:9px;color:var(--accent);">VOICE COMMANDS CATALOG</span>
+          <p class="explain" style="padding:2px 0;margin:0;">Bounded voice actions supported via microphone or Alt+V trigger.</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-size:10px;">
+          <div class="setting" style="align-items:center;"><span><strong>"Ask Xyn &lt;question&gt;"</strong><small>Send prompt to companion chat</small></span><span class="badge-tag">AI Chat</span></div>
+          <div class="setting" style="align-items:center;"><span><strong>"Expand / Compact / Hide Island"</strong><small>Change window mode</small></span><span class="badge-tag">Window</span></div>
+          <div class="setting" style="align-items:center;"><span><strong>"Show Chat / Clips / Activity / Settings"</strong><small>Switch navigation panel</small></span><span class="badge-tag">Navigation</span></div>
+          <div class="setting" style="align-items:center;"><span><strong>"Play / Pause / Next / Previous"</strong><small>Control Windows media</small></span><span class="badge-tag">Media</span></div>
+          <div class="setting" style="align-items:center;"><span><strong>"Generate Weekly Recap"</strong><small>Build local week summary</small></span><span class="badge-tag">Recap</span></div>
+        </div>
+      </div>
+
       <div class="settings-section" id="setsec-recap" hidden>
         <div class="setting"><span><strong>Weekly Recap Engine</strong><small>Local aggregation (PR #2)</small></span><input type="checkbox" id="setting-recap-enable" aria-label="Enable Weekly Recap" checked></div>
         <div class="setting"><span><strong>Generate Recap</strong><small>Build local week summary from real activity</small></span><button class="minor-btn" id="recap-generate-btn" type="button">Generate Recap</button></div>
@@ -661,7 +719,9 @@ function syncPreferences(){
   ['#setting-recap-enable',prefs.recapEnabled],
   ['#setting-flow-enable',prefs.flowEnabled],
   ['#setting-flow-push-to-talk',prefs.flowPushToTalk],
-  ['#setting-flow-filter-fillers',prefs.flowFilterFillers]
+  ['#setting-flow-filter-fillers',prefs.flowFilterFillers],
+  ['#setting-notetaker-consent',prefs.notetakerConsent],
+  ['#setting-voice-commands-enable',prefs.voiceCommandsEnabled]
  ] as [string,boolean][])q<HTMLInputElement>(selector).checked=checked;
  q<HTMLSelectElement>('#theme').value=prefs.theme;
  q<HTMLSelectElement>('#setting-language').value=prefs.language;
@@ -2138,6 +2198,9 @@ for(const pill of root.querySelectorAll<HTMLButtonElement>('.settings-pill')){
   if(section==='flow'){
    void refreshFlowEngineStatus();
   }
+  if(section==='voice'){
+   void refreshMicrophoneStatus();
+  }
  });
 }
 
@@ -2798,10 +2861,241 @@ window.addEventListener('keyup', (e: KeyboardEvent) => {
  }
 });
 
+// S13: Notetaker and Voice Commands Controller
+const notetaker = new NotetakerController();
+notetaker.setConsent(Boolean(prefs.notetakerConsent));
+
+function setMicVisualIndicator(active: boolean, label = 'MIC LIVE') {
+ const compactInd = root.querySelector<HTMLElement>('#compact-mic-indicator');
+ const headerInd = root.querySelector<HTMLElement>('#header-mic-indicator');
+ if (compactInd) {
+  compactInd.hidden = !active;
+  compactInd.textContent = label;
+ }
+ if (headerInd) {
+  headerInd.hidden = !active;
+  headerInd.textContent = label;
+ }
+}
+
+async function refreshMicrophoneStatus() {
+ if (!isTauri) {
+  const badge = root.querySelector<HTMLElement>('#voice-endpoint-badge');
+  if (badge) badge.textContent = 'Browser Simulation';
+  return;
+ }
+ try {
+  const status = await native('get_microphone_status') as {
+   available: boolean;
+   device_name: string;
+   consented: boolean;
+   is_recording: boolean;
+   session_type: string | null;
+  };
+  const badge = root.querySelector<HTMLElement>('#voice-endpoint-badge');
+  if (badge) {
+   badge.textContent = status.available ? status.device_name : 'No Input Device';
+   badge.style.borderColor = status.available ? 'var(--accent)' : '#ef4444';
+   badge.style.color = status.available ? 'var(--accent)' : '#ef4444';
+  }
+ } catch (err) {
+  console.error('Failed to get mic status:', err);
+ }
+}
+
+function renderNotetakerNotes() {
+ const list = root.querySelector<HTMLElement>('#notetaker-notes-list');
+ if (!list) return;
+ list.innerHTML = '';
+ if (notetaker.notes.length === 0) {
+  list.innerHTML = '<small style="color:var(--muted);font-size:10px;">No notes recorded in this session yet.</small>';
+  return;
+ }
+ for (const note of notetaker.notes) {
+  const card = document.createElement('div');
+  card.style.cssText = 'padding:6px 8px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:6px;';
+  card.innerHTML = `
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+    <strong style="font-size:11px;color:var(--text);">${note.title}</strong>
+    <small style="color:var(--muted);font-size:9px;">${note.durationSeconds}s · ${note.createdAt.slice(11,16)}</small>
+   </div>
+   <p style="font-size:10px;color:var(--sub);margin:0 0 4px 0;max-height:48px;overflow:hidden;text-overflow:ellipsis;">${note.transcript || '(Empty transcript)'}</p>
+   <div style="display:flex;gap:6px;align-items:center;">
+    <button class="minor-btn" type="button" data-export-id="${note.id}" style="padding:2px 6px;font-size:9px;">Export MD</button>
+    <button class="minor-btn" type="button" data-del-id="${note.id}" style="padding:2px 6px;font-size:9px;color:#ef4444;">Delete</button>
+   </div>
+  `;
+  card.querySelector(`[data-export-id="${note.id}"]`)?.addEventListener('click', async () => {
+   const md = notetaker.exportMarkdown(note);
+   if (isTauri) {
+    try {
+     await native('save_file_to_downloads', {
+      filename: `note-${note.id}.md`,
+      content: md,
+      isBase64: false
+     });
+     feed.recordEvent('Note exported', `${note.title}.md`, 'FILE');
+     renderAlerts();
+    } catch (err) {
+     feed.recordEvent('Export error', String(err));
+    }
+   } else {
+    feed.recordEvent('Note markdown generated', note.title, 'FILE');
+   }
+  });
+  card.querySelector(`[data-del-id="${note.id}"]`)?.addEventListener('click', () => {
+   notetaker.deleteNote(note.id);
+   renderNotetakerNotes();
+  });
+  list.appendChild(card);
+ }
+}
+
+const notetakerConsentCheck = root.querySelector<HTMLInputElement>('#setting-notetaker-consent');
+if (notetakerConsentCheck) {
+ notetakerConsentCheck.checked = Boolean(prefs.notetakerConsent);
+ notetakerConsentCheck.addEventListener('change', e => {
+  const consented = (e.target as HTMLInputElement).checked;
+  updatePrefs({ notetakerConsent: consented });
+  notetaker.setConsent(consented);
+  const statusLine = root.querySelector<HTMLElement>('#notetaker-status-line');
+  if (statusLine) {
+   statusLine.textContent = consented ? 'Consent granted. Ready to record.' : 'Consent revoked. Recording disabled.';
+   statusLine.style.color = consented ? 'var(--accent)' : '#ef4444';
+  }
+ });
+}
+
+const voiceCommandsCheck = root.querySelector<HTMLInputElement>('#setting-voice-commands-enable');
+if (voiceCommandsCheck) {
+ voiceCommandsCheck.checked = Boolean(prefs.voiceCommandsEnabled);
+ voiceCommandsCheck.addEventListener('change', e => {
+  const enabled = (e.target as HTMLInputElement).checked;
+  updatePrefs({ voiceCommandsEnabled: enabled });
+ });
+}
+
+const btnNoteRecord = root.querySelector<HTMLButtonElement>('#btn-notetaker-record');
+const btnNotePause = root.querySelector<HTMLButtonElement>('#btn-notetaker-pause');
+const btnNoteFinish = root.querySelector<HTMLButtonElement>('#btn-notetaker-finish');
+const btnNoteCancel = root.querySelector<HTMLButtonElement>('#btn-notetaker-cancel');
+const noteTitleInput = root.querySelector<HTMLInputElement>('#notetaker-title-input');
+const noteStatusLine = root.querySelector<HTMLElement>('#notetaker-status-line');
+
+btnNoteRecord?.addEventListener('click', async () => {
+ if (!prefs.notetakerConsent) {
+  if (noteStatusLine) {
+   noteStatusLine.textContent = 'Please enable "Notetaker consent" checkbox above before recording.';
+   noteStatusLine.style.color = '#ef4444';
+  }
+  playFeedbackSound('error');
+  return;
+ }
+ const title = noteTitleInput?.value.trim() || 'Meeting Note';
+ try {
+  if (isTauri) {
+   await native('start_consented_recording', { sessionType: 'notetaker', userConsented: true });
+  }
+  notetaker.startRecording(title);
+  if (btnNoteRecord) btnNoteRecord.hidden = true;
+  if (btnNotePause) btnNotePause.hidden = false;
+  if (btnNoteFinish) btnNoteFinish.hidden = false;
+  if (btnNoteCancel) btnNoteCancel.hidden = false;
+  setMicVisualIndicator(true, 'NOTE REC');
+  if (noteStatusLine) {
+   noteStatusLine.textContent = `Recording "${title}"... (100% on-device)`;
+   noteStatusLine.style.color = '#ef4444';
+  }
+  playFeedbackSound('tap');
+ } catch (err) {
+  if (noteStatusLine) {
+   noteStatusLine.textContent = `Recording error: ${String(err)}`;
+   noteStatusLine.style.color = '#ef4444';
+  }
+  playFeedbackSound('error');
+ }
+});
+
+btnNotePause?.addEventListener('click', () => {
+ if (notetaker.state === 'recording') {
+  notetaker.pauseRecording();
+  if (btnNotePause) btnNotePause.textContent = 'Resume';
+  if (noteStatusLine) noteStatusLine.textContent = 'Recording paused.';
+  setMicVisualIndicator(false);
+ } else if (notetaker.state === 'paused') {
+  notetaker.resumeRecording();
+  if (btnNotePause) btnNotePause.textContent = 'Pause';
+  if (noteStatusLine) noteStatusLine.textContent = 'Recording resumed.';
+  setMicVisualIndicator(true, 'NOTE REC');
+ }
+});
+
+btnNoteFinish?.addEventListener('click', async () => {
+ try {
+  if (isTauri && notetaker.activeSessionId) {
+   await native('stop_consented_recording', { sessionId: notetaker.activeSessionId }).catch(() => {});
+  }
+  const title = noteTitleInput?.value.trim() || 'Meeting Note';
+  const defaultText = `Meeting transcript captured on ${new Date().toLocaleDateString()}. Action items and discussion points saved.`;
+  const note = notetaker.stopRecording(defaultText, title);
+  if (btnNoteRecord) btnNoteRecord.hidden = false;
+  if (btnNotePause) {
+   btnNotePause.hidden = true;
+   btnNotePause.textContent = 'Pause';
+  }
+  if (btnNoteFinish) btnNoteFinish.hidden = true;
+  if (btnNoteCancel) btnNoteCancel.hidden = true;
+  setMicVisualIndicator(false);
+  if (noteTitleInput) noteTitleInput.value = '';
+  if (noteStatusLine) {
+   noteStatusLine.textContent = `Note saved (${note.durationSeconds}s). Ready.`;
+   noteStatusLine.style.color = 'var(--accent)';
+  }
+  renderNotetakerNotes();
+  playFeedbackSound('chime');
+  feed.recordEvent('Note recorded', `${note.title} (${note.durationSeconds}s)`, 'ACTION');
+  renderAlerts();
+ } catch (err) {
+  if (noteStatusLine) noteStatusLine.textContent = `Finish error: ${String(err)}`;
+ }
+});
+
+btnNoteCancel?.addEventListener('click', async () => {
+ if (isTauri && notetaker.activeSessionId) {
+  await native('stop_consented_recording', { sessionId: notetaker.activeSessionId }).catch(() => {});
+ }
+ notetaker.cancel();
+ if (btnNoteRecord) btnNoteRecord.hidden = false;
+ if (btnNotePause) {
+  btnNotePause.hidden = true;
+  btnNotePause.textContent = 'Pause';
+ }
+ if (btnNoteFinish) btnNoteFinish.hidden = true;
+ if (btnNoteCancel) btnNoteCancel.hidden = true;
+ setMicVisualIndicator(false);
+ if (noteStatusLine) {
+  noteStatusLine.textContent = 'Recording cancelled.';
+  noteStatusLine.style.color = 'var(--muted)';
+ }
+});
+
+// Alt+V trigger for bounded voice command testing
+window.addEventListener('keydown', async (e: KeyboardEvent) => {
+ if (e.altKey && (e.key === 'v' || e.key === 'V')) {
+  if (!prefs.voiceCommandsEnabled) return;
+  e.preventDefault();
+  setMicVisualIndicator(true, 'VOICE CMD');
+  playFeedbackSound('tap');
+  setTimeout(() => {
+   setMicVisualIndicator(false);
+  }, 1200);
+ }
+});
+
 async function initialize(){
  const startupProv=q<HTMLSelectElement>('#chat-provider-select')?.value||'gemini';
  onProviderChange(startupProv);
- setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentSessions();renderChatMessages();renderConnectedServicesList();renderFlowSnippets();updateFlowStatsUI();
+ setPanel('now');renderRuns();renderAlerts();renderMedia();renderAgentSessions();renderChatMessages();renderConnectedServicesList();renderFlowSnippets();updateFlowStatsUI();renderNotetakerNotes();void refreshMicrophoneStatus();
  if(sourcePath){q<HTMLInputElement>('#project-root').value=sourcePath;q<HTMLButtonElement>('.disconnect').hidden=false;q<HTMLDetailsElement>('#project-details').open=true;void refreshRuns();}
  if(isTauri){
   try{

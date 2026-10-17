@@ -18,7 +18,9 @@
  *   preferredMedia: string,
  *   flowEnabled: boolean,
  *   flowPushToTalk: boolean,
- *   flowFilterFillers: boolean
+ *   flowFilterFillers: boolean,
+ *   notetakerConsent: boolean,
+ *   voiceCommandsEnabled: boolean
  * }} IslandSettings */
 
 /** @type {Readonly<IslandSettings>} */
@@ -42,7 +44,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   preferredMedia: 'auto',
   flowEnabled: false,
   flowPushToTalk: true,
-  flowFilterFillers: true
+  flowFilterFillers: true,
+  notetakerConsent: false,
+  voiceCommandsEnabled: false
 });
 
 export const STORAGE_KEY = 'xyeena-island-preferences-v1';
@@ -73,5 +77,7 @@ export function sanitizeSettings(value) {
     flowEnabled: typeof obj.flowEnabled === 'boolean' ? obj.flowEnabled : DEFAULT_SETTINGS.flowEnabled,
     flowPushToTalk: typeof obj.flowPushToTalk === 'boolean' ? obj.flowPushToTalk : DEFAULT_SETTINGS.flowPushToTalk,
     flowFilterFillers: typeof obj.flowFilterFillers === 'boolean' ? obj.flowFilterFillers : DEFAULT_SETTINGS.flowFilterFillers,
+    notetakerConsent: typeof obj.notetakerConsent === 'boolean' ? obj.notetakerConsent : DEFAULT_SETTINGS.notetakerConsent,
+    voiceCommandsEnabled: typeof obj.voiceCommandsEnabled === 'boolean' ? obj.voiceCommandsEnabled : DEFAULT_SETTINGS.voiceCommandsEnabled,
   };
 }
