@@ -2,7 +2,7 @@
 
 **Product:** Xyeena Notch / Xyeena Island
 **Version:** 1.0.0-alpha.1 (Windows Parity Prerelease)
-**Status:** Self-audited with 100% automated test coverage across Rust native core and TypeScript frontend.
+**Status:** Hardened cryptographic controls (OS CSPRNG fail-closed, RFC 4231 HMAC-SHA256, constant-time comparisons, replay protection) with active CI verification. Outstanding hardware and transport acceptance items tracked transparently.
 
 ---
 
@@ -31,7 +31,7 @@ Xyeena Notch runs locally on Windows as a Tauri 2 desktop application hosting a 
 │  - Loopback-only routing for local models     │
 │  - 3xx Redirect rejection                     │
 │  - Bounded memory buffers (64 MiB total cap)  │
-│  - Consented microphone capture only          │
+│  - Consented microphone session management    │
 │  - Windows Win32 GSMTC & Core Audio APIs      │
 └───────────────────────────────────────────────┘
 ```
@@ -45,7 +45,7 @@ Xyeena Notch runs locally on Windows as a Tauri 2 desktop application hosting a 
 - **Framing & Size Ceilings:** Messages are framed using length-prefixed headers with strict 1 MiB maximum frame size and 100-continue header filtering to prevent memory exhaustion.
 
 ### B. Authoritative Native Approval Registry (`agent_ipc::approval`)
-- **Strict Single-Use Nonces:** Every interactive approval request generates a cryptographically random 32-character hex token nonce.
+- **Strict Single-Use Nonces:** Every interactive approval request generates a cryptographically random 64-character hex token nonce (256-bit entropy) via OS-backed CSPRNG (`BCryptGenRandom`). Generation strictly fails-closed if secure randomness is unavailable or entropy is all-zero.
 - **Bounded Expiry (TTL):** Pending approvals expire automatically after 3 minutes (180,000 ms). Expired requests fail-closed without granting execution permission.
 - **Action Fingerprint Integrity:** Approvals are cryptographically bound to the SHA-256 hash of the exact tool name and parameters. Tampered parameters invalidate the token.
 - **Zero Always-Allow Policy:** The application strictly enforces `Allow Once`, `Deny`, and structured question responses. `Always Allow` is permanently disabled in protocol rules to prevent persistent privilege escalation.
@@ -67,14 +67,16 @@ All AI completions are proxied through a non-blocking native curl runner in Rust
 - **Redirects Prohibited:** Any HTTP 3xx redirect response is treated as an immediate protocol violation and rejected (`Redirects are forbidden for native AI transport`).
 - **Header Isolation:** Cloud provider headers are isolated per provider (e.g. `x-goog-api-key` is only permitted for Gemini; `x-api-key` and `anthropic-version` only for Anthropic; `Authorization: Bearer` only for OpenAI/OpenRouter).
 
-### E. Consented Microphone Privacy & Zero Background Capture
+### E. Consented Microphone Privacy & Session Demarcation
 - **Explicit Boolean Consent Gate:** Recording endpoints (`start_consented_recording`) reject invocation unless `userConsented: true` is explicitly provided.
-- **Prominent Visual Indicators:** Red recording badges (`#compact-mic-indicator`, `#header-mic-indicator`) remain active throughout live capture, preventing covert background listening.
+- **Differentiated Session Reporting:** Low-level WASAPI hardware audio capture is pending; the application strictly reports hardware capture unavailable (`available: false`, `audio_backend_ready: false`) while tracking UI session controller state separately, never falsely claiming active live microphone streaming.
 - **Bounded Session Memory:** Saved notes are retained in session memory with a 20-entry maximum boundary.
 
-### F. Android Companion Local Cryptographic Pairing
-- **Zero Cloud Relay:** Mobile companion pairing operates exclusively over the local network via 6-digit numeric PIN, 32-byte secret nonce, and QR payload schema (`xyeena-companion-v1`).
-- **Cryptographic Signatures:** Mobile decisions require valid HMAC/FNV signatures computed with the shared secret. Tampered decisions are rejected.
+### F. Android Companion Cryptographic Authentication & Fail-Closed Execution
+- **Zero Cloud Relay:** Mobile companion pairing operates exclusively over the local network via unbiased CSPRNG 6-digit numeric PIN, 32-byte secret nonce (64 hex characters), and QR payload schema (`xyeena-companion-v1`).
+- **RFC 4231 HMAC-SHA256 Signatures:** Mobile approval payloads are bound to device identity, request ID, action fingerprint, decision, expiry, and unique nonce/counter, verified with zero-dependency HMAC-SHA256 and constant-time comparisons (`constant_time_eq`).
+- **Replay & Cross-Device Protection:** Replay attacks (reused nonces) and cross-device approval attempts are strictly rejected.
+- **Execution Disabled Pending Acceptance:** Actual mobile approval execution remains disabled (`execute_mobile_approval` returns an error) until end-to-end transport and physical Android client APK pass verified acceptance.
 - **Immediate Revocation:** The revocation control wipes paired credentials and resets session state instantly.
 
 ### G. Clipboard Privacy & Memory Bounds

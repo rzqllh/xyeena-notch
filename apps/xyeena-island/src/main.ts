@@ -2857,9 +2857,15 @@ async function refreshFlowEngineStatus() {
   };
   const badge = q<HTMLElement>('#flow-engine-badge');
   if (badge) {
-   badge.textContent = status.available ? status.engine_name : 'Unavailable';
-   badge.style.borderColor = status.available ? 'var(--accent)' : '#ef4444';
-   badge.style.color = status.available ? 'var(--accent)' : '#ef4444';
+   if (status.available) {
+    badge.textContent = status.engine_name;
+    badge.style.borderColor = 'var(--accent)';
+    badge.style.color = 'var(--accent)';
+   } else {
+    badge.textContent = 'OS Win+H Fallback (In-Process Engine Pending)';
+    badge.style.borderColor = 'rgba(255,255,255,0.2)';
+    badge.style.color = 'var(--muted)';
+   }
   }
   const hk = q<HTMLElement>('#flow-hotkey-badge');
   if (hk) hk.textContent = status.hotkey || 'Alt+D';
@@ -2980,13 +2986,21 @@ async function refreshMicrophoneStatus() {
    device_name: string;
    consented: boolean;
    is_recording: boolean;
+   audio_backend_ready: boolean;
+   session_controller_active: boolean;
    session_type: string | null;
   };
   const badge = root.querySelector<HTMLElement>('#voice-endpoint-badge');
   if (badge) {
-   badge.textContent = status.available ? status.device_name : 'No Input Device';
-   badge.style.borderColor = status.available ? 'var(--accent)' : '#ef4444';
-   badge.style.color = status.available ? 'var(--accent)' : '#ef4444';
+   if (status.audio_backend_ready && status.available) {
+    badge.textContent = status.device_name;
+    badge.style.borderColor = 'var(--accent)';
+    badge.style.color = 'var(--accent)';
+   } else {
+    badge.textContent = 'WASAPI Capture Pending (Session Only)';
+    badge.style.borderColor = 'rgba(255,255,255,0.2)';
+    badge.style.color = 'var(--muted)';
+   }
   }
  } catch (err) {
   console.error('Failed to get mic status:', err);
@@ -3091,10 +3105,10 @@ btnNoteRecord?.addEventListener('click', async () => {
   if (btnNotePause) btnNotePause.hidden = false;
   if (btnNoteFinish) btnNoteFinish.hidden = false;
   if (btnNoteCancel) btnNoteCancel.hidden = false;
-  setMicVisualIndicator(true, 'NOTE REC');
+  setMicVisualIndicator(true, 'NOTE SESSION');
   if (noteStatusLine) {
-   noteStatusLine.textContent = `Recording "${title}"... (100% on-device)`;
-   noteStatusLine.style.color = '#ef4444';
+   noteStatusLine.textContent = `Note session "${title}" active (Session timer running; audio capture pending WASAPI backend)`;
+   noteStatusLine.style.color = 'var(--accent)';
   }
   playFeedbackSound('tap');
  } catch (err) {

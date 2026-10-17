@@ -44,13 +44,14 @@ Xyeena Notch docks neatly to the top edge of your Windows display as an adaptive
 - **Automated Provider Hook Installer:** Automatic discovery, atomic `.bak` backup, and idempotent install/uninstall for Antigravity, Claude Code, Codex, and Gemini CLI.
 
 ### 5. Flow Offline Dictation & Consented Notetaker
-- **100% On-Device Dictation:** Offline speech processing with push-to-talk (`Alt+D`), verbal filler word filter, dictionary snippets expansion, and local statistics.
-- **Consented Meeting Notetaker:** Explicit user consent gate, prominent red visual recording badges in compact and expanded views, session-memory note storage (max 20 entries), and markdown export.
-- **Voice Commands for Xyn:** Hands-free control for Island modes, navigation, chat, media playback, and recap generation.
+- **Privacy-First Dictation Framework:** Push-to-talk (`Alt+D`) hotkey handling, verbal filler word filtering, dictionary snippets expansion, and local statistics. Delegates to OS Windows Voice Typing (`Win+H`); embedded in-process speech engine remains pending.
+- **Consented Meeting Notetaker:** Explicit user consent gate, visual session indicators in compact and expanded views, session-memory note storage (max 20 entries), and markdown export. Native hardware audio capture stream (WASAPI) is pending; UI strictly differentiates session controller state from live microphone hardware capture.
+- **Voice Commands for Xyn:** Hands-free command parser for Island modes, navigation, chat, media playback, and recap generation.
 
-### 6. Secure Android Companion Pairing
-- **Zero Cloud Relay:** Local network pairing via time-bounded 5-minute QR payload schema (`xyeena-companion-v1`), 6-digit numeric PIN, and 32-byte secret nonce.
-- **Mutual Authentication:** Mobile approval decisions verified via cryptographic HMAC/FNV signatures.
+### 6. Android Companion Local Pairing & Verification
+- **Zero Cloud Relay:** Local network pairing protocol via time-bounded 5-minute QR payload schema (`xyeena-companion-v1`), unbiased CSPRNG-backed 6-digit numeric PIN, and 32-byte secret nonce (64 hex characters).
+- **Cryptographic Authentication:** Mutual authentication using zero-dependency RFC 4231 HMAC-SHA256, constant-time verification, request ID binding, action fingerprint validation, and replay protection (nonce/counter tracking).
+- **Fail-Closed Execution:** Remote approval execution remains disabled until the entire authenticated mobile transport and physical Android APK pass end-to-end acceptance.
 - **Immediate Revocation:** Clear mobile credentials and revoke remote approval authority instantly from Settings.
 
 ### 7. External Integrations & Developer Productivity
@@ -147,7 +148,7 @@ xyeena-notch/
 # 1. Install locked dependencies across all monorepo workspaces
 npm ci
 
-# 2. Run the complete automated test suite (105 JS/TS tests + 10 Rust tests)
+# 2. Run the complete automated test suite (153 JS/TS tests + 98 Rust native tests)
 npm test
 
 # 3. Compile TypeScript, bundle web assets with Vite, and build playground

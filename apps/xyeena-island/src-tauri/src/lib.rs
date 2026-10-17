@@ -1248,6 +1248,8 @@ pub fn run() {
             companion::request_companion_pairing,
             companion::confirm_companion_pairing,
             companion::revoke_companion_device,
+            companion::verify_mobile_approval_decision,
+            companion::execute_mobile_approval_decision,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");

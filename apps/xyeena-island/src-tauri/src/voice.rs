@@ -13,6 +13,8 @@ pub struct MicrophoneStatus {
     pub device_name: String,
     pub consented: bool,
     pub is_recording: bool,
+    pub audio_backend_ready: bool,
+    pub session_controller_active: bool,
     pub session_type: Option<String>,
 }
 
@@ -180,22 +182,24 @@ pub fn parse_voice_command(transcript: &str) -> VoiceCommandAction {
 }
 
 /// Query local microphone capability and current recording state.
+/// Accurately reports audio capture engine availability, strictly differentiating
+/// UI session state from hardware capture state.
 #[tauri::command]
 pub fn get_microphone_status() -> Result<MicrophoneStatus, String> {
     with_manager(|mgr| {
-        let is_recording = mgr.active_session.is_some();
+        let session_controller_active = mgr.active_session.is_some();
         let session_type = mgr.active_session.as_ref().map(|s| s.session_type.clone());
 
-        #[cfg(windows)]
-        let available = true;
-        #[cfg(not(windows))]
-        let available = false;
-
+        // WASAPI / real hardware audio capture backend is pending implementation.
+        // We strictly report available = false, audio_backend_ready = false, and
+        // is_recording = false to never claim real audio capture is operational.
         Ok(MicrophoneStatus {
-            available,
-            device_name: "Windows Audio Endpoint (WASAPI Capture Pending)".into(),
+            available: false,
+            device_name: "Hardware Audio Capture Backend Pending (WASAPI)".into(),
             consented: false,
-            is_recording,
+            is_recording: false,
+            audio_backend_ready: false,
+            session_controller_active,
             session_type,
         })
     })
@@ -301,7 +305,12 @@ mod tests {
         assert!(sid.starts_with("rec_notetaker_"));
 
         let status = get_microphone_status().expect("Must get mic status");
-        assert!(status.is_recording);
+        // Hardware audio capture is not active (WASAPI capture pending)
+        assert!(!status.is_recording);
+        assert!(!status.available);
+        assert!(!status.audio_backend_ready);
+        // UI session controller state is active
+        assert!(status.session_controller_active);
         assert_eq!(status.session_type.as_deref(), Some("notetaker"));
 
         let summary = stop_consented_recording(sid.clone()).expect("Must stop session");
@@ -309,6 +318,7 @@ mod tests {
         assert_eq!(summary.session_type, "notetaker");
 
         let after_status = get_microphone_status().expect("Must get mic status");
+        assert!(!after_status.session_controller_active);
         assert!(!after_status.is_recording);
         assert_eq!(after_status.session_type, None);
     }

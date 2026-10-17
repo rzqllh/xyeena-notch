@@ -72,17 +72,14 @@ pub fn cleanup_dictated_text(text: &str, filter_fillers: bool) -> String {
 }
 
 /// Check the status of the local offline dictation engine.
+/// Accurately reports engine availability without inferring readiness from platform.
 #[tauri::command]
 pub fn get_flow_engine_status() -> Result<FlowEngineStatus, String> {
-    // Windows 10/11 includes built-in offline Speech Recognition and Windows Voice Typing (Win+H)
-    #[cfg(windows)]
-    let available = true;
-    #[cfg(not(windows))]
-    let available = false;
-
+    // In-process speech recognition engine is pending implementation.
+    // OS Windows Voice Typing (Win+H) remains available as external OS fallback.
     Ok(FlowEngineStatus {
-        available,
-        engine_name: "Windows Voice Typing (Win+H) / Local Snippets".into(),
+        available: false,
+        engine_name: "In-Process Speech Dictation Pending (OS Win+H Fallback)".into(),
         local_only: true,
         hotkey: "Alt+D".into(),
         hotkey_registered: false,
@@ -113,6 +110,10 @@ mod tests {
     fn test_flow_engine_status_is_local_only() {
         let status = get_flow_engine_status().expect("Must return flow status");
         assert!(status.local_only);
+        assert!(
+            !status.available,
+            "In-process Flow engine must not be claimed available until implemented"
+        );
         assert!(!status.engine_name.is_empty());
     }
 }

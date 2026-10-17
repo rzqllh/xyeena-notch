@@ -133,6 +133,7 @@ pub enum ApprovalError {
     InvalidToken,
     ProviderNotInteractive,
     InvalidDecision,
+    RngFailure,
 }
 
 impl std::fmt::Display for ApprovalError {
@@ -151,6 +152,12 @@ impl std::fmt::Display for ApprovalError {
                 write!(f, "Provider does not support interactive approval reply")
             }
             Self::InvalidDecision => write!(f, "Invalid approval decision specified"),
+            Self::RngFailure => {
+                write!(
+                    f,
+                    "Cryptographically secure random number generation failed"
+                )
+            }
         }
     }
 }
@@ -224,7 +231,7 @@ impl ApprovalRegistry {
             params.question.as_deref(),
         );
 
-        let nonce = generate_nonce(now_ms, &params.request_id, &params.session_id);
+        let nonce = generate_nonce(now_ms, &params.request_id, &params.session_id)?;
         let timeout = params.timeout_ms.unwrap_or(DEFAULT_APPROVAL_TIMEOUT_MS);
         let expires_at_ms = now_ms.saturating_add(timeout);
 
@@ -455,9 +462,28 @@ pub fn sha256_bytes(input: &[u8]) -> [u8; 32] {
 }
 
 /// Generate a cryptographically secure 256-bit nonce token bound to the request.
-fn generate_nonce(now_ms: u64, request_id: &str, session_id: &str) -> String {
+pub fn generate_nonce(
+    now_ms: u64,
+    request_id: &str,
+    session_id: &str,
+) -> Result<String, ApprovalError> {
+    generate_nonce_with_rng(now_ms, request_id, session_id, csprng_fill)
+}
+
+/// Generic nonce generation with dependency-injected RNG for deterministic fail-closed testing.
+pub fn generate_nonce_with_rng<F>(
+    now_ms: u64,
+    request_id: &str,
+    session_id: &str,
+    rng: F,
+) -> Result<String, ApprovalError>
+where
+    F: FnOnce(&mut [u8]) -> bool,
+{
     let mut rand_bytes = [0u8; 32];
-    let _ = csprng_fill(&mut rand_bytes);
+    if !rng(&mut rand_bytes) || rand_bytes.iter().all(|&b| b == 0) {
+        return Err(ApprovalError::RngFailure);
+    }
 
     let mut data = Vec::with_capacity(32 + 8 + request_id.len() + session_id.len());
     data.extend_from_slice(&rand_bytes);
@@ -465,7 +491,8 @@ fn generate_nonce(now_ms: u64, request_id: &str, session_id: &str) -> String {
     data.extend_from_slice(request_id.as_bytes());
     data.extend_from_slice(session_id.as_bytes());
 
-    sha256_hex(&data)[..32].to_string()
+    // 32 random bytes hashed via SHA-256 output as 64 lowercase hexadecimal characters (256-bit entropy).
+    Ok(sha256_hex(&data))
 }
 
 /// Pure Rust self-contained SHA-256 implementation (FIPS 180-4 compliant).
@@ -1000,5 +1027,33 @@ mod tests {
         let resolved = res.unwrap();
         assert_eq!(resolved.status, ApprovalStatus::Denied);
         assert_eq!(resolved.decision_timestamp_ms, Some(now + 300));
+    }
+
+    #[test]
+    fn test_generate_nonce_fail_closed_on_rng_failure() {
+        let err = generate_nonce_with_rng(1000, "req-1", "sess-1", |_buf| false);
+        assert_eq!(err, Err(ApprovalError::RngFailure));
+    }
+
+    #[test]
+    fn test_generate_nonce_fail_closed_on_zero_entropy() {
+        let err = generate_nonce_with_rng(1000, "req-1", "sess-1", |buf| {
+            buf.fill(0);
+            true
+        });
+        assert_eq!(err, Err(ApprovalError::RngFailure));
+    }
+
+    #[test]
+    fn test_generate_nonce_distinct_and_correct_length() {
+        let n1 = generate_nonce(1000, "req-1", "sess-1").expect("Must generate nonce 1");
+        let n2 = generate_nonce(1000, "req-1", "sess-1").expect("Must generate nonce 2");
+        // 32 random bytes hashed via SHA-256 = 64 hexadecimal characters
+        assert_eq!(n1.len(), 64);
+        assert_eq!(n2.len(), 64);
+        assert_ne!(
+            n1, n2,
+            "Nonces generated with CSPRNG entropy must be distinct"
+        );
     }
 }
