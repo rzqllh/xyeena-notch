@@ -273,12 +273,7 @@ pub fn known_providers() -> Vec<ProviderDef> {
             } else {
                 DetectionStrategy::Unavailable
             },
-            supported_events: vec![
-                "SessionStart".into(),
-                "PreInvocation".into(),
-                "PostToolUse".into(),
-                "Stop".into(),
-            ],
+            supported_events: vec!["PreInvocation".into(), "PostToolUse".into(), "Stop".into()],
         },
         ProviderDef {
             id: "claude-code".into(),
@@ -387,6 +382,41 @@ pub fn detect_provider(def: &ProviderDef) -> DetectionResult {
 // Core logic — AGY hooks.json format
 // ---------------------------------------------------------------------------
 
+#[cfg(windows)]
+fn sanitize_cmd_path(path_str: &str) -> String {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::GetShortPathNameW;
+
+    if !path_str.contains(' ') {
+        return path_str.to_string();
+    }
+    let p = Path::new(path_str);
+    let wide: Vec<u16> = p
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut buffer = [0u16; 1024];
+    unsafe {
+        let len = GetShortPathNameW(PCWSTR::from_raw(wide.as_ptr()), Some(&mut buffer));
+        if len > 0 && (len as usize) < buffer.len() {
+            let short = OsString::from_wide(&buffer[..len as usize]);
+            let s = short.to_string_lossy().to_string();
+            if !s.contains(' ') {
+                return s;
+            }
+        }
+    }
+    path_str.to_string()
+}
+
+#[cfg(not(windows))]
+fn sanitize_cmd_path(path_str: &str) -> String {
+    path_str.to_string()
+}
+
 /// Build the Xyeena Notch hook group for AGY hooks.json format.
 ///
 /// The relay binary path must be absolute. Returns Err if the path is too long
@@ -396,18 +426,24 @@ pub fn build_agy_notch_group(relay_exe_path: &str) -> Result<Value, ProviderErro
         return Err(ProviderError::PathTooLong);
     }
 
+    let sanitized = sanitize_cmd_path(relay_exe_path);
+    let cmd_prefix = if sanitized.contains(' ') {
+        format!("\"{}\"", sanitized)
+    } else {
+        sanitized
+    };
+
     // Escape backslashes for JSON — serde_json handles this automatically
     // when constructing via json! macro; we just build the struct.
     let make_entry = |event: &str, timeout: u32| -> Value {
         serde_json::json!({
             "type": "command",
-            "command": format!("\"{}\" {}", relay_exe_path, event),
+            "command": format!("{} {}", cmd_prefix, event),
             "timeout": timeout
         })
     };
 
     let group = serde_json::json!({
-        "SessionStart": [make_entry("SessionStart", 3)],
         "PreInvocation": [make_entry("PreInvocation", 3)],
         "PostToolUse": [
             {
@@ -761,7 +797,7 @@ mod tests {
     fn test_build_agy_group_structure() {
         let group = build_agy_notch_group("C:\\path\\to\\relay.exe").unwrap();
         let obj = group.as_object().unwrap();
-        assert!(obj.contains_key("SessionStart"));
+        assert!(!obj.contains_key("SessionStart"));
         assert!(obj.contains_key("PreInvocation"));
         assert!(obj.contains_key("PostToolUse"));
         assert!(obj.contains_key("Stop"));
@@ -770,10 +806,10 @@ mod tests {
     #[test]
     fn test_build_agy_group_command_prefix() {
         let group = build_agy_notch_group("C:\\relay.exe").unwrap();
-        let session_entries = group["SessionStart"].as_array().unwrap();
+        let session_entries = group["PreInvocation"].as_array().unwrap();
         let cmd = session_entries[0]["command"].as_str().unwrap();
         assert!(cmd.contains("C:\\relay.exe"));
-        assert!(cmd.contains("SessionStart"));
+        assert!(cmd.contains("PreInvocation"));
     }
 
     #[test]

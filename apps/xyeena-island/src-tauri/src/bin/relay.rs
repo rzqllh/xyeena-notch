@@ -84,31 +84,36 @@ fn main() {
         payload = serde_json::json!({ "data": payload });
     }
 
-    let obj = payload.as_object_mut().unwrap();
+    {
+        let obj = payload.as_object_mut().unwrap();
 
-    // Inject hints if missing
-    if !obj.contains_key("event") && !obj.contains_key("event_type") && !obj.contains_key("type") {
-        if let Some(ref ev) = event_type_hint {
-            obj.insert("event".into(), serde_json::Value::String(ev.clone()));
+        // Inject hints if missing
+        if !obj.contains_key("event")
+            && !obj.contains_key("event_type")
+            && !obj.contains_key("type")
+        {
+            if let Some(ref ev) = event_type_hint {
+                obj.insert("event".into(), serde_json::Value::String(ev.clone()));
+            }
         }
-    }
-    if !obj.contains_key("provider") && !obj.contains_key("agent") {
-        if let Some(ref p) = provider_hint {
-            obj.insert("provider".into(), serde_json::Value::String(p.clone()));
+        if !obj.contains_key("provider") && !obj.contains_key("agent") {
+            if let Some(ref p) = provider_hint {
+                obj.insert("provider".into(), serde_json::Value::String(p.clone()));
+            }
         }
-    }
-    if !obj.contains_key("session_id") && !obj.contains_key("sessionId") {
-        if let Some(ref s) = session_id_hint {
-            obj.insert("session_id".into(), serde_json::Value::String(s.clone()));
+        if !obj.contains_key("session_id") && !obj.contains_key("sessionId") {
+            if let Some(ref s) = session_id_hint {
+                obj.insert("session_id".into(), serde_json::Value::String(s.clone()));
+            }
         }
-    }
 
-    // Include timestamp if absent
-    if !obj.contains_key("timestamp") && !obj.contains_key("timestamp_ms") {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        if let Ok(duration) = SystemTime::now().duration_since(UNIX_EPOCH) {
-            let millis = duration.as_millis() as u64;
-            obj.insert("timestamp".into(), serde_json::Value::Number(millis.into()));
+        // Include timestamp if absent
+        if !obj.contains_key("timestamp") && !obj.contains_key("timestamp_ms") {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            if let Ok(duration) = SystemTime::now().duration_since(UNIX_EPOCH) {
+                let millis = duration.as_millis() as u64;
+                obj.insert("timestamp".into(), serde_json::Value::Number(millis.into()));
+            }
         }
     }
 
@@ -244,7 +249,7 @@ fn read_stdin_bounded(has_event_hint: bool) -> Vec<u8> {
                     if waited_ms >= 30 {
                         break;
                     }
-                } else if has_event_hint && waited_ms >= 20 {
+                } else if has_event_hint && waited_ms >= 100 {
                     return Vec::new();
                 } else {
                     std::thread::sleep(Duration::from_millis(5));

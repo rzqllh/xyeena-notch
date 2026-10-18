@@ -45,7 +45,7 @@ Xyeena Notch runs locally on Windows as a Tauri 2 desktop application hosting a 
 - **Framing & Size Ceilings:** Messages are framed using length-prefixed headers with strict 1 MiB maximum frame size and 100-continue header filtering to prevent memory exhaustion.
 
 ### B. Authoritative Native Approval Registry (`agent_ipc::approval`)
-- **Strict Single-Use Nonces:** Every interactive approval request generates a cryptographically random 64-character hex token nonce (256-bit entropy) via OS-backed CSPRNG (`BCryptGenRandom`). Generation strictly fails-closed if secure randomness is unavailable or entropy is all-zero.
+- **Strict Single-Use Nonces:** Every interactive approval request generates a cryptographically random 64-character hex token nonce (256-bit entropy) via OS-backed CSPRNG (`RtlGenRandom` / `SystemFunction036` on Windows, `/dev/urandom` fallback). Generation strictly fails-closed if secure randomness is unavailable or entropy is all-zero.
 - **Bounded Expiry (TTL):** Pending approvals expire automatically after 3 minutes (180,000 ms). Expired requests fail-closed without granting execution permission.
 - **Action Fingerprint Integrity:** Approvals are cryptographically bound to the SHA-256 hash of the exact tool name and parameters. Tampered parameters invalidate the token.
 - **Zero Always-Allow Policy:** The application strictly enforces `Allow Once`, `Deny`, and structured question responses. `Always Allow` is permanently disabled in protocol rules to prevent persistent privilege escalation.
