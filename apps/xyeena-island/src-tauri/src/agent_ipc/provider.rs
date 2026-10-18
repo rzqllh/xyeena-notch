@@ -208,6 +208,8 @@ pub enum ProviderError {
     PathTooLong,
     /// The hook group name collides with a protected group.
     ProtectedGroupConflict(String),
+    /// Command cannot be executed robustly (e.g. spaces without 8.3 and no workspace shim).
+    UnexecutableCommand { path: String, detail: String },
 }
 
 impl fmt::Display for ProviderError {
@@ -232,6 +234,9 @@ impl fmt::Display for ProviderError {
                     f,
                     "hook group '{name}' is protected and must not be overwritten"
                 )
+            }
+            Self::UnexecutableCommand { path, detail } => {
+                write!(f, "command for '{path}' cannot execute robustly: {detail}")
             }
         }
     }
@@ -417,24 +422,114 @@ fn sanitize_cmd_path(path_str: &str) -> String {
     path_str.to_string()
 }
 
-/// Build the Xyeena Notch hook group for AGY hooks.json format.
+/// Compute the relative path from `base` to `target`.
+pub fn diff_paths(target: &Path, base: &Path) -> Option<PathBuf> {
+    let target_clean = target
+        .canonicalize()
+        .unwrap_or_else(|_| target.to_path_buf());
+    let base_clean = base.canonicalize().unwrap_or_else(|_| base.to_path_buf());
+
+    let target_comps: Vec<_> = target_clean.components().collect();
+    let base_comps: Vec<_> = base_clean.components().collect();
+
+    if target_comps.is_empty()
+        || base_comps.is_empty()
+        || target_comps.first() != base_comps.first()
+    {
+        return None;
+    }
+
+    let mut common = 0;
+    while common < target_comps.len()
+        && common < base_comps.len()
+        && target_comps[common] == base_comps[common]
+    {
+        common += 1;
+    }
+
+    let mut result = PathBuf::new();
+    for _ in common..base_comps.len() {
+        result.push("..");
+    }
+    for comp in &target_comps[common..] {
+        result.push(comp.as_os_str());
+    }
+    Some(result)
+}
+
+/// Resolve a robust cmd.exe-compatible command prefix for the relay executable.
 ///
-/// The relay binary path must be absolute. Returns Err if the path is too long
-/// or contains characters that would corrupt JSON string encoding.
-pub fn build_agy_notch_group(relay_exe_path: &str) -> Result<Value, ProviderError> {
+/// Invariants:
+/// - Never introduces double quotes into the command string (prevents Go os/exec \" quoting bug).
+/// - If path has no spaces: uses path as-is.
+/// - If path has spaces: tries 8.3 short path first.
+/// - If 8.3 is unavailable and config_path is provided:
+///   1. Tries relative path from config_dir (if space-free).
+///   2. If relative path still has spaces or is outside workspace, writes a local `.cmd` shim in config_dir.
+/// - If unable to produce an executable command without quotes, fails closed with `UnexecutableCommand`.
+pub fn resolve_agy_command_prefix(
+    relay_exe_path: &str,
+    config_path: Option<&Path>,
+    write_shim: bool,
+) -> Result<String, ProviderError> {
     if relay_exe_path.len() > MAX_PATH_LEN {
         return Err(ProviderError::PathTooLong);
     }
 
-    let sanitized = sanitize_cmd_path(relay_exe_path);
-    let cmd_prefix = if sanitized.contains(' ') {
-        format!("\"{}\"", sanitized)
-    } else {
-        sanitized
-    };
+    // Tier 1: Path has no spaces -> clean direct invocation
+    if !relay_exe_path.contains(' ') {
+        return Ok(relay_exe_path.to_string());
+    }
 
-    // Escape backslashes for JSON — serde_json handles this automatically
-    // when constructing via json! macro; we just build the struct.
+    // Tier 2: 8.3 short path (works globally if enabled on volume)
+    let sanitized = sanitize_cmd_path(relay_exe_path);
+    if !sanitized.contains(' ') {
+        return Ok(sanitized);
+    }
+
+    // Tier 3: Workspace-relative path or workspace shim
+    if let Some(cfg) = config_path {
+        let config_dir = cfg.parent().unwrap_or_else(|| Path::new("."));
+
+        // 3a: Try relative path from config_dir
+        if let Some(rel) = diff_paths(Path::new(relay_exe_path), config_dir) {
+            let rel_str = rel.to_string_lossy().to_string();
+            if !rel_str.contains(' ') {
+                return Ok(rel_str);
+            }
+        }
+
+        // 3b: Workspace shim batch script in config_dir
+        let shim_name = "xyeena-agent-relay.cmd";
+        let shim_path = config_dir.join(shim_name);
+        if write_shim {
+            // Write UTF-8 batch file with @chcp 65001 >nul for Unicode support
+            let content = format!("@chcp 65001 >nul\r\n@\"{}\" %*\r\n", relay_exe_path);
+            std::fs::write(&shim_path, content.as_bytes()).map_err(|e| {
+                ProviderError::ConfigWriteError {
+                    path: shim_path.to_string_lossy().to_string(),
+                    detail: format!("failed to write relay shim: {e}"),
+                }
+            })?;
+        }
+        return Ok(shim_name.to_string());
+    }
+
+    // Tier 4: Cannot execute without quotes and no workspace directory to place shim
+    Err(ProviderError::UnexecutableCommand {
+        path: relay_exe_path.to_string(),
+        detail: "Path contains spaces and 8.3 short names are unavailable; cmd.exe cannot execute quoted paths without a workspace shim.".to_string(),
+    })
+}
+
+/// Build the Xyeena Notch hook group for AGY hooks.json format with config scoping.
+pub fn build_agy_notch_group_scoped(
+    relay_exe_path: &str,
+    config_path: Option<&Path>,
+    write_shim: bool,
+) -> Result<Value, ProviderError> {
+    let cmd_prefix = resolve_agy_command_prefix(relay_exe_path, config_path, write_shim)?;
+
     let make_entry = |event: &str, timeout: u32| -> Value {
         serde_json::json!({
             "type": "command",
@@ -455,6 +550,11 @@ pub fn build_agy_notch_group(relay_exe_path: &str) -> Result<Value, ProviderErro
     });
 
     Ok(group)
+}
+
+/// Build the Xyeena Notch hook group for AGY hooks.json format.
+pub fn build_agy_notch_group(relay_exe_path: &str) -> Result<Value, ProviderError> {
+    build_agy_notch_group_scoped(relay_exe_path, None, false)
 }
 
 /// Read an AGY hooks.json file, returning the parsed object.
@@ -487,7 +587,7 @@ pub fn preview_agy_install(
     relay_exe_path: &str,
 ) -> Result<HookInstallPreview, ProviderError> {
     let current = read_agy_hooks(config_path)?;
-    let group_to_add = build_agy_notch_group(relay_exe_path)?;
+    let group_to_add = build_agy_notch_group_scoped(relay_exe_path, Some(config_path), false)?;
     let path_str = config_path.to_string_lossy().to_string();
     let backup_path = format!("{path_str}.xyeena-notch.bak");
 
@@ -582,7 +682,7 @@ pub fn install_agy_hooks(
     };
 
     // Build new group
-    let new_group = build_agy_notch_group(relay_exe_path)?;
+    let new_group = build_agy_notch_group_scoped(relay_exe_path, Some(config_path), true)?;
 
     // Backup existing file
     let backup_written = if config_path.exists() {
@@ -697,6 +797,14 @@ pub fn uninstall_agy_hooks(config_path: &Path) -> Result<HookInstallOutcome, Pro
         path: path_str.clone(),
         detail: format!("rename failed: {e}"),
     })?;
+
+    // Clean up relay shim if present
+    if let Some(parent) = config_path.parent() {
+        let shim = parent.join("xyeena-agent-relay.cmd");
+        if shim.exists() {
+            let _ = std::fs::remove_file(shim);
+        }
+    }
 
     Ok(HookInstallOutcome {
         provider_id: "antigravity".to_string(),
@@ -1026,5 +1134,115 @@ mod tests {
         // File should be valid JSON after both complete
         let content = std::fs::read_to_string(path.as_path()).unwrap();
         let _: Value = serde_json::from_str(&content).expect("valid JSON after concurrent writes");
+    }
+
+    #[test]
+    fn test_resolve_command_prefix_clean_path() {
+        let prefix = resolve_agy_command_prefix("C:\\clean\\relay.exe", None, false).unwrap();
+        assert_eq!(prefix, "C:\\clean\\relay.exe");
+    }
+
+    #[test]
+    fn test_resolve_command_prefix_relative_workspace() {
+        let dir = tmp();
+        let ws_root = dir.path();
+        let agents_dir = ws_root.join(".agents");
+        let hooks_json = agents_dir.join("hooks.json");
+        let relay_exe = ws_root.join("bin").join("relay.exe");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+        std::fs::create_dir_all(ws_root.join("bin")).unwrap();
+        std::fs::write(&relay_exe, b"dummy").unwrap();
+
+        let prefix =
+            resolve_agy_command_prefix(&relay_exe.to_string_lossy(), Some(&hooks_json), false)
+                .unwrap();
+
+        // The relative path from .agents to bin/relay.exe is ..\bin\relay.exe
+        assert!(prefix.contains("bin") && prefix.contains("relay.exe"));
+        assert!(!prefix.contains(' '));
+        assert!(!prefix.contains('"'));
+    }
+
+    #[test]
+    fn test_resolve_command_prefix_shim_fallback() {
+        let dir = tmp();
+        let agents_dir = dir.path().join(".agents");
+        let hooks_json = agents_dir.join("hooks.json");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+
+        // Target path has spaces and is outside workspace
+        let outside_relay = "D:\\External Programs With Spaces\\Xyeena Notch\\relay.exe";
+
+        // Preview should return shim name without writing file
+        let preview_prefix =
+            resolve_agy_command_prefix(outside_relay, Some(&hooks_json), false).unwrap();
+        assert_eq!(preview_prefix, "xyeena-agent-relay.cmd");
+        assert!(!agents_dir.join("xyeena-agent-relay.cmd").exists());
+
+        // Install (write_shim=true) should create the shim file
+        let install_prefix =
+            resolve_agy_command_prefix(outside_relay, Some(&hooks_json), true).unwrap();
+        assert_eq!(install_prefix, "xyeena-agent-relay.cmd");
+        let shim_file = agents_dir.join("xyeena-agent-relay.cmd");
+        assert!(shim_file.exists());
+        let shim_content = std::fs::read_to_string(&shim_file).unwrap();
+        assert!(shim_content.contains("@chcp 65001 >nul"));
+        assert!(shim_content.contains(outside_relay));
+    }
+
+    #[test]
+    fn test_resolve_command_prefix_unicode_support() {
+        let dir = tmp();
+        let agents_dir = dir.path().join(".agents");
+        let hooks_json = agents_dir.join("hooks.json");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+
+        let unicode_relay = "C:\\Program Files\\Xyeena 測試\\relay.exe";
+        let prefix = resolve_agy_command_prefix(unicode_relay, Some(&hooks_json), true).unwrap();
+        assert_eq!(prefix, "xyeena-agent-relay.cmd");
+        let shim_content =
+            std::fs::read_to_string(agents_dir.join("xyeena-agent-relay.cmd")).unwrap();
+        assert!(shim_content.contains("測試"));
+    }
+
+    #[test]
+    fn test_install_creates_shim_and_uninstall_removes_shim() {
+        let dir = tmp();
+        let agents_dir = dir.path().join(".agents");
+        let hooks_json = agents_dir.join("hooks.json");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+
+        let outside_relay = "D:\\Program Files With Spaces\\relay.exe";
+        let install_outcome = install_agy_hooks(&hooks_json, outside_relay).unwrap();
+        assert!(install_outcome.success);
+        let shim_file = agents_dir.join("xyeena-agent-relay.cmd");
+        assert!(shim_file.exists());
+
+        let uninstall_outcome = uninstall_agy_hooks(&hooks_json).unwrap();
+        assert!(uninstall_outcome.success);
+        assert!(!shim_file.exists());
+    }
+
+    #[test]
+    fn test_unexecutable_command_error_when_no_config_dir() {
+        let space_relay = "D:\\Program Files With Spaces\\relay.exe";
+        let res = resolve_agy_command_prefix(space_relay, None, false);
+        #[cfg(windows)]
+        {
+            let sanitized = sanitize_cmd_path(space_relay);
+            if sanitized.contains(' ') {
+                assert!(matches!(
+                    res,
+                    Err(ProviderError::UnexecutableCommand { .. })
+                ));
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            assert!(matches!(
+                res,
+                Err(ProviderError::UnexecutableCommand { .. })
+            ));
+        }
     }
 }
