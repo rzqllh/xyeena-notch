@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {KNOWN_ADAPTERS, getAdapter, normalizeSessionSnapshot} from '../src/core/agent-adapters.mjs';
-import {ChatEngine, AI_PROVIDERS, renderSafeMarkdown} from '../src/core/ai-chat.mjs';
+import {ChatEngine, AI_PROVIDERS, IMAGE_PROVIDERS, generateImage, renderSafeMarkdown} from '../src/core/ai-chat.mjs';
 
 test('KNOWN_ADAPTERS contains required Coucou parity agents with verified capabilities', () => {
   const ids = KNOWN_ADAPTERS.map(a => a.id);
@@ -301,4 +301,203 @@ test('ChatEngine cancellation via AbortSignal aborts cleanly and calls cancel_na
   );
   assert.ok(cancelledReqId, 'cancel_native_ai_request should have been invoked with request ID');
 });
+
+test('ChatEngine sending "uy" delivers exactly "uy" to provider without synthetic Hello injection', async () => {
+  const engine = new ChatEngine();
+  let capturedBody = null;
+
+  const mockInvoker = async (_cmd, payload) => {
+    capturedBody = JSON.parse(payload.body);
+    return {
+      status: 200,
+      body: JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Halo! Ada yang bisa dibantu?' } }] })
+    };
+  };
+
+  engine.addUserMessage('uy');
+  const reply = await engine.requestCompletion({
+    provider: 'openai',
+    apiKey: 'sk-test-key',
+    nativeInvoker: mockInvoker
+  });
+
+  assert.equal(reply, 'Halo! Ada yang bisa dibantu?');
+  assert.equal(engine.messages.length, 2);
+  assert.equal(engine.messages[0].role, 'user');
+  assert.equal(engine.messages[0].content, 'uy');
+  assert.equal(engine.messages[1].role, 'assistant');
+  assert.equal(engine.messages[1].content, 'Halo! Ada yang bisa dibantu?');
+
+  // Verify the transport body sent to provider
+  assert.ok(capturedBody);
+  const sentMsgs = capturedBody.messages;
+  assert.equal(sentMsgs.length, 1);
+  assert.equal(sentMsgs[0].role, 'user');
+  assert.equal(sentMsgs[0].content, 'uy');
+  assert.ok(!JSON.stringify(capturedBody).includes('Hello'), 'Payload must never include synthetic Hello');
+});
+
+test('ChatEngine preserves user-selected non-default model in request payload', async () => {
+  const engine = new ChatEngine();
+  let capturedModel = null;
+
+  const mockInvoker = async (_cmd, payload) => {
+    const parsed = JSON.parse(payload.body);
+    capturedModel = parsed.model;
+    return {
+      status: 200,
+      body: JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Model test ok' } }] })
+    };
+  };
+
+  engine.addUserMessage('Which model?');
+  await engine.requestCompletion({
+    provider: 'openai',
+    model: 'gpt-6-astra', // Non-default model (default is gpt-6.1-sol)
+    apiKey: 'sk-test-key',
+    nativeInvoker: mockInvoker
+  });
+
+  assert.equal(capturedModel, 'gpt-6-astra');
+  assert.equal(engine.activeModel, 'gpt-6-astra');
+});
+
+test('ChatEngine multi-turn (2, 3, 5 turns) preserves exact conversation history without duplicate assistant turns', async () => {
+  const engine = new ChatEngine();
+  const payloads = [];
+
+  const mockInvoker = async (_cmd, payload) => {
+    const parsed = JSON.parse(payload.body);
+    payloads.push(parsed);
+    const turnIndex = payloads.length;
+    return {
+      status: 200,
+      body: JSON.stringify({ choices: [{ message: { role: 'assistant', content: `Assistant reply turn ${turnIndex}` } }] })
+    };
+  };
+
+  for (let turn = 1; turn <= 5; turn++) {
+    engine.addUserMessage(`User turn ${turn}`);
+    const reply = await engine.requestCompletion({
+      provider: 'openai',
+      apiKey: 'sk-test-key',
+      nativeInvoker: mockInvoker
+    });
+    assert.equal(reply, `Assistant reply turn ${turn}`);
+    // History should have exactly turn * 2 messages (no duplicates)
+    assert.equal(engine.messages.length, turn * 2);
+    assert.equal(engine.messages[(turn - 1) * 2].role, 'user');
+    assert.equal(engine.messages[(turn - 1) * 2].content, `User turn ${turn}`);
+    assert.equal(engine.messages[(turn - 1) * 2 + 1].role, 'assistant');
+    assert.equal(engine.messages[(turn - 1) * 2 + 1].content, `Assistant reply turn ${turn}`);
+  }
+
+  // Turn 5 payload checks: alternating user/assistant with exact turns
+  const turn5Msgs = payloads[4].messages;
+  assert.equal(turn5Msgs.length, 9); // 4 user + 4 assistant from past + 1 current user
+  for (let i = 0; i < 9; i++) {
+    if (i % 2 === 0) {
+      assert.equal(turn5Msgs[i].role, 'user');
+      assert.equal(turn5Msgs[i].content, `User turn ${Math.floor(i / 2) + 1}`);
+    } else {
+      assert.equal(turn5Msgs[i].role, 'assistant');
+      assert.equal(turn5Msgs[i].content, `Assistant reply turn ${Math.floor(i / 2) + 1}`);
+    }
+  }
+});
+
+test('generateImage validates cost consent and decouples Gemini Nano Banana and OpenAI GPT Image 2', async () => {
+  // 1. Consent validation
+  await assert.rejects(
+    () => generateImage({
+      prompt: 'A golden lion in a digital garden',
+      provider: 'openai',
+      model: 'gpt-image-2',
+      apiKey: 'sk-test',
+      costAcknowledged: false
+    }),
+    /chargeable API option/
+  );
+
+  await assert.rejects(
+    () => generateImage({
+      prompt: 'A golden lion in a digital garden',
+      provider: 'gemini',
+      model: 'gemini-nano-banana-2.1',
+      apiKey: 'test-key',
+      costAcknowledged: false
+    }),
+    /chargeable API option/
+  );
+
+  // 2. Gemini Nano Banana 2.1 routes to generateContent with responseModalities
+  let geminiUrl = null;
+  let geminiBody = null;
+  const mockGeminiInvoker = async (_cmd, payload) => {
+    geminiUrl = payload.url;
+    geminiBody = JSON.parse(payload.body);
+    return {
+      status: 200,
+      body: JSON.stringify({
+        candidates: [{
+          content: {
+            parts: [{
+              inlineData: {
+                mimeType: 'image/png',
+                data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+              }
+            }]
+          }
+        }]
+      })
+    };
+  };
+
+  const resGemini = await generateImage({
+    prompt: 'A golden lion',
+    provider: 'gemini',
+    model: 'gemini-nano-banana-2.1',
+    apiKey: 'gemini-key-123',
+    costAcknowledged: true,
+    nativeInvoker: mockGeminiInvoker
+  });
+
+  assert.ok(geminiUrl.includes('/models/gemini-nano-banana-2.1:generateContent'));
+  assert.deepEqual(geminiBody.generationConfig?.responseModalities, ['image', 'text']);
+  assert.equal(resGemini.provider, 'gemini');
+  assert.equal(resGemini.model, 'gemini-nano-banana-2.1');
+  assert.ok(resGemini.dataUrl.startsWith('data:image/png;base64,'));
+
+  // 3. OpenAI GPT Image 2 routes to openai_v1 endpoint
+  let openaiUrl = null;
+  let openaiBody = null;
+  const mockOpenAIInvoker = async (_cmd, payload) => {
+    openaiUrl = payload.url;
+    openaiBody = JSON.parse(payload.body);
+    return {
+      status: 200,
+      body: JSON.stringify({
+        data: [{
+          b64_json: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+        }]
+      })
+    };
+  };
+
+  const resOpenAI = await generateImage({
+    prompt: 'A golden lion',
+    provider: 'openai',
+    model: 'gpt-image-2',
+    apiKey: 'sk-openai-123',
+    costAcknowledged: true,
+    nativeInvoker: mockOpenAIInvoker
+  });
+
+  assert.equal(openaiUrl, 'https://api.openai.com/v1/images/generations');
+  assert.equal(openaiBody.model, 'gpt-image-2');
+  assert.equal(resOpenAI.provider, 'openai');
+  assert.equal(resOpenAI.model, 'gpt-image-2');
+  assert.ok(resOpenAI.dataUrl.startsWith('data:image/png;base64,'));
+});
+
 

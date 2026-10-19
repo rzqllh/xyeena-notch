@@ -29,7 +29,8 @@
  *   provider?: string,
  *   stopReason?: string,
  *   usage?: { input: number, output: number } | null,
- *   isError?: boolean
+ *   isError?: boolean,
+ *   isStreaming?: boolean
  * }} ChatMessage
  */
 
@@ -708,7 +709,7 @@ export class ChatEngine {
     while (msgs.length > 0 && msgs[0].role !== 'user') msgs.shift(); // providers require a user-first history
     while (msgs.length > 0 && msgs[msgs.length - 1].role !== 'user') msgs.pop(); // providers require a user-last completion prompt
     if (msgs.length === 0) {
-      msgs.push({ role: 'user', content: 'Hello' });
+      throw new Error('No valid user messages found in conversation history.');
     }
     return { system: sys.join('\n\n'), messages: msgs };
   }
@@ -774,13 +775,12 @@ export class ChatEngine {
       throw abortError();
     }
 
+    if (params.prompt) {
+      this.addUserMessage(params.prompt);
+    }
     const last = this.messages[this.messages.length - 1];
-    if (!last || last.role === 'assistant') {
-      if (params.prompt) {
-        this.addUserMessage(params.prompt);
-      } else {
-        this.addUserMessage('Hello');
-      }
+    if (!last || last.role !== 'user') {
+      throw new Error('Cannot request completion: No user message to complete.');
     }
 
     // a new request supersedes any in-flight one
@@ -798,9 +798,10 @@ export class ChatEngine {
     let model = '';
     const started = Date.now();
     const state = { usage: null, stopReason: '' };
-
     try {
       model = String(params.model || (provider === this.activeProvider ? this.activeModel : '') || meta.defaultModel || '').trim();
+      if (params.provider) this.activeProvider = provider;
+      if (model) this.activeModel = model;
       if (!model && meta.isLocal) {
         const models = await this.listModels({ provider, localUrl: params.localUrl, signal, transport });
         model = models[0]?.id || '';
@@ -1048,28 +1049,108 @@ export function renderSafeMarkdown(raw) {
 
 export const IMAGE_PROVIDERS = Object.freeze([
   {
-    id: 'openai',
-    name: 'OpenAI (DALL-E)',
+    id: 'gemini',
+    name: 'Google Gemini',
     isLocal: false,
-    models: ['dall-e-3', 'dall-e-2'],
-    defaultModel: 'dall-e-3',
-    costNote: 'Paid API (~$0.04/img). Requires OpenAI API key in BYOK.'
+    defaultModel: 'gemini-nano-banana-2.1',
+    models: [
+      {
+        id: 'gemini-nano-banana-2.1',
+        name: 'Gemini Nano Banana 2.1',
+        endpointType: 'generateContent',
+        tier: 'paid_or_quota',
+        costNote: 'Chargeable / quota tier. Google AI Studio key required. User acknowledgment of potential charges required.',
+        requiresConsent: true,
+        supportedSizes: ['1024x1024', '512x512'],
+        outputFormat: 'image/png'
+      },
+      {
+        id: 'gemini-3.1-flash-image',
+        name: 'Gemini 3.1 Flash Image',
+        endpointType: 'generateContent',
+        tier: 'paid_or_quota',
+        costNote: 'Chargeable / quota tier. Google AI Studio key required. User acknowledgment of potential charges required.',
+        requiresConsent: true,
+        supportedSizes: ['1024x1024', '512x512'],
+        outputFormat: 'image/png'
+      },
+      {
+        id: 'imagen-3.0-generate-002',
+        name: 'Google Imagen 3.0',
+        endpointType: 'predict',
+        tier: 'paid_or_quota',
+        costNote: 'Tier quota applies. Requires Google AI Studio key in BYOK.',
+        requiresConsent: true,
+        supportedSizes: ['1024x1024'],
+        outputFormat: 'image/png'
+      }
+    ]
   },
   {
-    id: 'gemini',
-    name: 'Google Imagen',
+    id: 'openai',
+    name: 'OpenAI (Images)',
     isLocal: false,
-    models: ['imagen-3.0-generate-002'],
-    defaultModel: 'imagen-3.0-generate-002',
-    costNote: 'Tier quota applies. Requires Google AI Studio key in BYOK.'
+    defaultModel: 'gpt-image-2',
+    models: [
+      {
+        id: 'gpt-image-2',
+        name: 'GPT Image 2',
+        endpointType: 'openai_v1',
+        tier: 'paid',
+        costNote: 'Paid API (~$0.04-$0.08/image). Charges apply directly to your OpenAI account. User acknowledgment required.',
+        requiresConsent: true,
+        supportedSizes: ['1024x1024', '512x512'],
+        outputFormat: 'b64_json'
+      },
+      {
+        id: 'dall-e-3',
+        name: 'DALL-E 3',
+        endpointType: 'openai_v1',
+        tier: 'paid',
+        costNote: 'Paid API (~$0.04/image). Requires OpenAI API key in BYOK.',
+        requiresConsent: true,
+        supportedSizes: ['1024x1024'],
+        outputFormat: 'b64_json'
+      }
+    ]
   },
   {
     id: 'local',
     name: 'Local SD / Diffusers',
     isLocal: true,
-    models: ['sd-turbo', 'sdxl-turbo', 'local-default'],
     defaultModel: 'local-default',
-    costNote: 'Offline loopback (Free, requires local server active).'
+    models: [
+      {
+        id: 'local-default',
+        name: 'Local Default (Offline)',
+        endpointType: 'openai_v1',
+        tier: 'free_local',
+        costNote: 'Free offline loopback (requires local server active).',
+        requiresConsent: false,
+        supportedSizes: ['512x512', '1024x1024'],
+        outputFormat: 'b64_json'
+      },
+      {
+        id: 'sd-turbo',
+        name: 'SD Turbo (Local)',
+        endpointType: 'openai_v1',
+        tier: 'free_local',
+        costNote: 'Free offline loopback.',
+        requiresConsent: false,
+        supportedSizes: ['512x512'],
+        outputFormat: 'b64_json'
+      },
+      {
+        id: 'sdxl-turbo',
+        name: 'SDXL Turbo (Local)',
+        endpointType: 'openai_v1',
+        tier: 'free_local',
+        costNote: 'Free offline loopback.',
+        requiresConsent: false,
+        supportedSizes: ['512x512', '1024x1024'],
+        outputFormat: 'b64_json'
+      }
+    ]
   }
 ]);
 
@@ -1077,26 +1158,34 @@ export const IMAGE_PROVIDERS = Object.freeze([
  * Generates an image using an explicit image provider and returns dataUrl or throws typed error.
  * @param {object} params
  * @param {string} params.prompt
- * @param {string} [params.provider='openai']
+ * @param {string} [params.provider='gemini']
  * @param {string} [params.model]
  * @param {string} [params.apiKey]
  * @param {string} [params.localUrl]
+ * @param {boolean} [params.costAcknowledged=false]
  * @param {Function} [params.nativeInvoker]
  * @param {AbortSignal} [params.signal]
  * @returns {Promise<{ dataUrl: string, prompt: string, model: string, provider: string }>}
  */
-export async function generateImage(params) {
+export async function generateImage(params = {}) {
   const prompt = String(params.prompt || '').trim();
   if (!prompt) throw new Error('A descriptive text prompt is required to generate an image.');
 
-  const provider = params.provider || 'openai';
+  const provider = params.provider || 'gemini';
   const meta = IMAGE_PROVIDERS.find(p => p.id === provider);
   if (!meta) throw new Error(`Unsupported image provider: ${provider}`);
 
-  const model = params.model || meta.defaultModel;
+  const modelId = params.model || meta.defaultModel;
+  const modelMeta = meta.models.find(m => m.id === modelId) || meta.models[0];
+  if (!modelMeta) throw new Error(`Unsupported image model: ${modelId} for ${meta.name}`);
+
+  if (modelMeta.requiresConsent && !params.costAcknowledged) {
+    throw new Error(`Model "${modelMeta.name}" is a chargeable API option (${modelMeta.costNote}). Please acknowledge potential charges before proceeding.`);
+  }
+
   const apiKey = (params.apiKey || '').trim();
   if (!meta.isLocal && !apiKey) {
-    throw new Error(`API key required for ${meta.name}. Please enter your key in Settings or Chat Setup.`);
+    throw new Error(`API key required for ${meta.name} image generation. Please configure your ${meta.name} key in Settings or Chat Setup.`);
   }
 
   const transport = createTransport({ nativeInvoker: params.nativeInvoker });
@@ -1107,30 +1196,37 @@ export async function generateImage(params) {
   const headers = { 'content-type': 'application/json' };
   let body = '';
 
-  if (provider === 'openai') {
-    url = 'https://api.openai.com/v1/images/generations';
-    headers['authorization'] = `Bearer ${apiKey}`;
+  if (modelMeta.endpointType === 'generateContent') {
+    url = `https://generativelanguage.googleapis.com/v1beta/models/${modelMeta.id}:generateContent`;
+    headers['x-goog-api-key'] = apiKey;
     body = JSON.stringify({
-      prompt,
-      model,
-      n: 1,
-      size: '1024x1024',
-      response_format: 'b64_json'
+      contents: [{
+        parts: [{ text: prompt }]
+      }],
+      generationConfig: {
+        responseModalities: ['image', 'text']
+      }
     });
-  } else if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict`;
+  } else if (modelMeta.endpointType === 'predict') {
+    url = `https://generativelanguage.googleapis.com/v1beta/models/${modelMeta.id}:predict`;
     headers['x-goog-api-key'] = apiKey;
     body = JSON.stringify({
       instances: [{ prompt }],
       parameters: { sampleCount: 1, outputOptions: { mimeType: 'image/png' } }
     });
-  } else if (provider === 'local') {
-    const base = trimUrl(params.localUrl) || 'http://127.0.0.1:1234';
-    url = `${base}/v1/images/generations`;
+  } else if (modelMeta.endpointType === 'openai_v1') {
+    if (provider === 'openai') {
+      url = 'https://api.openai.com/v1/images/generations';
+      headers['authorization'] = `Bearer ${apiKey}`;
+    } else {
+      const base = trimUrl(params.localUrl) || 'http://127.0.0.1:1234';
+      url = `${base}/v1/images/generations`;
+    }
     body = JSON.stringify({
       prompt,
-      model,
+      model: modelMeta.id,
       n: 1,
+      size: params.size || '1024x1024',
       response_format: 'b64_json'
     });
   }
@@ -1147,36 +1243,58 @@ export async function generateImage(params) {
 
   if (res.status < 200 || res.status >= 300) {
     const json = safeJson(res.text);
-    const msg = json?.error?.message || res.text || `HTTP ${res.status}`;
-    throw new Error(`${meta.name} error (${res.status}): ${msg}`);
+    const msg = json?.error?.message || json?.error || res.text || `HTTP ${res.status}`;
+    throw new Error(`${meta.name} error (${res.status}): ${typeof msg === 'string' ? msg : JSON.stringify(msg)}`);
   }
 
   const data = safeJson(res.text);
   if (!data) throw new Error(`Invalid JSON response from ${meta.name}`);
 
   let dataUrl = '';
-  if (provider === 'openai' || provider === 'local') {
-    const b64 = data.data?.[0]?.b64_json;
-    if (b64) {
-      dataUrl = `data:image/png;base64,${b64}`;
-    } else if (data.data?.[0]?.url) {
-      dataUrl = data.data[0].url;
+  if (modelMeta.endpointType === 'generateContent') {
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      const inline = part.inlineData || part.inline_data;
+      if (inline?.data) {
+        const mime = inline.mimeType || inline.mime_type || 'image/png';
+        dataUrl = `data:${mime};base64,${inline.data}`;
+        break;
+      }
     }
-  } else if (provider === 'gemini') {
+    if (!dataUrl) {
+      const textPart = parts.find(p => p.text)?.text;
+      const finishReason = data.candidates?.[0]?.finishReason;
+      if (textPart) {
+        throw new Error(`${meta.name} model returned text instead of image: ${textPart}`);
+      } else if (finishReason && finishReason !== 'STOP') {
+        throw new Error(`${meta.name} image generation was blocked (reason: ${finishReason}).`);
+      }
+    }
+  } else if (modelMeta.endpointType === 'predict') {
     const b64 = data.predictions?.[0]?.bytesBase64Encoded;
     if (b64) {
       dataUrl = `data:image/png;base64,${b64}`;
     }
+  } else if (modelMeta.endpointType === 'openai_v1') {
+    const b64 = data.data?.[0]?.b64_json;
+    if (b64) {
+      dataUrl = `data:image/png;base64,${b64}`;
+    } else if (data.data?.[0]?.url) {
+      const u = data.data[0].url;
+      if (typeof u === 'string' && u.startsWith('https://')) {
+        dataUrl = u;
+      }
+    }
   }
 
   if (!dataUrl) {
-    throw new Error(`No image payload returned by ${meta.name}. Check model compatibility.`);
+    throw new Error(`No image payload returned by ${meta.name} for ${modelMeta.id}. Check prompt or quota.`);
   }
 
   return {
     dataUrl,
     prompt,
-    model,
-    provider
+    model: modelMeta.id,
+    provider: meta.id
   };
 }
