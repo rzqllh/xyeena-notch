@@ -100,6 +100,7 @@ pub fn read_native_clipboard_item() -> Result<Option<NativeClipboardItem>, Strin
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::DataExchange::{
         CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+        RegisterClipboardFormatW,
     };
     use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
     use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
@@ -107,6 +108,7 @@ pub fn read_native_clipboard_item() -> Result<Option<NativeClipboardItem>, Strin
     const CF_DIB: u32 = 8;
     const CF_UNICODETEXT: u32 = 13;
     const CF_HDROP: u32 = 15;
+    const CF_DIBV5: u32 = 17;
 
     unsafe {
         if OpenClipboard(Some(HWND(std::ptr::null_mut()))).is_err() {
@@ -154,9 +156,56 @@ pub fn read_native_clipboard_item() -> Result<Option<NativeClipboardItem>, Strin
             }
         }
 
-        // 2. Images from browsers, Paint, Snipping Tool (CF_DIB)
-        if IsClipboardFormatAvailable(CF_DIB).is_ok() {
-            if let Ok(handle) = GetClipboardData(CF_DIB) {
+        // 2. Images:
+        // Priority A: Registered "PNG" format.
+        // Modern applications (Snipping Tool, Paint, Chrome, Firefox, Photoshop) provide lossless PNG with alpha channel.
+        let cf_png = RegisterClipboardFormatW(windows::core::w!("PNG"));
+        if cf_png != 0 && IsClipboardFormatAvailable(cf_png).is_ok() {
+            if let Ok(handle) = GetClipboardData(cf_png) {
+                let hglobal = windows::Win32::Foundation::HGLOBAL(handle.0);
+                let ptr = GlobalLock(hglobal);
+                if !ptr.is_null() {
+                    let size = GlobalSize(hglobal);
+                    if size > 8 && size <= 20 * 1024 * 1024 {
+                        let png_slice = std::slice::from_raw_parts(ptr as *const u8, size);
+                        if png_slice.len() >= 8 && &png_slice[0..8] == b"\x89PNG\r\n\x1a\n" {
+                            let sample_len = std::cmp::min(png_slice.len(), 512);
+                            let hash = format!(
+                                "img:png:{:x}",
+                                calculate_hash_bytes(&png_slice[..sample_len])
+                            );
+                            let base64 = simple_base64_encode(png_slice);
+                            let _ = GlobalUnlock(hglobal);
+                            let data_url = format!("data:image/png;base64,{base64}");
+                            let size_mb = (png_slice.len() as f64) / (1024.0 * 1024.0);
+                            let text = format!("Image (PNG, {:.2} MB)", size_mb);
+                            return Ok(Some(NativeClipboardItem {
+                                item_type: "image".into(),
+                                text: Some(text),
+                                data_url: Some(data_url),
+                                file_paths: None,
+                                hash,
+                                size_bytes: png_slice.len(),
+                            }));
+                        }
+                    }
+                    let _ = GlobalUnlock(hglobal);
+                }
+            }
+        }
+
+        // Priority B: CF_DIBV5 or CF_DIB.
+        // If PNG is not exposed, read device-independent bitmap preserving pixel data without lossy recompression.
+        let dib_format = if IsClipboardFormatAvailable(CF_DIBV5).is_ok() {
+            Some(CF_DIBV5)
+        } else if IsClipboardFormatAvailable(CF_DIB).is_ok() {
+            Some(CF_DIB)
+        } else {
+            None
+        };
+
+        if let Some(format_id) = dib_format {
+            if let Ok(handle) = GetClipboardData(format_id) {
                 let hglobal = windows::Win32::Foundation::HGLOBAL(handle.0);
                 let ptr = GlobalLock(hglobal);
                 if !ptr.is_null() {
@@ -399,5 +448,31 @@ mod tests {
         let _seq = get_clipboard_sequence_number();
         #[cfg(not(target_os = "windows"))]
         assert_eq!(_seq, 0);
+    }
+
+    #[test]
+    fn test_png_signature_detection() {
+        let valid_png_header = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR";
+        assert_eq!(&valid_png_header[0..8], b"\x89PNG\r\n\x1a\n");
+        let fake_header = b"NOT_PNG_AT_ALL!!";
+        assert_ne!(&fake_header[0..8], b"\x89PNG\r\n\x1a\n");
+    }
+
+    #[test]
+    fn test_dibv5_to_bmp_preserves_v5_header() {
+        // BITMAPV5HEADER has biSize = 124
+        let mut dibv5 = vec![0u8; 124 + 16];
+        dibv5[0..4].copy_from_slice(&124u32.to_le_bytes()); // biSize
+        dibv5[4..8].copy_from_slice(&2i32.to_le_bytes()); // biWidth
+        dibv5[8..12].copy_from_slice(&2i32.to_le_bytes()); // biHeight
+        dibv5[12..14].copy_from_slice(&1u16.to_le_bytes()); // biPlanes
+        dibv5[14..16].copy_from_slice(&32u16.to_le_bytes()); // biBitCount = 32 (with alpha)
+
+        let bmp = dib_to_bmp(&dibv5).expect("DIBV5 to BMP should succeed");
+        assert_eq!(&bmp[0..2], b"BM");
+        // Offset is 14 + 124 = 138 (0x8A)
+        let offset = u32::from_le_bytes(bmp[10..14].try_into().unwrap());
+        assert_eq!(offset, 138);
+        assert_eq!(&bmp[14..18], &124u32.to_le_bytes());
     }
 }
