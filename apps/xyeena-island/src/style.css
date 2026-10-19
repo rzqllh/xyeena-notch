@@ -2534,6 +2534,38 @@ input[type="range"] {
   color: var(--accent);
 }
 
+/* Motion smoothing: prevent internal CSS transform transitions from competing with native window resizing */
+.island[data-animating="expanding"] .compact,
+.island[data-animating="collapsing"] .compact,
+.island[data-animating="expanding"] .glance,
+.island[data-animating="collapsing"] .glance,
+.island[data-animating="expanding"] .expanded,
+.island[data-animating="collapsing"] .expanded {
+  transform: none !important;
+  transition: opacity var(--dur-fast) ease !important;
+}
+
+/* File conversions dynamic button group */
+.file-conversions-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2, 6px);
+  align-items: center;
+}
+
+.file-action-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: auto !important;
+}
+
+.file-action-note {
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 4px 6px;
+}
+
 /* Accessibility & Reduced Motion */
 @media (prefers-reduced-motion: reduce) {
 

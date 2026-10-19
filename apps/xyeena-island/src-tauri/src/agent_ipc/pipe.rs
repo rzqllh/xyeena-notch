@@ -50,6 +50,11 @@ use windows::Win32::System::Pipes::{
 /// Get the localized, per-user named pipe path.
 /// Format: `\\.\pipe\xyeena-agent-<username>`
 pub fn get_pipe_name() -> String {
+    if let Ok(override_name) = std::env::var("XYEENA_AGENT_PIPE_NAME") {
+        if !override_name.is_empty() {
+            return override_name;
+        }
+    }
     let username = std::env::var("USERNAME")
         .or_else(|_| std::env::var("USER"))
         .unwrap_or_else(|_| "default".to_string());
@@ -684,10 +689,10 @@ mod tests {
         use std::io::Write;
         use std::process::{Command, Stdio};
 
-        let pipe_name = get_pipe_name();
+        let test_pipe_name = format!(r"\\.\pipe\xyeena-agent-test-{}", std::process::id());
         let registry = SharedSessionRegistry::new();
         let registry_clone = registry.clone();
-        let pipe_name_clone = pipe_name.clone();
+        let pipe_name_clone = test_pipe_name.clone();
 
         let listener = thread::spawn(move || {
             let pipe_w = HSTRING::from(&pipe_name_clone);
@@ -712,7 +717,7 @@ mod tests {
                     &pipe_w,
                     PIPE_ACCESS_DUPLEX,
                     PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-                    1,
+                    255,
                     65536,
                     65536,
                     0,
@@ -723,21 +728,36 @@ mod tests {
                 return;
             }
 
-            let connected = unsafe { ConnectNamedPipe(h, None) };
-            if connected.is_ok() {
-                let mut frame_buf = FrameBuffer::new();
-                let mut read_buf = [0u8; 4096];
-                let mut read = 0u32;
-                let _ = unsafe { ReadFile(h, Some(&mut read_buf), Some(&mut read), None) };
-                if read > 0 {
-                    let _ = frame_buf.extend(&read_buf[..read as usize]);
-                    if let Ok(Some(frame)) = frame_buf.next_frame() {
-                        if let Ok(event) = parse_and_normalize(&frame) {
-                            registry_clone.handle_event(&event);
+            for _ in 0..10 {
+                let connected = unsafe { ConnectNamedPipe(h, None) };
+                if connected.is_ok() {
+                    let mut frame_buf = FrameBuffer::new();
+                    let mut read_buf = [0u8; 4096];
+                    let mut read = 0u32;
+                    let _ = unsafe { ReadFile(h, Some(&mut read_buf), Some(&mut read), None) };
+                    if read > 0 {
+                        let _ = frame_buf.extend(&read_buf[..read as usize]);
+                        while let Ok(Some(frame)) = frame_buf.next_frame() {
+                            if let Ok(event) = parse_and_normalize(&frame) {
+                                let is_target = event.session_id == "session-antigravity-live-test";
+                                registry_clone.handle_event(&event);
+                                if is_target {
+                                    let _ = unsafe { DisconnectNamedPipe(h) };
+                                    let _ = unsafe { CloseHandle(h) };
+                                    if !sec_desc.0.is_null() {
+                                        let _ = unsafe {
+                                            windows::Win32::Foundation::LocalFree(Some(
+                                                windows::Win32::Foundation::HLOCAL(sec_desc.0),
+                                            ))
+                                        };
+                                    }
+                                    return;
+                                }
+                            }
                         }
                     }
+                    let _ = unsafe { DisconnectNamedPipe(h) };
                 }
-                let _ = unsafe { DisconnectNamedPipe(h) };
             }
             let _ = unsafe { CloseHandle(h) };
             if !sec_desc.0.is_null() {
@@ -765,10 +785,24 @@ mod tests {
         };
 
         if !exe_to_run.exists() {
+            let pipe_w = HSTRING::from(&test_pipe_name);
+            unsafe {
+                let _ = windows::Win32::Storage::FileSystem::CreateFileW(
+                    &pipe_w,
+                    windows::Win32::Storage::FileSystem::FILE_GENERIC_READ.0,
+                    windows::Win32::Storage::FileSystem::FILE_SHARE_NONE,
+                    None,
+                    windows::Win32::Storage::FileSystem::OPEN_EXISTING,
+                    Default::default(),
+                    None,
+                );
+            }
+            let _ = listener.join();
             return;
         }
 
         let mut child = Command::new(&exe_to_run)
+            .env("XYEENA_AGENT_PIPE_NAME", &test_pipe_name)
             .arg("PostToolUse")
             .arg("--provider")
             .arg("antigravity")
@@ -783,17 +817,34 @@ mod tests {
         let input_payload = r#"{"tool_name": "read_file", "cwd": "C:\\test\\workspace"}"#;
         if let Some(mut stdin) = child.stdin.take() {
             let _ = stdin.write_all(input_payload.as_bytes());
+            drop(stdin);
         }
 
         let output = child.wait_with_output().expect("wait child");
         assert!(output.status.success(), "relay exit must be success");
 
+        // Failsafe unblock in case listener is still waiting
+        let pipe_w = HSTRING::from(&test_pipe_name);
+        unsafe {
+            let _ = windows::Win32::Storage::FileSystem::CreateFileW(
+                &pipe_w,
+                windows::Win32::Storage::FileSystem::FILE_GENERIC_READ.0,
+                windows::Win32::Storage::FileSystem::FILE_SHARE_NONE,
+                None,
+                windows::Win32::Storage::FileSystem::OPEN_EXISTING,
+                Default::default(),
+                None,
+            );
+        }
+
         listener.join().expect("join listener");
 
-        // Verify session was registered in registry
+        // Verify test session was registered in registry (tolerating concurrent live agent sessions)
         let sessions = registry.active_sessions();
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0].provider, "antigravity");
-        assert_eq!(sessions[0].session_id, "session-antigravity-live-test");
+        let test_session = sessions
+            .iter()
+            .find(|s| s.session_id == "session-antigravity-live-test")
+            .expect("session-antigravity-live-test must be registered in registry");
+        assert_eq!(test_session.provider, "antigravity");
     }
 }

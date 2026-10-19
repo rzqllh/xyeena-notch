@@ -187,6 +187,8 @@ export class XyeenaGuardian extends BaseElement {
     this.dispatchEvent(new CustomEvent('xyeena-upload-progress',{detail:{progress:this._progress},bubbles:true,composed:true}));
   }
   cancelUpload(){this._cancelTimeline();if(this.state==='upload')this.setState('idle');}
+  start(){this._rig?.start();}
+  stop(){this._rig?.stop();}
 }
 export function defineXyeenaGuardian(){
   if(typeof customElements === 'undefined') return null;
