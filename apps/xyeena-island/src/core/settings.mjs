@@ -15,7 +15,12 @@
  *   clipboardLimit: number,
  *   clipboardPersistent: boolean,
  *   recapEnabled: boolean,
- *   preferredMedia: string
+ *   preferredMedia: string,
+ *   flowEnabled: boolean,
+ *   flowPushToTalk: boolean,
+ *   flowFilterFillers: boolean,
+ *   notetakerConsent: boolean,
+ *   voiceCommandsEnabled: boolean
  * }} IslandSettings */
 
 /** @type {Readonly<IslandSettings>} */
@@ -36,7 +41,12 @@ export const DEFAULT_SETTINGS = Object.freeze({
   clipboardLimit: 50,
   clipboardPersistent: false,
   recapEnabled: true,
-  preferredMedia: 'auto'
+  preferredMedia: 'auto',
+  flowEnabled: false,
+  flowPushToTalk: true,
+  flowFilterFillers: true,
+  notetakerConsent: false,
+  voiceCommandsEnabled: false
 });
 
 export const STORAGE_KEY = 'xyeena-island-preferences-v1';
@@ -64,5 +74,10 @@ export function sanitizeSettings(value) {
     clipboardPersistent: typeof obj.clipboardPersistent === 'boolean' ? obj.clipboardPersistent : DEFAULT_SETTINGS.clipboardPersistent,
     recapEnabled: typeof obj.recapEnabled === 'boolean' ? obj.recapEnabled : DEFAULT_SETTINGS.recapEnabled,
     preferredMedia: prefMediaValues.includes(/** @type {string} */ (obj.preferredMedia)) ? /** @type {string} */ (obj.preferredMedia) : DEFAULT_SETTINGS.preferredMedia,
+    flowEnabled: typeof obj.flowEnabled === 'boolean' ? obj.flowEnabled : DEFAULT_SETTINGS.flowEnabled,
+    flowPushToTalk: typeof obj.flowPushToTalk === 'boolean' ? obj.flowPushToTalk : DEFAULT_SETTINGS.flowPushToTalk,
+    flowFilterFillers: typeof obj.flowFilterFillers === 'boolean' ? obj.flowFilterFillers : DEFAULT_SETTINGS.flowFilterFillers,
+    notetakerConsent: typeof obj.notetakerConsent === 'boolean' ? obj.notetakerConsent : DEFAULT_SETTINGS.notetakerConsent,
+    voiceCommandsEnabled: typeof obj.voiceCommandsEnabled === 'boolean' ? obj.voiceCommandsEnabled : DEFAULT_SETTINGS.voiceCommandsEnabled,
   };
 }

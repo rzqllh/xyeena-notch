@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {inspectFile, detectCategory, formatBytes, convertImageDataUrl, MAX_FILE_SIZE} from '../src/core/files.mjs';
+import {
+  inspectFile,
+  detectCategory,
+  formatBytes,
+  convertImageDataUrl,
+  MAX_FILE_SIZE,
+  getAvailableConversions,
+  convertTextData,
+  jsonToCsv,
+  csvToJson,
+  parseRfc4180Csv,
+  markdownToPlainText
+} from '../src/core/files.mjs';
 
 test('formatBytes accurately formats byte orders', () => {
   assert.equal(formatBytes(0), '0 B');
@@ -42,4 +54,143 @@ test('convertImageDataUrl handles conversions and mime switching safely', async 
   assert.equal(result.mime, 'image/jpeg');
   assert.ok(result.dataUrl.startsWith('data:image/jpeg;'));
   assert.ok(result.sizeBytes > 0);
+});
+
+test('getAvailableConversions accurately returns truthful options per matrix', () => {
+  // Image: png offers webp and jpeg (excluding self)
+  const pngAvail = getAvailableConversions('png', 'image');
+  assert.equal(pngAvail.supported, true);
+  const pngTargetExts = pngAvail.options.map(o => o.targetExt);
+  assert.ok(pngTargetExts.includes('webp'));
+  assert.ok(pngTargetExts.includes('jpg'));
+  assert.ok(!pngTargetExts.includes('png'));
+
+  // Text/Data: json offers csv, prettify, minify
+  const jsonAvail = getAvailableConversions('json');
+  assert.equal(jsonAvail.supported, true);
+  assert.equal(jsonAvail.options.length, 3);
+  assert.equal(jsonAvail.options[0].id, 'json-to-csv');
+
+  // Text/Data: csv offers json
+  const csvAvail = getAvailableConversions('csv');
+  assert.equal(csvAvail.supported, true);
+  assert.equal(csvAvail.options[0].id, 'csv-to-json');
+
+  // Markdown offers plain text
+  const mdAvail = getAvailableConversions('md');
+  assert.equal(mdAvail.supported, true);
+  assert.equal(mdAvail.options[0].id, 'md-to-txt');
+
+  // Documents (PDF, DOCX) fail closed with explicit reason (no fake success)
+  const pdfAvail = getAvailableConversions('pdf');
+  assert.equal(pdfAvail.supported, false);
+  assert.match(pdfAvail.reason, /Document conversion unavailable/);
+
+  const docxAvail = getAvailableConversions('docx');
+  assert.equal(docxAvail.supported, false);
+  assert.match(docxAvail.reason, /Document conversion unavailable/);
+});
+
+test('jsonToCsv and csvToJson roundtrip structured data losslessly', () => {
+  const original = [
+    { name: 'Xyn', role: 'Guardian', power: 'Shield' },
+    { name: 'Xyeena', role: 'Companion', power: 'Clarity, Logic' }
+  ];
+  const csv = jsonToCsv(JSON.stringify(original));
+  assert.ok(csv.includes('name,role,power'));
+  assert.ok(csv.includes('"Clarity, Logic"')); // Commas correctly quoted
+
+  const restored = JSON.parse(csvToJson(csv));
+  assert.equal(restored.length, 2);
+  assert.equal(restored[0].name, 'Xyn');
+  assert.equal(restored[1].power, 'Clarity, Logic');
+});
+
+test('markdownToPlainText strips markdown syntax cleanly', () => {
+  const md = `# Title
+This is **bold** and *italic* text.
+- Bullet 1
+- Bullet 2
+[Link label](https://example.com)
+\`inline code\`
+> A quotation`;
+
+  const plain = markdownToPlainText(md);
+  assert.ok(!plain.includes('#'));
+  assert.ok(!plain.includes('**'));
+  assert.ok(!plain.includes('`'));
+  assert.ok(plain.includes('This is bold and italic text.'));
+  assert.ok(plain.includes('• Bullet 1'));
+  assert.ok(plain.includes('Link label'));
+});
+
+test('convertTextData executes verified transforms and returns safe metadata', () => {
+  const jsonRaw = '{"a":1,"b":2}';
+  const pretty = convertTextData(jsonRaw, 'json-pretty');
+  assert.equal(pretty.newExtension, 'json');
+  assert.equal(pretty.content, '{\n  "a": 1,\n  "b": 2\n}');
+
+  const b64 = convertTextData('Hello Xyeena', 'txt-to-base64');
+  assert.equal(b64.newExtension, 'b64');
+  assert.equal(b64.content, 'SGVsbG8gWHllZW5h');
+});
+
+test('parseRfc4180Csv supports multiline cells, escaped quotes, CRLF, and empty values', () => {
+  // Multiline cell with CRLF and commas
+  const csv = 'id,summary,notes\r\n1,"Line 1\r\nLine 2","Simple note"\r\n2,"He said ""Hello, Xyn!""",""\r\n3,,"Trailing note"';
+  const records = parseRfc4180Csv(csv);
+  assert.equal(records.length, 4);
+  assert.deepEqual(records[0], ['id', 'summary', 'notes']);
+  assert.deepEqual(records[1], ['1', 'Line 1\r\nLine 2', 'Simple note']);
+  assert.deepEqual(records[2], ['2', 'He said "Hello, Xyn!"', '']);
+  assert.deepEqual(records[3], ['3', '', 'Trailing note']);
+});
+
+test('parseRfc4180Csv rejects malformed CSV inputs', () => {
+  // 1. Unclosed quote at end of input
+  assert.throws(
+    () => parseRfc4180Csv('id,name\r\n1,"Unclosed multiline text'),
+    /Unclosed quote at end of input/
+  );
+
+  // 2. Quote inside unquoted field
+  assert.throws(
+    () => parseRfc4180Csv('id,name\r\n1,bad"quote"'),
+    /Quote cannot appear inside unquoted field/
+  );
+
+  // 3. Characters after closing quote before delimiter
+  assert.throws(
+    () => parseRfc4180Csv('id,name\r\n1,"quoted"trailing'),
+    /Invalid trailing character/
+  );
+});
+
+test('jsonToCsv and csvToJson multiline round-trip preserves multiline JSON data', () => {
+  const dataset = [
+    {
+      id: 'item-1',
+      title: 'Multimodal analysis',
+      body: 'Line 1\nLine 2\nLine 3 with "quotes" and , commas',
+      meta: '{"nested": true, "count": 42}'
+    },
+    {
+      id: 'item-2',
+      title: 'Empty fields test',
+      body: '',
+      meta: '{"active": false}'
+    }
+  ];
+
+  const csv = jsonToCsv(JSON.stringify(dataset));
+  const restoredJson = csvToJson(csv);
+  const parsed = JSON.parse(restoredJson);
+
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].id, 'item-1');
+  assert.equal(parsed[0].title, 'Multimodal analysis');
+  assert.equal(parsed[0].body, 'Line 1\nLine 2\nLine 3 with "quotes" and , commas');
+  assert.equal(parsed[0].meta, '{"nested": true, "count": 42}');
+  assert.equal(parsed[1].id, 'item-2');
+  assert.equal(parsed[1].body, '');
 });

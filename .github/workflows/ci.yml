@@ -39,6 +39,9 @@ jobs:
       - name: Rust format
         run: cargo fmt --all -- --check
         working-directory: apps/xyeena-island/src-tauri
+      - name: Build relay binary for tests
+        run: cargo build --locked --bin xyeena-agent-relay
+        working-directory: apps/xyeena-island/src-tauri
       - name: Rust native tests
         run: cargo test --locked
         working-directory: apps/xyeena-island/src-tauri

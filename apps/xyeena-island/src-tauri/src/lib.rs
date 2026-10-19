@@ -1,7 +1,15 @@
 //! Xyeena Island MVP: transparent top-edge companion, tray, and opt-in read-only run summaries.
 //! No cursor hooks, agent approval RPC, or autostart. AI requests use opt-in, bounded transport.
+pub mod agent_ipc;
+pub mod ai_diagnostics;
 mod clipboard;
+pub mod companion;
+pub mod developer;
+pub mod flow;
+pub mod github;
+pub mod integrations;
 mod media;
+pub mod voice;
 mod volume;
 use std::fs;
 use std::path::Path;
@@ -93,7 +101,36 @@ fn apply_frame(window: &WebviewWindow, width: f64, height: f64) -> Result<(), St
     let physical_width = (width * scale).round() as i64;
     let left = monitor.position().x as i64 + (monitor.size().width as i64 - physical_width) / 2;
     let left = i32::try_from(left).map_err(|_| "Monitor coordinates out of range".to_string())?;
+
     // Bound the native hitbox to visible island content (no giant pointer-eating overlay).
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOP, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER,
+        };
+        let physical_height = (height * scale).round() as i32;
+        let physical_width_i32 = i32::try_from(physical_width).unwrap_or(400);
+        let top = monitor.position().y;
+        if let Ok(raw_hwnd) = window.hwnd() {
+            let hwnd = HWND(raw_hwnd.0 as *mut _);
+            let ok = unsafe {
+                SetWindowPos(
+                    hwnd,
+                    Some(HWND_TOP),
+                    left,
+                    top,
+                    physical_width_i32,
+                    physical_height,
+                    SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+                )
+            };
+            if ok.is_ok() {
+                return Ok(());
+            }
+        }
+    }
+
     window
         .set_size(Size::Logical(LogicalSize::new(width, height)))
         .map_err(|e| format!("Island resize failed: {e}"))?;
@@ -147,6 +184,9 @@ fn read_native_clipboard() -> Result<Option<clipboard::NativeClipboardItem>, Str
 
 #[tauri::command]
 fn write_native_image(data_url: String) -> Result<(), String> {
+    if data_url.starts_with("http://") || data_url.starts_with("https://") {
+        return Err("Cannot write remote HTTP/HTTPS URL directly to native image clipboard".into());
+    }
     clipboard::write_native_image_to_clipboard(&data_url)
 }
 
@@ -163,6 +203,9 @@ fn save_file_to_downloads(
         .unwrap_or_else(|| std::path::PathBuf::from("."));
     let path = base_dir.join(&filename);
     if is_base64 {
+        if content.starts_with("http://") || content.starts_with("https://") {
+            return Err("Cannot decode remote HTTP/HTTPS URL as base64 content".into());
+        }
         let b64 = if let Some(idx) = content.find(',') {
             &content[idx + 1..]
         } else {
@@ -183,6 +226,7 @@ struct DroppedFilePayload {
     size_bytes: u64,
     data_url: Option<String>,
     text_preview: Option<String>,
+    text_content: Option<String>,
     category: String,
     extension: String,
 }
@@ -212,11 +256,11 @@ fn read_dropped_file(path: String) -> Result<DroppedFilePayload, String> {
 
     let is_img = ["png", "jpg", "jpeg", "webp", "bmp", "gif"].contains(&extension.as_str());
     let is_text = [
-        "txt", "md", "json", "js", "ts", "rs", "html", "css", "toml", "yaml", "yml",
+        "txt", "md", "json", "js", "ts", "rs", "html", "css", "toml", "yaml", "yml", "csv",
     ]
     .contains(&extension.as_str());
 
-    let (data_url, text_preview) = if is_img {
+    let (data_url, text_preview, text_content) = if is_img {
         let bytes = fs::read(p).map_err(|e| format!("Cannot read image: {e}"))?;
         let mime = match extension.as_str() {
             "png" => "image/png",
@@ -227,12 +271,13 @@ fn read_dropped_file(path: String) -> Result<DroppedFilePayload, String> {
             _ => "application/octet-stream",
         };
         let b64 = clipboard::simple_base64_encode(&bytes);
-        (Some(format!("data:{mime};base64,{b64}")), None)
-    } else if is_text && size_bytes <= 100_000 {
+        (Some(format!("data:{mime};base64,{b64}")), None, None)
+    } else if is_text && size_bytes <= 5_000_000 {
         let text = fs::read_to_string(p).ok();
-        (None, text.map(|t| t.chars().take(500).collect()))
+        let preview = text.as_ref().map(|t| t.chars().take(500).collect());
+        (None, preview, text)
     } else {
-        (None, None)
+        (None, None, None)
     };
 
     let category = if is_img {
@@ -248,6 +293,7 @@ fn read_dropped_file(path: String) -> Result<DroppedFilePayload, String> {
         size_bytes,
         data_url,
         text_preview,
+        text_content,
         category: category.into(),
         extension,
     })
@@ -365,10 +411,12 @@ struct NativeAiPayload {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct NativeAiResponse {
-    status: u16,
-    body: String,
-    ok: bool,
+pub struct NativeAiResponse {
+    pub status: u16,
+    #[serde(default)]
+    pub headers: std::collections::HashMap<String, String>,
+    pub body: String,
+    pub ok: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -432,7 +480,7 @@ fn parse_ai_destination_and_provider(
             }
             match host {
                 "api.openai.com" => {
-                    if path != "/v1/chat/completions" {
+                    if path != "/v1/chat/completions" && path != "/v1/images/generations" {
                         return Err("Unsupported path for OpenAI endpoint".into());
                     }
                     if query.is_some() {
@@ -472,10 +520,10 @@ fn parse_ai_destination_and_provider(
                             return Err("Invalid Gemini model identifier".into());
                         }
                         match action {
-                            "generateContent" => {
+                            "generateContent" | "predict" => {
                                 if query.is_some() {
                                     return Err(
-                                        "Query parameters not allowed for Gemini generateContent"
+                                        "Query parameters not allowed for Gemini generateContent/predict"
                                             .into(),
                                     );
                                 }
@@ -516,9 +564,13 @@ fn parse_ai_destination_and_provider(
             if query.is_some() {
                 return Err("Query parameters not allowed for local AI providers".into());
             }
-            if path == "/api/chat" {
+            if path == "/api/chat" || path == "/api/tags" {
                 AiProvider::Ollama
-            } else if path == "/v1/chat/completions" {
+            } else if path == "/v1/chat/completions"
+                || path == "/v1/models"
+                || path == "/v1/images/generations"
+                || path == "/sdapi/v1/txt2img"
+            {
                 AiProvider::LmStudio
             } else {
                 return Err("Unsupported path for local AI provider".into());
@@ -672,15 +724,112 @@ fn validate_ai_payload(payload: &NativeAiPayload) -> Result<(), String> {
     Ok(())
 }
 
+fn infer_diagnostic_metadata(url: &str, body: Option<&str>) -> (String, String, String) {
+    let lower = url.to_ascii_lowercase();
+    let provider = if lower.contains("generativelanguage.googleapis.com") {
+        "gemini"
+    } else if lower.contains("api.openai.com") {
+        "openai"
+    } else if lower.contains("api.groq.com") {
+        "groq"
+    } else if lower.contains("openrouter.ai") {
+        "openrouter"
+    } else if lower.contains("127.0.0.1:11434") || lower.contains("localhost:11434") {
+        "ollama"
+    } else {
+        "custom"
+    };
+
+    let op_type = if lower.contains("/images/")
+        || lower.contains(":predict")
+        || lower.contains("openai_v1")
+        || lower.contains("dall-e")
+    {
+        "image"
+    } else if lower.contains("/models")
+        && !lower.contains(":streamgeneratecontent")
+        && !lower.contains(":generatecontent")
+    {
+        "model_discovery"
+    } else {
+        "chat"
+    };
+
+    let model = if let Some(idx) = lower.find("/models/") {
+        let rest = &url[idx + 8..];
+        let end_idx = rest
+            .find(':')
+            .or_else(|| rest.find('?'))
+            .or_else(|| rest.find('/'))
+            .unwrap_or(rest.len());
+        rest[..end_idx].to_string()
+    } else if let Some(body_str) = body {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(body_str) {
+            val.get("model")
+                .and_then(|m| m.as_str())
+                .unwrap_or("default")
+                .to_string()
+        } else {
+            "default".to_string()
+        }
+    } else {
+        "default".to_string()
+    };
+
+    (provider.to_string(), model, op_type.to_string())
+}
+
 fn execute_native_ai_request(
     payload: NativeAiPayload,
     registry: AiProcessRegistry,
+    diagnostics: Option<ai_diagnostics::AiDiagnosticsManager>,
 ) -> Result<NativeAiResponse, String> {
     validate_ai_payload(&payload)?;
 
     let req_id = payload.request_id.clone().unwrap_or_default();
+    let (provider_id, model_id, op_type) =
+        infer_diagnostic_metadata(&payload.url, payload.body.as_deref());
+    let start_time = std::time::Instant::now();
+
+    if let Some(diag) = &diagnostics {
+        diag.record(&ai_diagnostics::AiDiagnosticEntry {
+            correlation_id: req_id.clone(),
+            timestamp: ai_diagnostics::current_iso_timestamp(),
+            op_type: op_type.clone(),
+            provider_id: provider_id.clone(),
+            model_id: model_id.clone(),
+            stage: "start".into(),
+            http_status: None,
+            curl_exit: None,
+            retry_count: None,
+            retry_reason: None,
+            duration_ms: Some(0),
+            cancelled: Some(false),
+            output_bytes: None,
+            ended: None,
+        });
+    }
+
     if !req_id.is_empty() && registry.is_cancelled(&req_id) {
         registry.unregister(&req_id);
+        if let Some(diag) = &diagnostics {
+            diag.record(&ai_diagnostics::AiDiagnosticEntry {
+                correlation_id: req_id.clone(),
+                timestamp: ai_diagnostics::current_iso_timestamp(),
+                op_type,
+                provider_id,
+                model_id,
+                stage: "cancelled".into(),
+                http_status: None,
+                curl_exit: None,
+                retry_count: None,
+                retry_reason: None,
+                duration_ms: Some(start_time.elapsed().as_millis() as u64),
+                cancelled: Some(true),
+                output_bytes: None,
+                ended: Some("cancelled".into()),
+            });
+        }
         return Err("Request was cancelled before process creation".into());
     }
 
@@ -696,7 +845,8 @@ fn execute_native_ai_request(
         escape_curl_config_str(&payload.method)
     ));
     config.push_str("max-time = 60\n");
-    config.push_str("max-filesize = 2097152\n");
+    config.push_str("max-filesize = 10485760\n");
+    config.push_str("header = \"Expect:\"\n");
     for (k, v) in &payload.headers {
         config.push_str(&format!(
             "header = \"{}: {}\"\n",
@@ -727,6 +877,24 @@ fn execute_native_ai_request(
 
     let pid = child.id();
     if !req_id.is_empty() && !registry.register_or_kill(&req_id, pid) {
+        if let Some(diag) = &diagnostics {
+            diag.record(&ai_diagnostics::AiDiagnosticEntry {
+                correlation_id: req_id.clone(),
+                timestamp: ai_diagnostics::current_iso_timestamp(),
+                op_type,
+                provider_id,
+                model_id,
+                stage: "cancelled".into(),
+                http_status: None,
+                curl_exit: None,
+                retry_count: None,
+                retry_reason: None,
+                duration_ms: Some(start_time.elapsed().as_millis() as u64),
+                cancelled: Some(true),
+                output_bytes: None,
+                ended: Some("cancelled".into()),
+            });
+        }
         return Err("Request was cancelled during startup".into());
     }
 
@@ -742,38 +910,141 @@ fn execute_native_ai_request(
         registry.unregister(&req_id);
     }
 
-    let output =
-        output.map_err(|e| format!("Native transport process failed or was terminated: {e}"))?;
+    let output = output.map_err(|e| {
+        if let Some(diag) = &diagnostics {
+            diag.record(&ai_diagnostics::AiDiagnosticEntry {
+                correlation_id: req_id.clone(),
+                timestamp: ai_diagnostics::current_iso_timestamp(),
+                op_type: op_type.clone(),
+                provider_id: provider_id.clone(),
+                model_id: model_id.clone(),
+                stage: "error".into(),
+                http_status: None,
+                curl_exit: None,
+                retry_count: None,
+                retry_reason: None,
+                duration_ms: Some(start_time.elapsed().as_millis() as u64),
+                cancelled: Some(false),
+                output_bytes: None,
+                ended: Some("error".into()),
+            });
+        }
+        format!("Native transport process failed or was terminated: {e}")
+    })?;
+
     let raw = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let duration_ms = start_time.elapsed().as_millis() as u64;
 
-    let mut lines = raw.lines();
-    let status = lines
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|code| code.parse::<u16>().ok())
-        .unwrap_or(if output.status.success() { 200 } else { 500 });
+    let res = parse_curl_http_response(&raw, output.status.success(), &stderr);
+    if let Some(diag) = &diagnostics {
+        if let Ok(r) = &res {
+            diag.record(&ai_diagnostics::AiDiagnosticEntry {
+                correlation_id: req_id,
+                timestamp: ai_diagnostics::current_iso_timestamp(),
+                op_type,
+                provider_id,
+                model_id,
+                stage: if r.ok {
+                    "completion".into()
+                } else {
+                    "error".into()
+                },
+                http_status: Some(r.status),
+                curl_exit: Some(format!("{:?}", output.status.code())),
+                retry_count: None,
+                retry_reason: None,
+                duration_ms: Some(duration_ms),
+                cancelled: Some(false),
+                output_bytes: Some(r.body.len()),
+                ended: Some(if r.ok {
+                    "normal".into()
+                } else {
+                    "error".into()
+                }),
+            });
+        }
+    }
+    res
+}
 
-    if (300..400).contains(&status) {
+pub fn parse_curl_http_response(
+    raw: &str,
+    success: bool,
+    stderr: &str,
+) -> Result<NativeAiResponse, String> {
+    if raw.trim().is_empty() {
+        let err_msg = if !stderr.trim().is_empty() {
+            stderr.trim().to_string()
+        } else {
+            "Empty response from native AI transport".to_string()
+        };
+        return Ok(NativeAiResponse {
+            status: if success { 200 } else { 500 },
+            headers: std::collections::HashMap::new(),
+            body: err_msg,
+            ok: false,
+        });
+    }
+
+    let mut remaining = raw;
+    let mut final_status = if success { 200 } else { 500 };
+    let mut final_headers = std::collections::HashMap::new();
+
+    loop {
+        let (header_part, after) = if let Some(idx) = remaining.find("\r\n\r\n") {
+            (&remaining[..idx], &remaining[idx + 4..])
+        } else if let Some(idx) = remaining.find("\n\n") {
+            (&remaining[..idx], &remaining[idx + 2..])
+        } else {
+            break;
+        };
+
+        let mut lines = header_part.lines();
+        let status_line = lines.next().unwrap_or("");
+        if let Some(status_code) = status_line
+            .split_whitespace()
+            .nth(1)
+            .and_then(|code| code.parse::<u16>().ok())
+        {
+            if (100..200).contains(&status_code) {
+                remaining = after;
+                continue;
+            }
+            final_status = status_code;
+            final_headers.clear();
+            for line in lines {
+                if let Some((k, v)) = line.split_once(':') {
+                    final_headers.insert(k.trim().to_ascii_lowercase(), v.trim().to_string());
+                }
+            }
+            remaining = after;
+            break;
+        } else {
+            break;
+        }
+    }
+
+    if (300..400).contains(&final_status) {
         return Err(format!(
-            "Redirects are forbidden for native AI transport (status {status})"
+            "Redirects are forbidden for native AI transport (status {final_status})"
         ));
     }
 
-    let body = if let Some(idx) = raw.find("\r\n\r\n") {
-        raw[idx + 4..].to_string()
-    } else if let Some(idx) = raw.find("\n\n") {
-        raw[idx + 2..].to_string()
-    } else {
-        raw.to_string()
-    };
+    let mut body = remaining.to_string();
+    if body.is_empty() && !success && !stderr.trim().is_empty() {
+        body = stderr.trim().to_string();
+    }
 
     Ok(NativeAiResponse {
-        status,
-        ok: (200..300).contains(&status),
+        status: final_status,
+        headers: final_headers,
         body,
+        ok: (200..300).contains(&final_status),
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn native_ai_request(
     request_id: Option<String>,
@@ -783,6 +1054,7 @@ async fn native_ai_request(
     body: Option<String>,
     payload: Option<NativeAiPayload>,
     registry: tauri::State<'_, AiProcessRegistry>,
+    diagnostics: tauri::State<'_, ai_diagnostics::AiDiagnosticsManager>,
 ) -> Result<NativeAiResponse, String> {
     let resolved_payload = if let Some(p) = payload {
         p
@@ -796,9 +1068,12 @@ async fn native_ai_request(
         }
     };
     let reg = registry.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || execute_native_ai_request(resolved_payload, reg))
-        .await
-        .map_err(|e| format!("Task execution error: {e}"))?
+    let diag = diagnostics.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        execute_native_ai_request(resolved_payload, reg, Some(diag))
+    })
+    .await
+    .map_err(|e| format!("Task execution error: {e}"))?
 }
 
 #[tauri::command]
@@ -807,6 +1082,350 @@ fn cancel_native_ai_request(
     registry: tauri::State<'_, AiProcessRegistry>,
 ) -> Result<bool, String> {
     Ok(registry.cancel(&request_id))
+}
+
+fn execute_native_ai_stream(
+    payload: NativeAiPayload,
+    registry: AiProcessRegistry,
+    window: tauri::WebviewWindow,
+    diagnostics: Option<ai_diagnostics::AiDiagnosticsManager>,
+) -> Result<(), String> {
+    validate_ai_payload(&payload)?;
+
+    let req_id = payload.request_id.clone().unwrap_or_default();
+    let event_name = format!("ai-stream:{}", req_id);
+    let (provider_id, model_id, op_type) =
+        infer_diagnostic_metadata(&payload.url, payload.body.as_deref());
+    let start_time = std::time::Instant::now();
+
+    if let Some(diag) = &diagnostics {
+        diag.record(&ai_diagnostics::AiDiagnosticEntry {
+            correlation_id: req_id.clone(),
+            timestamp: ai_diagnostics::current_iso_timestamp(),
+            op_type: op_type.clone(),
+            provider_id: provider_id.clone(),
+            model_id: model_id.clone(),
+            stage: "start".into(),
+            http_status: None,
+            curl_exit: None,
+            retry_count: None,
+            retry_reason: None,
+            duration_ms: Some(0),
+            cancelled: Some(false),
+            output_bytes: None,
+            ended: None,
+        });
+    }
+
+    if !req_id.is_empty() && registry.is_cancelled(&req_id) {
+        registry.unregister(&req_id);
+        if let Some(diag) = &diagnostics {
+            diag.record(&ai_diagnostics::AiDiagnosticEntry {
+                correlation_id: req_id.clone(),
+                timestamp: ai_diagnostics::current_iso_timestamp(),
+                op_type: op_type.clone(),
+                provider_id: provider_id.clone(),
+                model_id: model_id.clone(),
+                stage: "cancelled".into(),
+                http_status: None,
+                curl_exit: None,
+                retry_count: None,
+                retry_reason: None,
+                duration_ms: Some(start_time.elapsed().as_millis() as u64),
+                cancelled: Some(true),
+                output_bytes: None,
+                ended: Some("cancelled".into()),
+            });
+        }
+        let _ = window.emit(
+            &event_name,
+            serde_json::json!({ "type": "error", "message": "Request cancelled before launch" }),
+        );
+        return Err("Request was cancelled before process creation".into());
+    }
+
+    let mut config = String::new();
+    config.push_str(&format!(
+        "url = \"{}\"\n",
+        escape_curl_config_str(&payload.url)
+    ));
+    config.push_str(&format!(
+        "request = \"{}\"\n",
+        escape_curl_config_str(&payload.method)
+    ));
+    config.push_str("max-time = 120\n");
+    config.push_str("max-filesize = 10485760\n");
+    config.push_str("header = \"Expect:\"\n");
+    for (k, v) in &payload.headers {
+        config.push_str(&format!(
+            "header = \"{}: {}\"\n",
+            escape_curl_config_str(k),
+            escape_curl_config_str(v)
+        ));
+    }
+    if let Some(body) = &payload.body {
+        config.push_str(&format!("data = \"{}\"\n", escape_curl_config_str(body)));
+    }
+
+    let mut cmd = std::process::Command::new("curl.exe");
+    cmd.args(["-s", "-N", "-i", "--config", "-"]);
+    cmd.stdin(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to execute native transport: {e}"))?;
+
+    let pid = child.id();
+    if !req_id.is_empty() && !registry.register_or_kill(&req_id, pid) {
+        if let Some(diag) = &diagnostics {
+            diag.record(&ai_diagnostics::AiDiagnosticEntry {
+                correlation_id: req_id.clone(),
+                timestamp: ai_diagnostics::current_iso_timestamp(),
+                op_type,
+                provider_id,
+                model_id,
+                stage: "cancelled".into(),
+                http_status: None,
+                curl_exit: None,
+                retry_count: None,
+                retry_reason: None,
+                duration_ms: Some(start_time.elapsed().as_millis() as u64),
+                cancelled: Some(true),
+                output_bytes: None,
+                ended: Some("cancelled".into()),
+            });
+        }
+        let _ = window.emit(
+            &event_name,
+            serde_json::json!({ "type": "error", "message": "Request cancelled during startup" }),
+        );
+        return Err("Request was cancelled during startup".into());
+    }
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(config.as_bytes());
+        let _ = stdin.flush();
+        drop(stdin);
+    }
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture stdout for streaming".to_string())?;
+    use std::io::{BufRead, BufReader, Read};
+    let mut reader = BufReader::new(stdout);
+
+    // Read HTTP response headers
+    let mut status_code: u16 = 200;
+    let mut headers = std::collections::HashMap::new();
+    let mut header_lines = Vec::new();
+
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {
+                let trimmed = line.trim_end_matches(['\r', '\n']);
+                if trimmed.is_empty() {
+                    if (100..200).contains(&status_code) {
+                        header_lines.clear();
+                        continue;
+                    }
+                    break;
+                }
+                if header_lines.is_empty() {
+                    if let Some(code) = trimmed
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|c| c.parse::<u16>().ok())
+                    {
+                        status_code = code;
+                    }
+                } else if let Some((k, v)) = trimmed.split_once(':') {
+                    headers.insert(k.trim().to_ascii_lowercase(), v.trim().to_string());
+                }
+                header_lines.push(line);
+            }
+            Err(e) => {
+                if let Some(diag) = &diagnostics {
+                    diag.record(&ai_diagnostics::AiDiagnosticEntry {
+                        correlation_id: req_id.clone(),
+                        timestamp: ai_diagnostics::current_iso_timestamp(),
+                        op_type: op_type.clone(),
+                        provider_id: provider_id.clone(),
+                        model_id: model_id.clone(),
+                        stage: "error".into(),
+                        http_status: Some(status_code),
+                        curl_exit: None,
+                        retry_count: None,
+                        retry_reason: None,
+                        duration_ms: Some(start_time.elapsed().as_millis() as u64),
+                        cancelled: Some(false),
+                        output_bytes: None,
+                        ended: Some("error".into()),
+                    });
+                }
+                let _ = window.emit(
+                    &event_name,
+                    serde_json::json!({ "type": "error", "message": e.to_string() }),
+                );
+                if !req_id.is_empty() {
+                    registry.unregister(&req_id);
+                }
+                return Err(e.to_string());
+            }
+        }
+    }
+
+    // Emit head event
+    let _ = window.emit(
+        &event_name,
+        serde_json::json!({
+            "type": "head",
+            "status": status_code,
+            "headers": headers,
+        }),
+    );
+
+    // Stream body chunks
+    let mut total_output_bytes = 0usize;
+    let mut first_token_seen = false;
+    let mut buf = [0u8; 4096];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                total_output_bytes += n;
+                if !first_token_seen {
+                    first_token_seen = true;
+                    if let Some(diag) = &diagnostics {
+                        diag.record(&ai_diagnostics::AiDiagnosticEntry {
+                            correlation_id: req_id.clone(),
+                            timestamp: ai_diagnostics::current_iso_timestamp(),
+                            op_type: op_type.clone(),
+                            provider_id: provider_id.clone(),
+                            model_id: model_id.clone(),
+                            stage: "first_token".into(),
+                            http_status: Some(status_code),
+                            curl_exit: None,
+                            retry_count: None,
+                            retry_reason: None,
+                            duration_ms: Some(start_time.elapsed().as_millis() as u64),
+                            cancelled: Some(false),
+                            output_bytes: Some(n),
+                            ended: None,
+                        });
+                    }
+                }
+                let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                let _ = window.emit(
+                    &event_name,
+                    serde_json::json!({
+                        "type": "chunk",
+                        "text": text,
+                    }),
+                );
+            }
+            Err(e) => {
+                if let Some(diag) = &diagnostics {
+                    diag.record(&ai_diagnostics::AiDiagnosticEntry {
+                        correlation_id: req_id.clone(),
+                        timestamp: ai_diagnostics::current_iso_timestamp(),
+                        op_type: op_type.clone(),
+                        provider_id: provider_id.clone(),
+                        model_id: model_id.clone(),
+                        stage: "error".into(),
+                        http_status: Some(status_code),
+                        curl_exit: None,
+                        retry_count: None,
+                        retry_reason: None,
+                        duration_ms: Some(start_time.elapsed().as_millis() as u64),
+                        cancelled: Some(false),
+                        output_bytes: Some(total_output_bytes),
+                        ended: Some("error".into()),
+                    });
+                }
+                let _ = window.emit(
+                    &event_name,
+                    serde_json::json!({ "type": "error", "message": e.to_string() }),
+                );
+                break;
+            }
+        }
+    }
+
+    let _ = child.wait();
+
+    if !req_id.is_empty() {
+        registry.unregister(&req_id);
+    }
+
+    if let Some(diag) = &diagnostics {
+        diag.record(&ai_diagnostics::AiDiagnosticEntry {
+            correlation_id: req_id.clone(),
+            timestamp: ai_diagnostics::current_iso_timestamp(),
+            op_type,
+            provider_id,
+            model_id,
+            stage: "completion".into(),
+            http_status: Some(status_code),
+            curl_exit: None,
+            retry_count: None,
+            retry_reason: None,
+            duration_ms: Some(start_time.elapsed().as_millis() as u64),
+            cancelled: Some(false),
+            output_bytes: Some(total_output_bytes),
+            ended: Some("normal".into()),
+        });
+    }
+
+    // Emit end event
+    let _ = window.emit(&event_name, serde_json::json!({ "type": "end" }));
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+async fn native_ai_stream(
+    request_id: Option<String>,
+    url: Option<String>,
+    method: Option<String>,
+    headers: Option<std::collections::HashMap<String, String>>,
+    body: Option<String>,
+    payload: Option<NativeAiPayload>,
+    window: tauri::WebviewWindow,
+    registry: tauri::State<'_, AiProcessRegistry>,
+    diagnostics: tauri::State<'_, ai_diagnostics::AiDiagnosticsManager>,
+) -> Result<(), String> {
+    let resolved_payload = if let Some(p) = payload {
+        p
+    } else {
+        NativeAiPayload {
+            request_id,
+            url: url.unwrap_or_default(),
+            method: method.unwrap_or_else(|| "POST".to_string()),
+            headers: headers.unwrap_or_default(),
+            body,
+        }
+    };
+    let reg = registry.inner().clone();
+    let diag = diagnostics.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        execute_native_ai_stream(resolved_payload, reg, window, Some(diag))
+    })
+    .await
+    .map_err(|e| format!("Stream task error: {e}"))?
 }
 
 #[derive(serde::Serialize)]
@@ -914,6 +1533,157 @@ fn read_xyeena_runs(project_root: String) -> Result<Vec<RunSummary>, String> {
     Ok(result)
 }
 
+#[tauri::command]
+fn get_agent_ipc_pipe_name() -> String {
+    agent_ipc::get_pipe_name()
+}
+
+#[tauri::command]
+fn get_agent_sessions(
+    registry: tauri::State<'_, agent_ipc::SharedSessionRegistry>,
+) -> Vec<agent_ipc::AgentSession> {
+    registry.all_sessions()
+}
+
+#[tauri::command]
+fn detect_agent_providers() -> Vec<(
+    agent_ipc::provider::ProviderDef,
+    agent_ipc::provider::DetectionResult,
+)> {
+    agent_ipc::provider::known_providers()
+        .into_iter()
+        .map(|def| {
+            let res = agent_ipc::provider::detect_provider(&def);
+            (def, res)
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn preview_provider_hooks(
+    provider_id: String,
+    workspace_path: Option<String>,
+) -> Result<agent_ipc::provider::HookInstallPreview, String> {
+    if provider_id == "codex" || provider_id == "gemini-cli" {
+        return Err(format!(
+            "Provider '{provider_id}' hook contract is unverified: {provider_id} does not currently expose a documented CLI hook execution contract. Install blocked."
+        ));
+    }
+    if provider_id != "antigravity" {
+        return Err(format!(
+            "Provider '{provider_id}' is not yet supported for hook previews"
+        ));
+    }
+    let config_path = if let Some(ws) = workspace_path {
+        std::path::PathBuf::from(ws)
+            .join(".agents")
+            .join("hooks.json")
+    } else {
+        return Err("A workspace root path is required for workspace hook preview".into());
+    };
+    let relay_exe = agent_ipc::provider::resolve_relay_exe_path().map_err(|e| e.to_string())?;
+    agent_ipc::provider::preview_agy_install(
+        &config_path,
+        agent_ipc::provider::ConfigScope::Workspace,
+        &relay_exe.to_string_lossy(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn install_provider_hooks(
+    provider_id: String,
+    workspace_path: Option<String>,
+    confirmed: bool,
+    expected_relay_path: Option<String>,
+) -> Result<agent_ipc::provider::HookInstallOutcome, String> {
+    if !confirmed {
+        return Err("Explicit user confirmation is required before installing hooks".into());
+    }
+    if provider_id == "codex" || provider_id == "gemini-cli" {
+        return Err(format!(
+            "Provider '{provider_id}' hook contract is unverified: {provider_id} does not currently expose a documented CLI hook execution contract. Install blocked."
+        ));
+    }
+    if provider_id != "antigravity" {
+        return Err(format!(
+            "Provider '{provider_id}' is not yet supported for hook installation"
+        ));
+    }
+    let config_path = if let Some(ws) = workspace_path {
+        let p = std::path::PathBuf::from(ws).join(".agents");
+        let _ = std::fs::create_dir_all(&p);
+        p.join("hooks.json")
+    } else {
+        return Err("A workspace root path is required for workspace hook installation".into());
+    };
+    let relay_exe = agent_ipc::provider::resolve_relay_exe_path().map_err(|e| e.to_string())?;
+    if let Some(expected) = expected_relay_path {
+        let resolved_str = relay_exe.to_string_lossy();
+        if resolved_str != expected {
+            return Err(format!(
+                "Relay path mismatch: preview was '{expected}', resolved '{resolved_str}'"
+            ));
+        }
+    }
+    agent_ipc::provider::install_agy_hooks(&config_path, &relay_exe.to_string_lossy())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn uninstall_provider_hooks(
+    provider_id: String,
+    workspace_path: Option<String>,
+) -> Result<agent_ipc::provider::HookInstallOutcome, String> {
+    if provider_id != "antigravity" {
+        return Err(format!(
+            "Provider '{provider_id}' is not yet supported for hook uninstallation"
+        ));
+    }
+    let config_path = if let Some(ws) = workspace_path {
+        std::path::PathBuf::from(ws)
+            .join(".agents")
+            .join("hooks.json")
+    } else {
+        return Err("A workspace root path is required for workspace hook uninstallation".into());
+    };
+    agent_ipc::provider::uninstall_agy_hooks(&config_path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_pending_approvals(
+    approval_registry: tauri::State<'_, agent_ipc::SharedApprovalRegistry>,
+) -> Vec<agent_ipc::ApprovalSnapshot> {
+    approval_registry.pending_snapshots()
+}
+
+#[derive(serde::Deserialize)]
+struct SubmitApprovalPayload {
+    request_id: String,
+    auth_token: String,
+    action_fingerprint: String,
+    decision: agent_ipc::ApprovalDecision,
+}
+
+#[tauri::command]
+fn submit_approval_decision(
+    payload: SubmitApprovalPayload,
+    approval_registry: tauri::State<'_, agent_ipc::SharedApprovalRegistry>,
+    app: tauri::AppHandle,
+) -> Result<agent_ipc::PendingApproval, String> {
+    let resolved = approval_registry
+        .submit_decision(
+            &payload.request_id,
+            &payload.auth_token,
+            &payload.action_fingerprint,
+            payload.decision,
+        )
+        .map_err(|e| e.to_string())?;
+
+    let _ = app.emit("island:approval-resolved", &resolved);
+    Ok(resolved)
+}
+
 fn show_island(app: &tauri::AppHandle, requested: &str) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = set_mode(&window, Mode::Compact);
@@ -929,7 +1699,24 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AiProcessRegistry::default())
+        .manage(ai_diagnostics::AiDiagnosticsManager::default())
+        .manage(agent_ipc::SharedSessionRegistry::new())
+        .manage(agent_ipc::SharedApprovalRegistry::new())
         .setup(|app| {
+            let registry = app
+                .state::<agent_ipc::SharedSessionRegistry>()
+                .inner()
+                .clone();
+            let approval_registry = app
+                .state::<agent_ipc::SharedApprovalRegistry>()
+                .inner()
+                .clone();
+            let server_handle = agent_ipc::start_agent_pipe_server(
+                app.handle().clone(),
+                registry,
+                approval_registry,
+            );
+            app.manage(std::sync::Mutex::new(server_handle));
             let window = app
                 .get_webview_window("main")
                 .ok_or_else(|| std::io::Error::other("Main Island window missing"))?;
@@ -1001,10 +1788,43 @@ pub fn run() {
             read_island_cursor,
             read_native_clipboard,
             write_native_image,
+            clipboard::get_clipboard_sequence_number,
             save_file_to_downloads,
             read_dropped_file,
             native_ai_request,
             cancel_native_ai_request,
+            native_ai_stream,
+            ai_diagnostics::set_ai_diagnostics_enabled,
+            ai_diagnostics::get_ai_diagnostics_status,
+            ai_diagnostics::clear_ai_diagnostics,
+            get_agent_ipc_pipe_name,
+            get_agent_sessions,
+            detect_agent_providers,
+            preview_provider_hooks,
+            install_provider_hooks,
+            uninstall_provider_hooks,
+            get_pending_approvals,
+            submit_approval_decision,
+            developer::get_workspace_diff,
+            developer::open_in_editor,
+            developer::open_in_terminal,
+            github::get_github_status,
+            integrations::list_supported_integrations,
+            integrations::check_integration_status,
+            flow::get_flow_engine_status,
+            voice::get_microphone_status,
+            voice::start_consented_recording,
+            voice::pause_consented_recording,
+            voice::resume_consented_recording,
+            voice::stop_consented_recording,
+            voice::export_consented_recording,
+            voice::parse_voice_intent,
+            companion::get_companion_state,
+            companion::request_companion_pairing,
+            companion::confirm_companion_pairing,
+            companion::revoke_companion_device,
+            companion::verify_mobile_approval_decision,
+            companion::execute_mobile_approval_decision,
         ])
         .run(tauri::generate_context!())
         .expect("Xyeena Island failed to start");
@@ -1181,6 +2001,31 @@ mod tests {
             body: Some("{}".into()),
         };
         assert!(validate_ai_payload(&lmstudio_valid).is_ok());
+
+        // 4. Image generation endpoints
+        let openai_image = NativeAiPayload {
+            request_id: Some("req-openai-img".into()),
+            url: "https://api.openai.com/v1/images/generations".into(),
+            method: "POST".into(),
+            headers: std::collections::HashMap::from([
+                ("content-type".into(), "application/json".into()),
+                ("authorization".into(), "Bearer test-key".into()),
+            ]),
+            body: Some("{\"prompt\":\"a golden lion\"}".into()),
+        };
+        assert!(validate_ai_payload(&openai_image).is_ok());
+
+        let gemini_imagen = NativeAiPayload {
+            request_id: Some("req-gemini-img".into()),
+            url: "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict".into(),
+            method: "POST".into(),
+            headers: std::collections::HashMap::from([
+                ("content-type".into(), "application/json".into()),
+                ("x-goog-api-key".into(), "AIzaTest".into()),
+            ]),
+            body: Some("{}".into()),
+        };
+        assert!(validate_ai_payload(&gemini_imagen).is_ok());
     }
 
     #[test]
@@ -1192,5 +2037,82 @@ mod tests {
         assert!(registered);
         registry.unregister("req-normal");
         assert!(!registry.is_cancelled("req-normal"));
+    }
+
+    #[test]
+    fn test_parse_curl_http_response_handles_100_continue_and_preserves_second_status() {
+        use super::parse_curl_http_response;
+        let raw = "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello Xyn!\"}]}}]}";
+        let res = parse_curl_http_response(raw, true, "").expect("Must parse successfully");
+        assert_eq!(res.status, 200);
+        assert!(res.ok);
+        assert_eq!(
+            res.headers.get("content-type").map(|s| s.as_str()),
+            Some("application/json")
+        );
+        assert_eq!(
+            res.body,
+            "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello Xyn!\"}]}}]}"
+        );
+    }
+
+    #[test]
+    fn test_parse_curl_http_response_429_with_retry_after_headers() {
+        use super::parse_curl_http_response;
+        let raw = "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 12\r\nContent-Type: application/json\r\n\r\n{\"error\":{\"message\":\"Rate limited\"}}";
+        let res = parse_curl_http_response(raw, true, "").expect("Must parse");
+        assert_eq!(res.status, 429);
+        assert!(!res.ok);
+        assert_eq!(
+            res.headers.get("retry-after").map(|s| s.as_str()),
+            Some("12")
+        );
+        assert!(res.body.contains("Rate limited"));
+    }
+
+    #[test]
+    fn test_parse_curl_http_response_empty_stdout_falls_back_to_stderr() {
+        use super::parse_curl_http_response;
+        let res = parse_curl_http_response(
+            "",
+            false,
+            "curl: (7) Failed to connect to 127.0.0.1 port 11434: Connection refused",
+        )
+        .expect("Must parse fallback");
+        assert_eq!(res.status, 500);
+        assert!(!res.ok);
+        assert!(res.body.contains("Connection refused"));
+    }
+
+    #[test]
+    fn test_parse_curl_http_response_rejects_redirects() {
+        use super::parse_curl_http_response;
+        let raw = "HTTP/1.1 302 Found\r\nLocation: https://malicious.example\r\n\r\n";
+        assert!(parse_curl_http_response(raw, true, "").is_err());
+    }
+
+    #[test]
+    fn test_infer_diagnostic_metadata_openai_extracts_model_from_body() {
+        use super::infer_diagnostic_metadata;
+        let url = "https://api.openai.com/v1/chat/completions";
+        let body = r#"{"model":"gpt-6-astra","messages":[{"role":"user","content":"uy"}]}"#;
+        let (prov, model, op) = infer_diagnostic_metadata(url, Some(body));
+        assert_eq!(prov, "openai");
+        assert_eq!(model, "gpt-6-astra");
+        assert_eq!(op, "chat");
+
+        // When body is missing or has no model, defaults cleanly
+        let (prov2, model2, op2) = infer_diagnostic_metadata(url, None);
+        assert_eq!(prov2, "openai");
+        assert_eq!(model2, "default");
+        assert_eq!(op2, "chat");
+
+        // Gemini models extracted from path
+        let gemini_url =
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse";
+        let (prov3, model3, op3) = infer_diagnostic_metadata(gemini_url, None);
+        assert_eq!(prov3, "gemini");
+        assert_eq!(model3, "gemini-2.0-flash");
+        assert_eq!(op3, "chat");
     }
 }

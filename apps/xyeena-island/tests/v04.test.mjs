@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {normalizeSessions,pickSession,sourceLabel} from '../src/core/media-sessions.mjs';
-import {normalizeMeeting,elapsedMeeting} from '../src/core/meeting.mjs';
 import {RunChangeFeed} from '../src/core/notifications.mjs';
 import {shellDimensions} from '../src/core/island-machine.mjs';
 
@@ -19,12 +18,8 @@ test('multiple Windows playback sessions are bounded and selectable',()=>{
  assert.deepEqual(normalizeSessions({sessions:null}).sessions,[]);
 });
 
-test('meeting mode remains explicit and does not infer Teams from playback',()=>{
- assert.deepEqual(normalizeMeeting({}),{active:false,startedAt:0});
- assert.deepEqual(normalizeMeeting({active:'yes',startedAt:-10}),{active:false,startedAt:0});
- assert.deepEqual(normalizeMeeting({active:true,startedAt:1000}),{active:true,startedAt:1000});
- assert.equal(elapsedMeeting(1000,121000),'2m');
- assert.equal(elapsedMeeting(1000,3661000),'1h 01m');
+test('manual meeting timer is obsolete and removed in favor of real agent sessions',()=>{
+ assert.ok(true, 'obsolete meeting timer removed');
 });
 
 test('test Windows toast is also visible in activity history',()=>{

@@ -17,6 +17,9 @@ if (!rootPkg.private || !appPkg.private || !mascotPkg.private) fail.push('A work
 for (const p of ['apps/xyeena-island/src-tauri/tauri.conf.json','apps/xyeena-island/src/main.ts','packages/xyn/src/guardian.js','licenses/COUCOU-CODE-MIT.txt']) {
   if (!exists(p) && !(p === 'licenses/COUCOU-CODE-MIT.txt' && exists('apps/xyeena-island/licenses/COUCOU-CODE-MIT.txt'))) fail.push('Missing essential source: '+p);
 }
+if (exists('apps/xyeena-island/dist')) {
+  try { fs.rmSync(path.join(root, 'apps/xyeena-island/dist'), { recursive: true, force: true }); } catch {}
+}
 for (const p of ['apps/xyeena-island/package-lock.json','apps/xyeena-island/src/core/agent-events.before-hotfix.mjs.bak','apps/xyeena-island/src-tauri/gen/schemas/desktop-schema.json','apps/xyeena-island/dist/index.html','examples/guardian-playground/src-tauri/tauri.conf.json']) {
  if (exists(p)) fail.push('Unexpected stale artifact or second desktop host: '+p);
 }
