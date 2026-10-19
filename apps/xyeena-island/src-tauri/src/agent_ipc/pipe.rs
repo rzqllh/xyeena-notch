@@ -208,7 +208,13 @@ fn run_server_loop<R: Runtime>(
 
         // Wait for client connection
         let connected = unsafe { ConnectNamedPipe(pipe_handle, None) };
-        if !connected.is_ok() {
+        let is_connected = connected.is_ok()
+            || connected
+                .as_ref()
+                .err()
+                .map(|e| e.code() == windows::Win32::Foundation::WIN32_ERROR(535).to_hresult())
+                .unwrap_or(false);
+        if !is_connected {
             let _ = unsafe { CloseHandle(pipe_handle) };
             continue;
         }
@@ -693,6 +699,8 @@ mod tests {
         let registry = SharedSessionRegistry::new();
         let registry_clone = registry.clone();
         let pipe_name_clone = test_pipe_name.clone();
+        let done = Arc::new(AtomicBool::new(false));
+        let done_clone = done.clone();
 
         let listener = thread::spawn(move || {
             let pipe_w = HSTRING::from(&pipe_name_clone);
@@ -728,9 +736,18 @@ mod tests {
                 return;
             }
 
-            for _ in 0..10 {
+            while !done_clone.load(Ordering::SeqCst) {
                 let connected = unsafe { ConnectNamedPipe(h, None) };
-                if connected.is_ok() {
+                let is_connected = connected.is_ok()
+                    || connected
+                        .as_ref()
+                        .err()
+                        .map(|e| {
+                            e.code() == windows::Win32::Foundation::WIN32_ERROR(535).to_hresult()
+                        })
+                        .unwrap_or(false);
+
+                if is_connected {
                     let mut frame_buf = FrameBuffer::new();
                     let mut read_buf = [0u8; 4096];
                     let mut read = 0u32;
@@ -755,8 +772,14 @@ mod tests {
                                 }
                             }
                         }
+                    } else {
+                        // Empty probe or abrupt disconnect unblock
+                        let _ = unsafe { DisconnectNamedPipe(h) };
+                        break;
                     }
                     let _ = unsafe { DisconnectNamedPipe(h) };
+                } else {
+                    break;
                 }
             }
             let _ = unsafe { CloseHandle(h) };
@@ -772,19 +795,22 @@ mod tests {
         thread::sleep(std::time::Duration::from_millis(50));
 
         // Locate xyeena-agent-relay.exe
-        let relay_exe = std::env::current_exe()
-            .unwrap()
+        let current_exe = std::env::current_exe().unwrap();
+        let target_dir = current_exe
             .parent()
-            .unwrap()
-            .join("xyeena-agent-relay.exe");
+            .and_then(|p| p.parent())
+            .unwrap_or_else(|| std::path::Path::new("target/debug"));
 
-        let exe_to_run = if relay_exe.exists() {
-            relay_exe
-        } else {
-            std::path::PathBuf::from("target/debug/xyeena-agent-relay.exe")
-        };
+        let candidate_relays = [
+            target_dir.join("xyeena-agent-relay.exe"),
+            current_exe.parent().unwrap().join("xyeena-agent-relay.exe"),
+            std::path::PathBuf::from("target/debug/xyeena-agent-relay.exe"),
+        ];
 
-        if !exe_to_run.exists() {
+        let exe_to_run = candidate_relays.into_iter().find(|p| p.exists());
+
+        let Some(exe_path) = exe_to_run else {
+            done.store(true, Ordering::SeqCst);
             let pipe_w = HSTRING::from(&test_pipe_name);
             unsafe {
                 let _ = windows::Win32::Storage::FileSystem::CreateFileW(
@@ -799,9 +825,9 @@ mod tests {
             }
             let _ = listener.join();
             return;
-        }
+        };
 
-        let mut child = Command::new(&exe_to_run)
+        let mut child = Command::new(&exe_path)
             .env("XYEENA_AGENT_PIPE_NAME", &test_pipe_name)
             .arg("PostToolUse")
             .arg("--provider")
@@ -821,6 +847,7 @@ mod tests {
         }
 
         let output = child.wait_with_output().expect("wait child");
+        done.store(true, Ordering::SeqCst);
         assert!(output.status.success(), "relay exit must be success");
 
         // Failsafe unblock in case listener is still waiting
