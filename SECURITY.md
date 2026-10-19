@@ -91,8 +91,16 @@ All AI completions are proxied through a non-blocking native curl runner in Rust
 - **Sensitive Data Filter:** Patterns resembling private keys, JWTs, and passwords are automatically filtered.
 - **Full Purge:** Clicking "Clear history" or closing the application zeroes the clipboard buffer.
 
-### H. Diagnostic Log Sanitization
+### H. Diagnostic Log Sanitization & AI Backend Tracing
 - The diagnostic log exporter (`btn-export-diagnostics`) redacts user names, local absolute file paths, and potential API token patterns (`sk-...`, `AIza...`, `Bearer ...`).
+- **Native AI Diagnostic Tracing (`ai_diagnostics.rs`):** Opt-in, developer-only local rotating diagnostic logs written strictly to `%LOCALAPPDATA%\xyeena-island\logs\ai-diagnostics.log` (bounded to 2 MiB per file with a single `.log.1` backup, max 4 MiB total disk allocation).
+- **Hard Privacy Guarantees:**
+  - Zero API keys, auth headers, Bearer tokens, or credentials are ever recorded.
+  - Zero prompt text, conversation history, or user file contents are logged.
+  - Zero raw API response bodies or generated image base64 payloads are logged.
+  - Sensitive query parameters in provider URLs (such as `key=...` or `token=...`) are systematically stripped using `sanitize_url` (`key=[REDACTED]`).
+  - Diagnostic logs record only non-sensitive operational metadata: correlation ID, timestamp (RFC 3339 UTC), operation type (`chat`, `image`, `model_discovery`), provider ID, model ID, transport stage, HTTP status, curl exit code, duration in milliseconds, and response byte count.
+  - Zero cloud telemetry: diagnostics remain strictly local and can be enabled, disabled, or cleared instantly via Settings.
 
 ---
 
