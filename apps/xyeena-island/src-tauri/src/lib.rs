@@ -184,6 +184,9 @@ fn read_native_clipboard() -> Result<Option<clipboard::NativeClipboardItem>, Str
 
 #[tauri::command]
 fn write_native_image(data_url: String) -> Result<(), String> {
+    if data_url.starts_with("http://") || data_url.starts_with("https://") {
+        return Err("Cannot write remote HTTP/HTTPS URL directly to native image clipboard".into());
+    }
     clipboard::write_native_image_to_clipboard(&data_url)
 }
 
@@ -200,6 +203,9 @@ fn save_file_to_downloads(
         .unwrap_or_else(|| std::path::PathBuf::from("."));
     let path = base_dir.join(&filename);
     if is_base64 {
+        if content.starts_with("http://") || content.starts_with("https://") {
+            return Err("Cannot decode remote HTTP/HTTPS URL as base64 content".into());
+        }
         let b64 = if let Some(idx) = content.find(',') {
             &content[idx + 1..]
         } else {
@@ -718,7 +724,7 @@ fn validate_ai_payload(payload: &NativeAiPayload) -> Result<(), String> {
     Ok(())
 }
 
-fn infer_diagnostic_metadata(url: &str) -> (String, String, String) {
+fn infer_diagnostic_metadata(url: &str, body: Option<&str>) -> (String, String, String) {
     let lower = url.to_ascii_lowercase();
     let provider = if lower.contains("generativelanguage.googleapis.com") {
         "gemini"
@@ -757,6 +763,15 @@ fn infer_diagnostic_metadata(url: &str) -> (String, String, String) {
             .or_else(|| rest.find('/'))
             .unwrap_or(rest.len());
         rest[..end_idx].to_string()
+    } else if let Some(body_str) = body {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(body_str) {
+            val.get("model")
+                .and_then(|m| m.as_str())
+                .unwrap_or("default")
+                .to_string()
+        } else {
+            "default".to_string()
+        }
     } else {
         "default".to_string()
     };
@@ -772,7 +787,8 @@ fn execute_native_ai_request(
     validate_ai_payload(&payload)?;
 
     let req_id = payload.request_id.clone().unwrap_or_default();
-    let (provider_id, model_id, op_type) = infer_diagnostic_metadata(&payload.url);
+    let (provider_id, model_id, op_type) =
+        infer_diagnostic_metadata(&payload.url, payload.body.as_deref());
     let start_time = std::time::Instant::now();
 
     if let Some(diag) = &diagnostics {
@@ -1078,7 +1094,8 @@ fn execute_native_ai_stream(
 
     let req_id = payload.request_id.clone().unwrap_or_default();
     let event_name = format!("ai-stream:{}", req_id);
-    let (provider_id, model_id, op_type) = infer_diagnostic_metadata(&payload.url);
+    let (provider_id, model_id, op_type) =
+        infer_diagnostic_metadata(&payload.url, payload.body.as_deref());
     let start_time = std::time::Instant::now();
 
     if let Some(diag) = &diagnostics {
@@ -2072,5 +2089,30 @@ mod tests {
         use super::parse_curl_http_response;
         let raw = "HTTP/1.1 302 Found\r\nLocation: https://malicious.example\r\n\r\n";
         assert!(parse_curl_http_response(raw, true, "").is_err());
+    }
+
+    #[test]
+    fn test_infer_diagnostic_metadata_openai_extracts_model_from_body() {
+        use super::infer_diagnostic_metadata;
+        let url = "https://api.openai.com/v1/chat/completions";
+        let body = r#"{"model":"gpt-6-astra","messages":[{"role":"user","content":"uy"}]}"#;
+        let (prov, model, op) = infer_diagnostic_metadata(url, Some(body));
+        assert_eq!(prov, "openai");
+        assert_eq!(model, "gpt-6-astra");
+        assert_eq!(op, "chat");
+
+        // When body is missing or has no model, defaults cleanly
+        let (prov2, model2, op2) = infer_diagnostic_metadata(url, None);
+        assert_eq!(prov2, "openai");
+        assert_eq!(model2, "default");
+        assert_eq!(op2, "chat");
+
+        // Gemini models extracted from path
+        let gemini_url =
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse";
+        let (prov3, model3, op3) = infer_diagnostic_metadata(gemini_url, None);
+        assert_eq!(prov3, "gemini");
+        assert_eq!(model3, "gemini-2.0-flash");
+        assert_eq!(op3, "chat");
     }
 }

@@ -288,6 +288,10 @@ pub fn write_native_image_to_clipboard(data_url: &str) -> Result<(), String> {
 
     const CF_DIB: u32 = 8;
 
+    if data_url.starts_with("http://") || data_url.starts_with("https://") {
+        return Err("Remote HTTP/HTTPS URL cannot be processed as a base64 image".into());
+    }
+
     let base64_str = if let Some(idx) = data_url.find(',') {
         &data_url[idx + 1..]
     } else {

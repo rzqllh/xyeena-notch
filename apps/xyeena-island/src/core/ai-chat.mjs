@@ -1176,8 +1176,10 @@ export async function generateImage(params = {}) {
   if (!meta) throw new Error(`Unsupported image provider: ${provider}`);
 
   const modelId = params.model || meta.defaultModel;
-  const modelMeta = meta.models.find(m => m.id === modelId) || meta.models[0];
-  if (!modelMeta) throw new Error(`Unsupported image model: ${modelId} for ${meta.name}`);
+  const modelMeta = meta.models.find(m => m.id === modelId);
+  if (!modelMeta) {
+    throw new Error(`Unsupported image model: "${modelId}" for ${meta.name}. Available models: ${meta.models.map(m => m.id).join(', ')}`);
+  }
 
   if (modelMeta.requiresConsent && !params.costAcknowledged) {
     throw new Error(`Model "${modelMeta.name}" is a chargeable API option (${modelMeta.costNote}). Please acknowledge potential charges before proceeding.`);

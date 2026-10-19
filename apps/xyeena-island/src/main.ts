@@ -1878,8 +1878,19 @@ function renderChatMessages(){
    copyBtn.textContent='Copy';
    copyBtn.addEventListener('click',async()=>{
     try{
-     if(isTauri)await native('write_native_image',{dataUrl:imgMeta.dataUrl});
-     playFeedbackSound('tap');
+     const url=imgMeta.dataUrl||'';
+     if(url.startsWith('data:')){
+      if(isTauri)await native('write_native_image',{dataUrl:url});
+      else await writeText(url);
+      copyBtn.textContent='Copied!';
+      setTimeout(()=>{copyBtn.textContent='Copy';},1500);
+      playFeedbackSound('tap');
+     }else if(url.startsWith('https://')||url.startsWith('http://')){
+      await writeText(url);
+      copyBtn.textContent='URL Copied!';
+      setTimeout(()=>{copyBtn.textContent='Copy';},1500);
+      playFeedbackSound('tap');
+     }
     }catch{}
    });
    const saveBtn=document.createElement('button');
@@ -1888,10 +1899,30 @@ function renderChatMessages(){
    saveBtn.textContent='Save';
    saveBtn.addEventListener('click',async()=>{
     try{
-     if(isTauri){
-      const ext=imgMeta.dataUrl.includes('image/jpeg')?'jpg':imgMeta.dataUrl.includes('image/webp')?'webp':'png';
-      const fn=`xyeena-image-${Date.now()}.${ext}`;
-      await native('save_file_to_downloads',{filename:fn,content:imgMeta.dataUrl,isBase64:true});
+     const url=imgMeta.dataUrl||'';
+     if(url.startsWith('data:')){
+      if(isTauri){
+       const ext=url.includes('image/jpeg')?'jpg':url.includes('image/webp')?'webp':'png';
+       const fn=`xyeena-image-${Date.now()}.${ext}`;
+       await native('save_file_to_downloads',{filename:fn,content:url,isBase64:true});
+       saveBtn.textContent='Saved!';
+       setTimeout(()=>{saveBtn.textContent='Save';},1500);
+       playFeedbackSound('chime');
+      }else{
+       const a=document.createElement('a');
+       a.href=url;
+       a.download=`xyeena-image-${Date.now()}.png`;
+       a.click();
+      }
+     }else if(url.startsWith('https://')||url.startsWith('http://')){
+      const a=document.createElement('a');
+      a.href=url;
+      a.target='_blank';
+      a.rel='noopener noreferrer';
+      a.download=`xyeena-image-${Date.now()}`;
+      a.click();
+      saveBtn.textContent='Opened!';
+      setTimeout(()=>{saveBtn.textContent='Save';},1500);
       playFeedbackSound('chime');
      }
     }catch{}
@@ -2015,13 +2046,16 @@ function syncImageModels(providerId:string){
 
 function updateImageDisclaimer(){
  const pMeta=IMAGE_PROVIDERS.find(p=>p.id===activeImageProvider);
- const mMeta=pMeta?.models.find(m=>m.id===chatImageModelSelect?.value)||pMeta?.models[0];
+ const mMeta=pMeta?.models.find(m=>m.id===chatImageModelSelect?.value);
  if(chatImageDisclaimer&&mMeta){
-  chatImageDisclaimer.textContent=mMeta.costNote;
+  chatImageDisclaimer.textContent=`${mMeta.name}: ${mMeta.costNote}`;
  }
  const consentWrap=q<HTMLElement>('#chat-image-consent-wrap');
  if(consentWrap&&mMeta){
   consentWrap.hidden=!mMeta.requiresConsent;
+ }
+ if(chatImageConsent){
+  chatImageConsent.checked=false;
  }
 }
 
@@ -2074,13 +2108,27 @@ inlineInput?.addEventListener('keydown',e=>{
 
 let chatReqSeq=0;
 
-q<HTMLButtonElement>('#chat-stop')?.addEventListener('click',()=>{
+function stopActiveChat(){
  ++chatReqSeq;
  if(chatAbortController){
   chatAbortController.abort();
   chatAbortController=null;
-  setXynChatState('idle');
  }
+ if(activeStreamingReply){
+  const streamText=(activeStreamingReply.content||'').trim();
+  activeStreamingReply=null;
+  if(streamText && !streamText.startsWith('🎨 Generating image')){
+   chat.addAssistantReply(streamText+'\n\n*(Generation stopped)*');
+  }else{
+   chat.addAssistantReply('*Response generation cancelled.*',{isError:true});
+  }
+  renderChatMessages();
+ }
+ setXynChatState('idle');
+}
+
+q<HTMLButtonElement>('#chat-stop')?.addEventListener('click',()=>{
+ stopActiveChat();
 });
 
 const chatInput=q<HTMLTextAreaElement>('#chat-input');
@@ -2148,7 +2196,10 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
    triggerMascotSalute();
    setXynChatState('idle');
   }catch(err:any){
-   if(thisReqSeq!==chatReqSeq)return;
+   if(thisReqSeq!==chatReqSeq){
+    activeStreamingReply=null;
+    return;
+   }
    activeStreamingReply=null;
    chat.addAssistantReply(`⚠️ **Image generation error:** ${err?.message||String(err)}`,{isError:true});
    renderChatMessages();
@@ -2221,7 +2272,10 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
   triggerMascotSalute();
   setXynChatState('idle');
  }catch(err:any){
-  if(thisReqSeq!==chatReqSeq)return;
+  if(thisReqSeq!==chatReqSeq){
+   activeStreamingReply=null;
+   return;
+  }
   const streamText=activeStreamingReply?.content||'';
   activeStreamingReply=null;
   if(err?.name==='AbortError'){

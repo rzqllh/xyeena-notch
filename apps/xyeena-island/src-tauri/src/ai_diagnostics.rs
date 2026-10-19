@@ -180,13 +180,37 @@ impl AiDiagnosticsManager {
     }
 }
 
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let year = if m <= 2 { y + 1 } else { y };
+    (year, m, d)
+}
+
+pub fn format_rfc3339_utc(epoch_secs: u64, millis: u32) -> String {
+    let days = (epoch_secs / 86400) as i64;
+    let rem_secs = (epoch_secs % 86400) as u32;
+    let hours = rem_secs / 3600;
+    let rem_secs = rem_secs % 3600;
+    let minutes = rem_secs / 60;
+    let seconds = rem_secs % 60;
+    let (year, month, day) = civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}.{millis:03}Z")
+}
+
 pub fn current_iso_timestamp() -> String {
     let now = SystemTime::now();
     let duration = now.duration_since(UNIX_EPOCH).unwrap_or_default();
     let secs = duration.as_secs();
     let millis = duration.subsec_millis();
-    // Compact RFC3339-like UTC format
-    format!("{secs}.{millis:03}Z")
+    format_rfc3339_utc(secs, millis)
 }
 
 #[tauri::command]
@@ -292,5 +316,35 @@ mod tests {
         assert!(!clean.contains("AIzaSySecretKey123"));
         assert!(clean.contains("key=[REDACTED]"));
         assert!(clean.contains("alt=json"));
+    }
+
+    #[test]
+    fn test_format_rfc3339_utc_exact_dates() {
+        // Unix epoch 0: 1970-01-01T00:00:00.000Z
+        assert_eq!(format_rfc3339_utc(0, 0), "1970-01-01T00:00:00.000Z");
+        // 2023-11-14T22:13:20.456Z (1700000000 secs)
+        assert_eq!(
+            format_rfc3339_utc(1700000000, 456),
+            "2023-11-14T22:13:20.456Z"
+        );
+        // Leap year 2024-02-29T12:00:00.000Z (1709208000 secs)
+        assert_eq!(
+            format_rfc3339_utc(1709208000, 0),
+            "2024-02-29T12:00:00.000Z"
+        );
+    }
+
+    #[test]
+    fn test_current_iso_timestamp_conforms_to_rfc3339() {
+        let ts = current_iso_timestamp();
+        // Format: YYYY-MM-DDTHH:MM:SS.mmmZ (24 chars)
+        assert_eq!(ts.len(), 24);
+        assert_eq!(&ts[10..11], "T");
+        assert_eq!(&ts[23..24], "Z");
+        assert_eq!(&ts[4..5], "-");
+        assert_eq!(&ts[7..8], "-");
+        assert_eq!(&ts[13..14], ":");
+        assert_eq!(&ts[16..17], ":");
+        assert_eq!(&ts[19..20], ".");
     }
 }

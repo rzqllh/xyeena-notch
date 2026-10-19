@@ -500,4 +500,148 @@ test('generateImage validates cost consent and decouples Gemini Nano Banana and 
   assert.ok(resOpenAI.dataUrl.startsWith('data:image/png;base64,'));
 });
 
+test('generateImage throws explicit validation error on unsupported model ID without silent fallback', async () => {
+  await assert.rejects(
+    () => generateImage({
+      prompt: 'A test prompt',
+      provider: 'openai',
+      model: 'non-existent-image-model-xyz',
+      apiKey: 'sk-test',
+      costAcknowledged: true
+    }),
+    /Unsupported image model: "non-existent-image-model-xyz" for OpenAI/
+  );
+
+  await assert.rejects(
+    () => generateImage({
+      prompt: 'A test prompt',
+      provider: 'gemini',
+      model: 'imaginary-gemini-model',
+      apiKey: 'key',
+      costAcknowledged: true
+    }),
+    /Unsupported image model: "imaginary-gemini-model" for Google Gemini/
+  );
+});
+
+test('Chat Stop during connecting cancels native request and does not leak orphan process', async () => {
+  const engine = new ChatEngine();
+  const controller = new AbortController();
+  let cancelledReqId = null;
+
+  const mockInvoker = async (cmd, payload) => {
+    if (cmd === 'cancel_native_ai_request') {
+      cancelledReqId = payload.requestId;
+      return true;
+    }
+    if (cmd === 'native_ai_request') {
+      return new Promise((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          const err = new Error('The operation was aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    }
+  };
+
+  engine.addUserMessage('Connecting test');
+  const reqPromise = engine.requestCompletion({
+    provider: 'openai',
+    apiKey: 'sk-test',
+    nativeInvoker: mockInvoker,
+    signal: controller.signal
+  });
+
+  controller.abort();
+  await assert.rejects(reqPromise, err => err.name === 'AbortError');
+  assert.ok(cancelledReqId, 'Native request must be explicitly cancelled');
+});
+
+test('Chat Stop during streaming commits partial output without leaking active state', async () => {
+  const engine = new ChatEngine();
+  const controller = new AbortController();
+  let cancelledReqId = null;
+  let partialReceived = '';
+
+  let emitChunk;
+  const mockListen = async (eventName, handler) => {
+    emitChunk = handler;
+    return () => {};
+  };
+
+  const mockInvoker = async (cmd, payload) => {
+    if (cmd === 'cancel_native_ai_request') {
+      cancelledReqId = payload.requestId;
+      return true;
+    }
+    if (cmd === 'native_ai_stream') {
+      emitChunk({ type: 'head', status: 200, headers: {} });
+      emitChunk({
+        type: 'chunk',
+        text: 'data: {"choices":[{"delta":{"content":"Partial response text"}}]}\n\n'
+      });
+      return new Promise((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          const err = new Error('The operation was aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    }
+  };
+
+  engine.addUserMessage('Streaming test');
+  const reqPromise = engine.requestCompletion({
+    provider: 'openai',
+    apiKey: 'sk-test',
+    nativeInvoker: mockInvoker,
+    nativeListen: mockListen,
+    signal: controller.signal,
+    onDelta: (_delta, full) => {
+      partialReceived = full;
+      if (full.includes('Partial')) {
+        controller.abort();
+      }
+    }
+  });
+
+  await assert.rejects(reqPromise, err => err.name === 'AbortError');
+  assert.ok(partialReceived.includes('Partial response text'));
+  assert.ok(cancelledReqId, 'Native stream must be cancelled on abort');
+});
+
+test('Chat Stop during retry aborts immediately without executing further attempts', async () => {
+  const engine = new ChatEngine();
+  const controller = new AbortController();
+  let attempts = 0;
+
+  const mockInvoker = async (cmd) => {
+    if (cmd === 'native_ai_request') {
+      attempts++;
+      return {
+        status: 429,
+        headers: { 'retry-after': '5' },
+        body: JSON.stringify({ error: { message: 'Rate limited' } })
+      };
+    }
+    if (cmd === 'cancel_native_ai_request') {
+      return true;
+    }
+  };
+
+  engine.addUserMessage('Retry test');
+  setTimeout(() => controller.abort(), 20);
+
+  const reqPromise = engine.requestCompletion({
+    provider: 'openai',
+    apiKey: 'sk-test',
+    nativeInvoker: mockInvoker,
+    signal: controller.signal
+  });
+
+  await assert.rejects(reqPromise, err => err.name === 'AbortError');
+  assert.equal(attempts, 1);
+});
+
 

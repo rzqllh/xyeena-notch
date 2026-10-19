@@ -199,45 +199,128 @@ export function jsonToCsv(jsonStr) {
 }
 
 /**
+ * Strict RFC 4180 CSV parser supporting multiline fields, escaped quotes, CRLF/LF,
+ * empty fields, and strict malformation rejection.
+ * @param {string} csvText
+ * @returns {string[][]} Array of records, where each record is an array of field strings.
+ */
+export function parseRfc4180Csv(csvText) {
+  if (typeof csvText !== 'string') {
+    throw new Error('CSV input must be a string');
+  }
+  const records = [];
+  let currentRecord = [];
+  let currentField = '';
+  let inQuotes = false;
+  let fieldHasQuotes = false;
+  let quoteClosed = false;
+
+  const len = csvText.length;
+  let i = 0;
+
+  while (i < len) {
+    const ch = csvText[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < len && csvText[i + 1] === '"') {
+          // Escaped double-quote `""` inside quotes
+          currentField += '"';
+          i += 2;
+          continue;
+        } else {
+          // Closing quote for this field
+          inQuotes = false;
+          quoteClosed = true;
+          i++;
+          continue;
+        }
+      } else {
+        currentField += ch;
+        i++;
+        continue;
+      }
+    } else {
+      // Outside quotes
+      if (ch === '"') {
+        if (quoteClosed) {
+          throw new Error(`Malformed CSV: Unexpected quote after closing quote at index ${i}`);
+        }
+        if (currentField.length > 0) {
+          throw new Error(`Malformed CSV: Quote cannot appear inside unquoted field at index ${i}`);
+        }
+        inQuotes = true;
+        fieldHasQuotes = true;
+        i++;
+        continue;
+      }
+
+      if (quoteClosed) {
+        if (ch !== ',' && ch !== '\r' && ch !== '\n') {
+          throw new Error(`Malformed CSV: Invalid trailing character '${ch}' after closing quote at index ${i}`);
+        }
+      }
+
+      if (ch === ',') {
+        currentRecord.push(currentField);
+        currentField = '';
+        fieldHasQuotes = false;
+        quoteClosed = false;
+        i++;
+        continue;
+      }
+
+      if (ch === '\r' || ch === '\n') {
+        if (ch === '\r' && i + 1 < len && csvText[i + 1] === '\n') {
+          i++;
+        }
+        currentRecord.push(currentField);
+        records.push(currentRecord);
+        currentRecord = [];
+        currentField = '';
+        fieldHasQuotes = false;
+        quoteClosed = false;
+        i++;
+        continue;
+      }
+
+      currentField += ch;
+      i++;
+    }
+  }
+
+  if (inQuotes) {
+    throw new Error('Malformed CSV: Unclosed quote at end of input');
+  }
+
+  // Handle trailing field/record (if text didn't end with a newline)
+  if (currentRecord.length > 0 || currentField.length > 0 || fieldHasQuotes || quoteClosed) {
+    currentRecord.push(currentField);
+    records.push(currentRecord);
+  }
+
+  return records;
+}
+
+/**
  * Converts RFC 4180 CSV into a formatted JSON array string.
  * @param {string} csvStr
  * @returns {string}
  */
 export function csvToJson(csvStr) {
-  const lines = csvStr.trim().split(/\r?\n/).filter(line => line.trim().length > 0);
-  if (lines.length < 2) {
+  if (!csvStr || typeof csvStr !== 'string') {
+    throw new Error('CSV input must be a non-empty string');
+  }
+  const records = parseRfc4180Csv(csvStr.trim());
+  const validRecords = records.filter(r => r.length > 1 || (r.length === 1 && r[0].length > 0));
+  if (validRecords.length < 2) {
     throw new Error('CSV must contain at least a header row and one data row');
   }
 
-  /** @param {string} row */
-  const parseRow = row => {
-    const cells = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < row.length; i++) {
-      const c = row[i];
-      if (c === '"') {
-        if (inQuotes && row[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (c === ',' && !inQuotes) {
-        cells.push(current);
-        current = '';
-      } else {
-        current += c;
-      }
-    }
-    cells.push(current);
-    return cells;
-  };
-
-  const headers = parseRow(lines[0]).map(h => h.trim());
+  const headers = validRecords[0].map(h => h.trim());
   const result = [];
-  for (let i = 1; i < lines.length; i++) {
-    const row = parseRow(lines[i]);
+  for (let i = 1; i < validRecords.length; i++) {
+    const row = validRecords[i];
     /** @type {Record<string, any>} */
     const obj = {};
     headers.forEach((h, idx) => {

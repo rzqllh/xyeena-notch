@@ -10,6 +10,7 @@ import {
   convertTextData,
   jsonToCsv,
   csvToJson,
+  parseRfc4180Csv,
   markdownToPlainText
 } from '../src/core/files.mjs';
 
@@ -132,4 +133,64 @@ test('convertTextData executes verified transforms and returns safe metadata', (
   const b64 = convertTextData('Hello Xyeena', 'txt-to-base64');
   assert.equal(b64.newExtension, 'b64');
   assert.equal(b64.content, 'SGVsbG8gWHllZW5h');
+});
+
+test('parseRfc4180Csv supports multiline cells, escaped quotes, CRLF, and empty values', () => {
+  // Multiline cell with CRLF and commas
+  const csv = 'id,summary,notes\r\n1,"Line 1\r\nLine 2","Simple note"\r\n2,"He said ""Hello, Xyn!""",""\r\n3,,"Trailing note"';
+  const records = parseRfc4180Csv(csv);
+  assert.equal(records.length, 4);
+  assert.deepEqual(records[0], ['id', 'summary', 'notes']);
+  assert.deepEqual(records[1], ['1', 'Line 1\r\nLine 2', 'Simple note']);
+  assert.deepEqual(records[2], ['2', 'He said "Hello, Xyn!"', '']);
+  assert.deepEqual(records[3], ['3', '', 'Trailing note']);
+});
+
+test('parseRfc4180Csv rejects malformed CSV inputs', () => {
+  // 1. Unclosed quote at end of input
+  assert.throws(
+    () => parseRfc4180Csv('id,name\r\n1,"Unclosed multiline text'),
+    /Unclosed quote at end of input/
+  );
+
+  // 2. Quote inside unquoted field
+  assert.throws(
+    () => parseRfc4180Csv('id,name\r\n1,bad"quote"'),
+    /Quote cannot appear inside unquoted field/
+  );
+
+  // 3. Characters after closing quote before delimiter
+  assert.throws(
+    () => parseRfc4180Csv('id,name\r\n1,"quoted"trailing'),
+    /Invalid trailing character/
+  );
+});
+
+test('jsonToCsv and csvToJson multiline round-trip preserves multiline JSON data', () => {
+  const dataset = [
+    {
+      id: 'item-1',
+      title: 'Multimodal analysis',
+      body: 'Line 1\nLine 2\nLine 3 with "quotes" and , commas',
+      meta: '{"nested": true, "count": 42}'
+    },
+    {
+      id: 'item-2',
+      title: 'Empty fields test',
+      body: '',
+      meta: '{"active": false}'
+    }
+  ];
+
+  const csv = jsonToCsv(JSON.stringify(dataset));
+  const restoredJson = csvToJson(csv);
+  const parsed = JSON.parse(restoredJson);
+
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed[0].id, 'item-1');
+  assert.equal(parsed[0].title, 'Multimodal analysis');
+  assert.equal(parsed[0].body, 'Line 1\nLine 2\nLine 3 with "quotes" and , commas');
+  assert.equal(parsed[0].meta, '{"nested": true, "count": 42}');
+  assert.equal(parsed[1].id, 'item-2');
+  assert.equal(parsed[1].body, '');
 });
