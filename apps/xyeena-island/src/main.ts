@@ -16,7 +16,7 @@ import type {NativeAgentEvent,NativeSessionSnapshot,MonitoredSession,ApprovalSna
 import {RunChangeFeed} from './core/notifications.mjs';
 import {chooseGuardianState,toMascotState,guardianStatus,defineXyeenaGuardian} from './core/mascot.mjs';
 import {inspectFile,convertImageDataUrl} from './core/files.mjs';
-import {ChatEngine,AI_PROVIDERS,renderSafeMarkdown,ApiError} from './core/ai-chat.mjs';
+import {ChatEngine,AI_PROVIDERS,IMAGE_PROVIDERS,generateImage,renderSafeMarkdown,ApiError} from './core/ai-chat.mjs';
 import {KNOWN_ADAPTERS,getAdapter,normalizeSessionSnapshot} from './core/agent-adapters.mjs';
 import {mayForwardDecision} from './core/agent-events.mjs';
 import {buildWeeklyRecap,recapText,recapSvg} from '@xyeena/recap';
@@ -257,7 +257,17 @@ root.innerHTML=`
             <option value="ollama">Ollama (Local)</option>
             <option value="lmstudio">LM Studio (Local)</option>
           </select>
+          <select id="chat-model-select" aria-label="AI Model" class="chat-model-dropdown" title="Select AI Model"></select>
+          <button class="minor-btn" id="btn-chat-mode-toggle" type="button" title="Switch between Chat and Image Generation">🖼️ Image</button>
         </div>
+      </div>
+      <div id="chat-image-controls" class="chat-image-config-bar" hidden>
+        <span class="chat-image-disclaimer" id="chat-image-disclaimer">🖼️ Paid Image Model — Cost disclaimer applies</span>
+        <select id="chat-image-model-select" class="chat-image-model-dropdown" aria-label="Image Model">
+          <option value="dall-e-3">dall-e-3 (1024x1024)</option>
+          <option value="dall-e-2">dall-e-2 (512x512)</option>
+          <option value="imagen-3.0-generate-002">imagen-3.0-generate-002</option>
+        </select>
       </div>
       <div id="chat-inline-setup" class="chat-setup-box" hidden>
         <div class="chat-setup-header">
@@ -327,6 +337,7 @@ root.innerHTML=`
 
       <div class="settings-section" id="setsec-ai" hidden>
         <div class="setting"><span><strong>Companion AI Provider</strong><small>Active chat model endpoint</small></span><select id="setting-ai-provider" aria-label="Companion AI Provider"><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic Claude</option><option value="openai">OpenAI GPT</option><option value="openrouter">OpenRouter</option><option value="ollama">Ollama (Local)</option><option value="lmstudio">LM Studio (Local)</option></select></div>
+        <div class="setting"><span><strong>Selected Model</strong><small>Active LLM model</small></span><select id="setting-ai-model" aria-label="Selected Model"></select></div>
         <div class="setting"><span><strong>Local server endpoint</strong><small>Ollama / LM Studio URL</small></span><input type="text" id="setting-ai-local-url" value="http://localhost:11434" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
         <div class="setting"><span><strong>Provider API Key (BYOK)</strong><small>Session memory; never logged or exported</small></span><input type="password" id="setting-ai-api-key" placeholder="Enter API key" autocomplete="off" spellcheck="false" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
         <div class="setting"><span><strong>Credential safety</strong><small>In-memory session key (opt-in BYOK)</small></span><span class="badge-tag" id="badge-ai-creds">Session Memory</span></div>
@@ -1733,6 +1744,37 @@ function renderChatMessages(){
   const bubble=document.createElement('div');
   bubble.className=`chat-bubble chat-bubble-${msg.role}`;
   bubble.innerHTML=renderSafeMarkdown(msg.content);
+  if((msg as any).image){
+   const imgMeta=(msg as any).image;
+   const card=document.createElement('div');
+   card.className='chat-image-card';
+   card.innerHTML=`
+     <img src="${imgMeta.dataUrl}" alt="${imgMeta.prompt}" class="chat-rendered-img" />
+     <div class="chat-image-footer">
+       <span class="chat-image-tag">${imgMeta.provider} · ${imgMeta.model}</span>
+       <div class="chat-image-btns">
+         <button type="button" class="action-btn-sm btn-copy-img">Copy</button>
+         <button type="button" class="action-btn-sm btn-save-img">Save</button>
+       </div>
+     </div>
+   `;
+   card.querySelector('.btn-copy-img')?.addEventListener('click',async()=>{
+     try{
+       if(isTauri)await native('write_native_image',{dataUrl:imgMeta.dataUrl});
+       playFeedbackSound('tap');
+     }catch{}
+   });
+   card.querySelector('.btn-save-img')?.addEventListener('click',async()=>{
+     try{
+       if(isTauri){
+         const fn=`xyeena-image-${Date.now()}.png`;
+         await native('save_file_to_downloads',{filename:fn,content:imgMeta.dataUrl,isBase64:true});
+         playFeedbackSound('chime');
+       }
+     }catch{}
+   });
+   bubble.append(card);
+  }
   for(const pre of bubble.querySelectorAll('pre')){
    const btn=document.createElement('button');
    btn.type='button';btn.className='code-copy-btn';btn.textContent='Copy';
@@ -1755,7 +1797,31 @@ function renderChatMessages(){
 function onProviderChange(prov:string){
  chat.activeProvider=prov;
  const match=AI_PROVIDERS.find(p=>p.id===prov);
+ const models=match?.suggestedModels||[];
  if(match)chat.activeModel=match.defaultModel;
+
+ const chatModelSelect=q<HTMLSelectElement>('#chat-model-select');
+ if(chatModelSelect){
+  chatModelSelect.innerHTML='';
+  for(const m of models){
+   const opt=document.createElement('option');
+   opt.value=m;opt.textContent=m;
+   chatModelSelect.appendChild(opt);
+  }
+  chatModelSelect.value=chat.activeModel;
+ }
+
+ const setModelSelect=q<HTMLSelectElement>('#setting-ai-model');
+ if(setModelSelect){
+  setModelSelect.innerHTML='';
+  for(const m of models){
+   const opt=document.createElement('option');
+   opt.value=m;opt.textContent=m;
+   setModelSelect.appendChild(opt);
+  }
+  setModelSelect.value=chat.activeModel;
+ }
+
  const setSelect=q<HTMLSelectElement>('#setting-ai-provider');
  if(setSelect&&setSelect.value!==prov)setSelect.value=prov;
  const chatSelect=q<HTMLSelectElement>('#chat-provider-select');
@@ -1773,8 +1839,49 @@ function onProviderChange(prov:string){
  }
  checkChatInlineSetup();
 }
-q<HTMLSelectElement>('#chat-provider-select').addEventListener('change',e=>{
+
+q<HTMLSelectElement>('#chat-provider-select')?.addEventListener('change',e=>{
  onProviderChange((e.target as HTMLSelectElement).value);
+});
+
+q<HTMLSelectElement>('#setting-ai-provider')?.addEventListener('change',e=>{
+ onProviderChange((e.target as HTMLSelectElement).value);
+});
+
+q<HTMLSelectElement>('#chat-model-select')?.addEventListener('change',e=>{
+ const m=(e.target as HTMLSelectElement).value;
+ chat.activeModel=m;
+ const setModelSelect=q<HTMLSelectElement>('#setting-ai-model');
+ if(setModelSelect&&setModelSelect.value!==m)setModelSelect.value=m;
+});
+
+q<HTMLSelectElement>('#setting-ai-model')?.addEventListener('change',e=>{
+ const m=(e.target as HTMLSelectElement).value;
+ chat.activeModel=m;
+ const chatModelSelect=q<HTMLSelectElement>('#chat-model-select');
+ if(chatModelSelect&&chatModelSelect.value!==m)chatModelSelect.value=m;
+});
+
+let isImageModeActive=false;
+const btnChatModeToggle=q<HTMLButtonElement>('#btn-chat-mode-toggle');
+const chatImageControls=q<HTMLElement>('#chat-image-controls');
+const chatImageModelSelect=q<HTMLSelectElement>('#chat-image-model-select');
+
+btnChatModeToggle?.addEventListener('click',()=>{
+ isImageModeActive=!isImageModeActive;
+ if(btnChatModeToggle){
+  btnChatModeToggle.textContent=isImageModeActive?'💬 Chat Mode':'🖼️ Image';
+  btnChatModeToggle.classList.toggle('active',isImageModeActive);
+ }
+ if(chatImageControls){
+  chatImageControls.hidden=!isImageModeActive;
+ }
+ const input=q<HTMLTextAreaElement>('#chat-input');
+ if(input){
+  input.placeholder=isImageModeActive
+   ?'Describe the image you want Xyn to generate (e.g. golden lion guardian shield)...'
+   :'Ask Xyn anything (Enter to send, Shift+Enter for new line)...';
+ }
 });
 
 const inlineInput=q<HTMLInputElement>('#chat-inline-key-input');
@@ -1823,35 +1930,89 @@ chatInput.addEventListener('keydown',e=>{
 q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
  e.preventDefault();
  const input=q<HTMLTextAreaElement>('#chat-input');
- const text=input.value.trim();
- if(!text)return;
+ const rawText=input.value.trim();
+ if(!rawText)return;
  input.value='';
  input.style.height='auto';
 
- // Strictly sync provider from active dropdown before submission
+ const isImageGen=isImageModeActive||rawText.startsWith('/image ');
+ const prompt=isImageGen&&rawText.startsWith('/image ')?rawText.slice(7).trim():rawText;
+
+ if(isImageGen){
+  const thisReqSeq=++chatReqSeq;
+  chat.addUserMessage(rawText);
+  renderChatMessages();
+  setXynChatState('thinking');
+  const placeholder=chat.addAssistantReply('🎨 Generating image with on-device/provider pipeline...');
+  renderChatMessages();
+
+  try{
+   chatAbortController=new AbortController();
+   const selectedImageModel=chatImageModelSelect?.value||'dall-e-3';
+   const imgProv=selectedImageModel.startsWith('imagen')?'gemini':selectedImageModel.startsWith('dall')?'openai':'local';
+   const key=providerCredentials.getKey(imgProv);
+   const localUrl=q<HTMLInputElement>('#setting-ai-local-url')?.value||'';
+
+   if(imgProv!=='local'&&!key){
+    throw new Error(`API key required for ${imgProv} image generation. Please set it in Settings > AI & Agents.`);
+   }
+
+   const imgRes=await generateImage({
+    prompt,
+    provider:imgProv,
+    model:selectedImageModel,
+    apiKey:key,
+    localUrl,
+    nativeInvoker:isTauri?native:undefined,
+    signal:chatAbortController.signal,
+   });
+
+   if(thisReqSeq!==chatReqSeq)return;
+   chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
+   chat.addAssistantReply(`🎨 **Generated Image** for: "${prompt}"`,{
+    image:imgRes,
+   } as any);
+
+   renderChatMessages();
+   playFeedbackSound('chime');
+   triggerMascotSalute();
+   setXynChatState('idle');
+  }catch(err:any){
+   if(thisReqSeq!==chatReqSeq)return;
+   chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
+   chat.addAssistantReply(`⚠️ **Image generation error:** ${err?.message||String(err)}`,{isError:true});
+   renderChatMessages();
+   setXynChatState('error',err);
+   setTimeout(()=>{if(thisReqSeq===chatReqSeq)setXynChatState('idle');},4000);
+  }finally{
+   if(thisReqSeq===chatReqSeq){
+    chatAbortController=null;
+   }
+  }
+  return;
+ }
+
  const chosenProvider=q<HTMLSelectElement>('#chat-provider-select').value;
  onProviderChange(chosenProvider);
+ if(q<HTMLSelectElement>('#chat-model-select')?.value){
+  chat.activeModel=q<HTMLSelectElement>('#chat-model-select').value;
+ }
 
  const thisReqSeq=++chatReqSeq;
- chat.addUserMessage(text);
+ chat.addUserMessage(rawText);
  renderChatMessages();
 
- // Privacy-safe activity logging: NEVER log raw prompt text or secrets!
- feed.recordEvent('Chat message submitted',`Provider: ${chat.activeProvider}`,'ACTION');
+ feed.recordEvent('Chat message submitted',`Provider: ${chat.activeProvider} (${chat.activeModel})`,'ACTION');
  renderAlerts();
  setXynChatState('thinking');
 
- const placeholder=chat.addAssistantReply('Thinking...');
+ const liveReply=chat.addAssistantReply('');
  renderChatMessages();
 
  try{
   chatAbortController=new AbortController();
   const localUrl=q<HTMLInputElement>('#setting-ai-local-url')?.value||'';
   const key=providerCredentials.getKey(chat.activeProvider);
-
-  // Remove the temporary placeholder before running completion
-  chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
-  if(thisReqSeq!==chatReqSeq)return;
 
   setXynChatState('speaking');
 
@@ -1861,7 +2022,18 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
    localUrl,
    apiKey:key,
    nativeInvoker:isTauri?native:undefined,
+   nativeListen:isTauri?listen:undefined,
    signal:chatAbortController.signal,
+   onDelta:(_delta:string,full:string)=>{
+    if(thisReqSeq!==chatReqSeq)return;
+    liveReply.content=full;
+    const viewport=q<HTMLElement>('#chat-messages');
+    if(viewport&&viewport.lastElementChild){
+     const lastBubble=viewport.lastElementChild as HTMLElement;
+     lastBubble.innerHTML=renderSafeMarkdown(full);
+     viewport.scrollTop=viewport.scrollHeight;
+    }
+   },
   });
 
   if(thisReqSeq!==chatReqSeq)return;
@@ -1872,14 +2044,15 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
   setXynChatState('idle');
  }catch(err:any){
   if(thisReqSeq!==chatReqSeq)return;
-  chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
   if(err?.name==='AbortError'){
-   chat.addAssistantReply('*Response generation cancelled.*', { isError: true });
+   liveReply.content='*Response generation cancelled.*';
+   liveReply.isError=true;
   }else{
-   chat.addAssistantReply(`⚠️ **Chat error:** ${err?.message||String(err)}`, { isError: true });
+   liveReply.content=`⚠️ **Chat error:** ${err?.message||String(err)}`;
+   liveReply.isError=true;
   }
   renderChatMessages();
-  setXynChatState('error', err);
+  setXynChatState('error',err);
   setTimeout(()=>{if(thisReqSeq===chatReqSeq)setXynChatState('idle');},4000);
  }finally{
   if(thisReqSeq===chatReqSeq){
@@ -2854,10 +3027,19 @@ async function refreshFlowEngineStatus() {
    local_only: boolean;
    hotkey: string;
    hotkey_registered: boolean;
+   in_process_engine_ready?: boolean;
+   current_language?: string;
+   supported_languages?: string[];
+   indonesian_supported?: boolean;
   };
   const badge = q<HTMLElement>('#flow-engine-badge');
   if (badge) {
-   if (status.available) {
+   if (status.in_process_engine_ready) {
+    badge.textContent = `WinRT (${status.current_language || 'en-US'})`;
+    badge.title = `In-process WinRT speech recognition active. Indonesian supported: ${status.indonesian_supported ? 'Yes' : 'Requires Windows language pack'}.`;
+    badge.style.borderColor = 'var(--accent)';
+    badge.style.color = 'var(--accent)';
+   } else if (status.available) {
     badge.textContent = status.engine_name;
     badge.style.borderColor = 'var(--accent)';
     badge.style.color = 'var(--accent)';
@@ -2993,7 +3175,7 @@ async function refreshMicrophoneStatus() {
   const badge = root.querySelector<HTMLElement>('#voice-endpoint-badge');
   if (badge) {
    if (status.audio_backend_ready && status.available) {
-    badge.textContent = status.device_name;
+    badge.textContent = `${status.device_name} (WASAPI)`;
     badge.style.borderColor = 'var(--accent)';
     badge.style.color = 'var(--accent)';
    } else {
@@ -3026,6 +3208,7 @@ function renderNotetakerNotes() {
    <p style="font-size:10px;color:var(--sub);margin:0 0 4px 0;max-height:48px;overflow:hidden;text-overflow:ellipsis;">${note.transcript || '(Empty transcript)'}</p>
    <div style="display:flex;gap:6px;align-items:center;">
     <button class="minor-btn" type="button" data-export-id="${note.id}" style="padding:2px 6px;font-size:9px;">Export MD</button>
+    <button class="minor-btn" type="button" data-export-wav-id="${note.id}" style="padding:2px 6px;font-size:9px;">Export WAV</button>
     <button class="minor-btn" type="button" data-del-id="${note.id}" style="padding:2px 6px;font-size:9px;color:#ef4444;">Delete</button>
    </div>
   `;
@@ -3045,6 +3228,25 @@ function renderNotetakerNotes() {
     }
    } else {
     feed.recordEvent('Note markdown generated', note.title, 'FILE');
+   }
+  });
+  card.querySelector(`[data-export-wav-id="${note.id}"]`)?.addEventListener('click', async () => {
+   if (isTauri) {
+    try {
+     const filename = `note-${note.id}.wav`;
+     const bytes = await native('export_consented_recording', {
+      sessionId: note.id,
+      exportPath: filename,
+     }) as number;
+     feed.recordEvent('Audio exported', `${filename} (${bytes} bytes)`, 'FILE');
+     renderAlerts();
+     playFeedbackSound('chime');
+    } catch (err) {
+     feed.recordEvent('WAV export error', String(err));
+     playFeedbackSound('error');
+    }
+   } else {
+    feed.recordEvent('WAV export simulated', note.title, 'FILE');
    }
   });
   card.querySelector(`[data-del-id="${note.id}"]`)?.addEventListener('click', () => {
@@ -3097,17 +3299,20 @@ btnNoteRecord?.addEventListener('click', async () => {
  }
  const title = noteTitleInput?.value.trim() || 'Meeting Note';
  try {
+  let sid = `note_${Date.now()}`;
   if (isTauri) {
-   await native('start_consented_recording', { sessionType: 'notetaker', userConsented: true });
+   const nativeSid = await native('start_consented_recording', { sessionType: 'notetaker', userConsented: true }) as string;
+   if (nativeSid) sid = nativeSid;
   }
   notetaker.startRecording(title);
+  notetaker.activeSessionId = sid;
   if (btnNoteRecord) btnNoteRecord.hidden = true;
   if (btnNotePause) btnNotePause.hidden = false;
   if (btnNoteFinish) btnNoteFinish.hidden = false;
   if (btnNoteCancel) btnNoteCancel.hidden = false;
   setMicVisualIndicator(true, 'NOTE SESSION');
   if (noteStatusLine) {
-   noteStatusLine.textContent = `Note session "${title}" active (Session timer running; audio capture pending WASAPI backend)`;
+   noteStatusLine.textContent = `Hardware WASAPI recording active: "${title}" (PCM capture live)`;
    noteStatusLine.style.color = 'var(--accent)';
   }
   playFeedbackSound('tap');
@@ -3120,16 +3325,22 @@ btnNoteRecord?.addEventListener('click', async () => {
  }
 });
 
-btnNotePause?.addEventListener('click', () => {
+btnNotePause?.addEventListener('click', async () => {
  if (notetaker.state === 'recording') {
+  if (isTauri && notetaker.activeSessionId) {
+   await native('pause_consented_recording', { sessionId: notetaker.activeSessionId }).catch(() => {});
+  }
   notetaker.pauseRecording();
   if (btnNotePause) btnNotePause.textContent = 'Resume';
   if (noteStatusLine) noteStatusLine.textContent = 'Recording paused.';
   setMicVisualIndicator(false);
  } else if (notetaker.state === 'paused') {
+  if (isTauri && notetaker.activeSessionId) {
+   await native('resume_consented_recording', { sessionId: notetaker.activeSessionId }).catch(() => {});
+  }
   notetaker.resumeRecording();
   if (btnNotePause) btnNotePause.textContent = 'Pause';
-  if (noteStatusLine) noteStatusLine.textContent = 'Recording resumed.';
+  if (noteStatusLine) noteStatusLine.textContent = 'Recording resumed (WASAPI live).';
   setMicVisualIndicator(true, 'NOTE REC');
  }
 });

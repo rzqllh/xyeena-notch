@@ -67,10 +67,12 @@ All AI completions are proxied through a non-blocking native curl runner in Rust
 - **Redirects Prohibited:** Any HTTP 3xx redirect response is treated as an immediate protocol violation and rejected (`Redirects are forbidden for native AI transport`).
 - **Header Isolation:** Cloud provider headers are isolated per provider (e.g. `x-goog-api-key` is only permitted for Gemini; `x-api-key` and `anthropic-version` only for Anthropic; `Authorization: Bearer` only for OpenAI/OpenRouter).
 
-### E. Consented Microphone Privacy & Session Demarcation
-- **Explicit Boolean Consent Gate:** Recording endpoints (`start_consented_recording`) reject invocation unless `userConsented: true` is explicitly provided.
-- **Differentiated Session Reporting:** Low-level WASAPI hardware audio capture is pending; the application strictly reports hardware capture unavailable (`available: false`, `audio_backend_ready: false`) while tracking UI session controller state separately, never falsely claiming active live microphone streaming.
-- **Bounded Session Memory:** Saved notes are retained in session memory with a 20-entry maximum boundary.
+### E. Consented Microphone Privacy & WASAPI Capture
+- **Explicit Boolean Consent Gate:** Recording endpoints (`start_consented_recording`) strictly reject invocation unless `userConsented: true` is explicitly granted. Duplicate capture sessions are rejected fail-closed.
+- **Windows WASAPI Core Audio Capture:** Bounded PCM audio frames are captured strictly while a user-consented session is active. Audio capture runs in a dedicated thread using `IMMDeviceEnumerator` and `IAudioClient`. Captured audio is held strictly in bounded in-memory buffers; zero background capture occurs; zero audio data is written to disk without explicit user request.
+- **Explicit WAV Export:** Standard 16-bit PCM RIFF/WAVE files are exported exclusively upon explicit user button click, saving directly into the user's Downloads folder without remote transmission.
+- **Prominent Visual Indicators:** Prominent visual recording indicators in compact and expanded headers reflect live hardware capture.
+- **Bounded Session Memory:** Saved notes are retained in session memory with a strict 20-entry maximum boundary.
 
 ### F. Android Companion Cryptographic Authentication & Fail-Closed Execution
 - **Zero Cloud Relay:** Mobile companion pairing operates exclusively over the local network via unbiased CSPRNG 6-digit numeric PIN, 32-byte secret nonce (64 hex characters), and QR payload schema (`xyeena-companion-v1`).

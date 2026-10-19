@@ -450,23 +450,33 @@ mod tests {
             }
         });
 
-        // Give listener a moment to bind
-        thread::sleep(std::time::Duration::from_millis(50));
-
-        // Connect client
+        // Wait for listener to bind and connect client with retry
         let pipe_w = HSTRING::from(&pipe_name);
-        let client_h = unsafe {
-            CreateFileW(
-                &pipe_w,
-                FILE_GENERIC_READ.0 | FILE_GENERIC_WRITE.0,
-                FILE_SHARE_NONE,
-                None,
-                OPEN_EXISTING,
-                Default::default(),
-                None,
-            )
+        let mut client_h = INVALID_HANDLE_VALUE;
+        for _ in 0..50 {
+            let h = unsafe {
+                CreateFileW(
+                    &pipe_w,
+                    FILE_GENERIC_READ.0 | FILE_GENERIC_WRITE.0,
+                    FILE_SHARE_NONE,
+                    None,
+                    OPEN_EXISTING,
+                    Default::default(),
+                    None,
+                )
+            };
+            if let Ok(handle) = h {
+                if handle != INVALID_HANDLE_VALUE {
+                    client_h = handle;
+                    break;
+                }
+            }
+            thread::sleep(std::time::Duration::from_millis(20));
         }
-        .expect("Client connect must succeed");
+        assert_ne!(
+            client_h, INVALID_HANDLE_VALUE,
+            "Client connect must succeed"
+        );
         assert_ne!(client_h, INVALID_HANDLE_VALUE);
 
         let payload = json!({
@@ -629,21 +639,32 @@ mod tests {
             }
         });
 
-        thread::sleep(std::time::Duration::from_millis(50));
-
         let pipe_w = HSTRING::from(&pipe_name);
-        let client_h = unsafe {
-            CreateFileW(
-                &pipe_w,
-                FILE_GENERIC_READ.0 | FILE_GENERIC_WRITE.0,
-                FILE_SHARE_NONE,
-                None,
-                OPEN_EXISTING,
-                Default::default(),
-                None,
-            )
+        let mut client_h = INVALID_HANDLE_VALUE;
+        for _ in 0..50 {
+            let h = unsafe {
+                CreateFileW(
+                    &pipe_w,
+                    FILE_GENERIC_READ.0 | FILE_GENERIC_WRITE.0,
+                    FILE_SHARE_NONE,
+                    None,
+                    OPEN_EXISTING,
+                    Default::default(),
+                    None,
+                )
+            };
+            if let Ok(handle) = h {
+                if handle != INVALID_HANDLE_VALUE {
+                    client_h = handle;
+                    break;
+                }
+            }
+            thread::sleep(std::time::Duration::from_millis(20));
         }
-        .expect("Client connect must succeed");
+        assert_ne!(
+            client_h, INVALID_HANDLE_VALUE,
+            "Client connect must succeed"
+        );
 
         // Send partial bytes without newline delimiter
         let partial_data = b"{\"event\": \"Incomplete";

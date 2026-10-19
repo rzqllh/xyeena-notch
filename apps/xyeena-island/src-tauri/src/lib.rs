@@ -441,7 +441,7 @@ fn parse_ai_destination_and_provider(
             }
             match host {
                 "api.openai.com" => {
-                    if path != "/v1/chat/completions" {
+                    if path != "/v1/chat/completions" && path != "/v1/images/generations" {
                         return Err("Unsupported path for OpenAI endpoint".into());
                     }
                     if query.is_some() {
@@ -481,10 +481,10 @@ fn parse_ai_destination_and_provider(
                             return Err("Invalid Gemini model identifier".into());
                         }
                         match action {
-                            "generateContent" => {
+                            "generateContent" | "predict" => {
                                 if query.is_some() {
                                     return Err(
-                                        "Query parameters not allowed for Gemini generateContent"
+                                        "Query parameters not allowed for Gemini generateContent/predict"
                                             .into(),
                                     );
                                 }
@@ -525,9 +525,13 @@ fn parse_ai_destination_and_provider(
             if query.is_some() {
                 return Err("Query parameters not allowed for local AI providers".into());
             }
-            if path == "/api/chat" {
+            if path == "/api/chat" || path == "/api/tags" {
                 AiProvider::Ollama
-            } else if path == "/v1/chat/completions" {
+            } else if path == "/v1/chat/completions"
+                || path == "/v1/models"
+                || path == "/v1/images/generations"
+                || path == "/sdapi/v1/txt2img"
+            {
                 AiProvider::LmStudio
             } else {
                 return Err("Unsupported path for local AI provider".into());
@@ -705,7 +709,7 @@ fn execute_native_ai_request(
         escape_curl_config_str(&payload.method)
     ));
     config.push_str("max-time = 60\n");
-    config.push_str("max-filesize = 2097152\n");
+    config.push_str("max-filesize = 10485760\n");
     config.push_str("header = \"Expect:\"\n");
     for (k, v) in &payload.headers {
         config.push_str(&format!(
@@ -869,6 +873,210 @@ fn cancel_native_ai_request(
     registry: tauri::State<'_, AiProcessRegistry>,
 ) -> Result<bool, String> {
     Ok(registry.cancel(&request_id))
+}
+
+fn execute_native_ai_stream(
+    payload: NativeAiPayload,
+    registry: AiProcessRegistry,
+    window: tauri::WebviewWindow,
+) -> Result<(), String> {
+    validate_ai_payload(&payload)?;
+
+    let req_id = payload.request_id.clone().unwrap_or_default();
+    let event_name = format!("ai-stream:{}", req_id);
+
+    if !req_id.is_empty() && registry.is_cancelled(&req_id) {
+        registry.unregister(&req_id);
+        let _ = window.emit(
+            &event_name,
+            serde_json::json!({ "type": "error", "message": "Request cancelled before launch" }),
+        );
+        return Err("Request was cancelled before process creation".into());
+    }
+
+    let mut config = String::new();
+    config.push_str(&format!(
+        "url = \"{}\"\n",
+        escape_curl_config_str(&payload.url)
+    ));
+    config.push_str(&format!(
+        "request = \"{}\"\n",
+        escape_curl_config_str(&payload.method)
+    ));
+    config.push_str("max-time = 120\n");
+    config.push_str("max-filesize = 10485760\n");
+    config.push_str("header = \"Expect:\"\n");
+    for (k, v) in &payload.headers {
+        config.push_str(&format!(
+            "header = \"{}: {}\"\n",
+            escape_curl_config_str(k),
+            escape_curl_config_str(v)
+        ));
+    }
+    if let Some(body) = &payload.body {
+        config.push_str(&format!("data = \"{}\"\n", escape_curl_config_str(body)));
+    }
+
+    let mut cmd = std::process::Command::new("curl.exe");
+    cmd.args(["-s", "-N", "-i", "--config", "-"]);
+    cmd.stdin(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to execute native transport: {e}"))?;
+
+    let pid = child.id();
+    if !req_id.is_empty() && !registry.register_or_kill(&req_id, pid) {
+        let _ = window.emit(
+            &event_name,
+            serde_json::json!({ "type": "error", "message": "Request cancelled during startup" }),
+        );
+        return Err("Request was cancelled during startup".into());
+    }
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(config.as_bytes());
+        let _ = stdin.flush();
+        drop(stdin);
+    }
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture stdout for streaming".to_string())?;
+    use std::io::{BufRead, BufReader, Read};
+    let mut reader = BufReader::new(stdout);
+
+    // Read HTTP response headers
+    let mut status_code: u16 = 200;
+    let mut headers = std::collections::HashMap::new();
+    let mut header_lines = Vec::new();
+
+    loop {
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {
+                let trimmed = line.trim_end_matches(['\r', '\n']);
+                if trimmed.is_empty() {
+                    if (100..200).contains(&status_code) {
+                        header_lines.clear();
+                        continue;
+                    }
+                    break;
+                }
+                if header_lines.is_empty() {
+                    if let Some(code) = trimmed
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|c| c.parse::<u16>().ok())
+                    {
+                        status_code = code;
+                    }
+                } else if let Some((k, v)) = trimmed.split_once(':') {
+                    headers.insert(k.trim().to_ascii_lowercase(), v.trim().to_string());
+                }
+                header_lines.push(line);
+            }
+            Err(e) => {
+                let _ = window.emit(
+                    &event_name,
+                    serde_json::json!({ "type": "error", "message": e.to_string() }),
+                );
+                if !req_id.is_empty() {
+                    registry.unregister(&req_id);
+                }
+                return Err(e.to_string());
+            }
+        }
+    }
+
+    // Emit head event
+    let _ = window.emit(
+        &event_name,
+        serde_json::json!({
+            "type": "head",
+            "status": status_code,
+            "headers": headers,
+        }),
+    );
+
+    // Stream body chunks
+    let mut buf = [0u8; 4096];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                let _ = window.emit(
+                    &event_name,
+                    serde_json::json!({
+                        "type": "chunk",
+                        "text": text,
+                    }),
+                );
+            }
+            Err(e) => {
+                let _ = window.emit(
+                    &event_name,
+                    serde_json::json!({ "type": "error", "message": e.to_string() }),
+                );
+                break;
+            }
+        }
+    }
+
+    let _ = child.wait();
+
+    if !req_id.is_empty() {
+        registry.unregister(&req_id);
+    }
+
+    // Emit end event
+    let _ = window.emit(&event_name, serde_json::json!({ "type": "end" }));
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+async fn native_ai_stream(
+    request_id: Option<String>,
+    url: Option<String>,
+    method: Option<String>,
+    headers: Option<std::collections::HashMap<String, String>>,
+    body: Option<String>,
+    payload: Option<NativeAiPayload>,
+    window: tauri::WebviewWindow,
+    registry: tauri::State<'_, AiProcessRegistry>,
+) -> Result<(), String> {
+    let resolved_payload = if let Some(p) = payload {
+        p
+    } else {
+        NativeAiPayload {
+            request_id,
+            url: url.unwrap_or_default(),
+            method: method.unwrap_or_else(|| "POST".to_string()),
+            headers: headers.unwrap_or_default(),
+            body,
+        }
+    };
+    let reg = registry.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        execute_native_ai_stream(resolved_payload, reg, window)
+    })
+    .await
+    .map_err(|e| format!("Stream task error: {e}"))?
 }
 
 #[derive(serde::Serialize)]
@@ -1225,6 +1433,7 @@ pub fn run() {
             read_dropped_file,
             native_ai_request,
             cancel_native_ai_request,
+            native_ai_stream,
             get_agent_ipc_pipe_name,
             get_agent_sessions,
             detect_agent_providers,
@@ -1242,7 +1451,10 @@ pub fn run() {
             flow::get_flow_engine_status,
             voice::get_microphone_status,
             voice::start_consented_recording,
+            voice::pause_consented_recording,
+            voice::resume_consented_recording,
             voice::stop_consented_recording,
+            voice::export_consented_recording,
             voice::parse_voice_intent,
             companion::get_companion_state,
             companion::request_companion_pairing,
@@ -1426,6 +1638,31 @@ mod tests {
             body: Some("{}".into()),
         };
         assert!(validate_ai_payload(&lmstudio_valid).is_ok());
+
+        // 4. Image generation endpoints
+        let openai_image = NativeAiPayload {
+            request_id: Some("req-openai-img".into()),
+            url: "https://api.openai.com/v1/images/generations".into(),
+            method: "POST".into(),
+            headers: std::collections::HashMap::from([
+                ("content-type".into(), "application/json".into()),
+                ("authorization".into(), "Bearer test-key".into()),
+            ]),
+            body: Some("{\"prompt\":\"a golden lion\"}".into()),
+        };
+        assert!(validate_ai_payload(&openai_image).is_ok());
+
+        let gemini_imagen = NativeAiPayload {
+            request_id: Some("req-gemini-img".into()),
+            url: "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict".into(),
+            method: "POST".into(),
+            headers: std::collections::HashMap::from([
+                ("content-type".into(), "application/json".into()),
+                ("x-goog-api-key".into(), "AIzaTest".into()),
+            ]),
+            body: Some("{}".into()),
+        };
+        assert!(validate_ai_payload(&gemini_imagen).is_ok());
     }
 
     #[test]

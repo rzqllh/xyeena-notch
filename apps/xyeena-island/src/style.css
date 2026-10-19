@@ -1905,6 +1905,105 @@ input[type="range"] {
   cursor: pointer;
 }
 
+.chat-model-dropdown {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  padding: 3px 6px;
+  max-width: 140px;
+  cursor: pointer;
+}
+
+.chat-image-config-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.chat-image-disclaimer {
+  font-size: 9px;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-image-model-dropdown {
+  background: var(--base);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  font-size: 9px;
+  padding: 2px 4px;
+}
+
+.chat-image-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  background: var(--base);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 6px;
+  max-width: 320px;
+}
+
+.chat-rendered-img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chat-image-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.chat-image-tag {
+  font-size: 9px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-image-btns {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.action-btn-sm {
+  padding: 2px 6px;
+  font-size: 9px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.action-btn-sm:hover {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+}
+
 /* Inline BYOK Contextual Bar */
 .chat-setup-box {
   background: var(--panel);

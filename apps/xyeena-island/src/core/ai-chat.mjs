@@ -28,7 +28,8 @@
  *   model?: string,
  *   provider?: string,
  *   stopReason?: string,
- *   usage?: { input: number, output: number } | null
+ *   usage?: { input: number, output: number } | null,
+ *   isError?: boolean
  * }} ChatMessage
  */
 
@@ -1041,4 +1042,141 @@ export function renderSafeMarkdown(raw) {
   };
 
   return restore(renderBlocks(text));
+}
+
+/* ───────────────────────────── image generation ───────────────────────────── */
+
+export const IMAGE_PROVIDERS = Object.freeze([
+  {
+    id: 'openai',
+    name: 'OpenAI (DALL-E)',
+    isLocal: false,
+    models: ['dall-e-3', 'dall-e-2'],
+    defaultModel: 'dall-e-3',
+    costNote: 'Paid API (~$0.04/img). Requires OpenAI API key in BYOK.'
+  },
+  {
+    id: 'gemini',
+    name: 'Google Imagen',
+    isLocal: false,
+    models: ['imagen-3.0-generate-002'],
+    defaultModel: 'imagen-3.0-generate-002',
+    costNote: 'Tier quota applies. Requires Google AI Studio key in BYOK.'
+  },
+  {
+    id: 'local',
+    name: 'Local SD / Diffusers',
+    isLocal: true,
+    models: ['sd-turbo', 'sdxl-turbo', 'local-default'],
+    defaultModel: 'local-default',
+    costNote: 'Offline loopback (Free, requires local server active).'
+  }
+]);
+
+/**
+ * Generates an image using an explicit image provider and returns dataUrl or throws typed error.
+ * @param {object} params
+ * @param {string} params.prompt
+ * @param {string} [params.provider='openai']
+ * @param {string} [params.model]
+ * @param {string} [params.apiKey]
+ * @param {string} [params.localUrl]
+ * @param {Function} [params.nativeInvoker]
+ * @param {AbortSignal} [params.signal]
+ * @returns {Promise<{ dataUrl: string, prompt: string, model: string, provider: string }>}
+ */
+export async function generateImage(params) {
+  const prompt = String(params.prompt || '').trim();
+  if (!prompt) throw new Error('A descriptive text prompt is required to generate an image.');
+
+  const provider = params.provider || 'openai';
+  const meta = IMAGE_PROVIDERS.find(p => p.id === provider);
+  if (!meta) throw new Error(`Unsupported image provider: ${provider}`);
+
+  const model = params.model || meta.defaultModel;
+  const apiKey = (params.apiKey || '').trim();
+  if (!meta.isLocal && !apiKey) {
+    throw new Error(`API key required for ${meta.name}. Please enter your key in Settings or Chat Setup.`);
+  }
+
+  const transport = createTransport({ nativeInvoker: params.nativeInvoker });
+  const requestId = makeId('img');
+
+  let url = '';
+  /** @type {Record<string, string>} */
+  const headers = { 'content-type': 'application/json' };
+  let body = '';
+
+  if (provider === 'openai') {
+    url = 'https://api.openai.com/v1/images/generations';
+    headers['authorization'] = `Bearer ${apiKey}`;
+    body = JSON.stringify({
+      prompt,
+      model,
+      n: 1,
+      size: '1024x1024',
+      response_format: 'b64_json'
+    });
+  } else if (provider === 'gemini') {
+    url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict`;
+    headers['x-goog-api-key'] = apiKey;
+    body = JSON.stringify({
+      instances: [{ prompt }],
+      parameters: { sampleCount: 1, outputOptions: { mimeType: 'image/png' } }
+    });
+  } else if (provider === 'local') {
+    const base = trimUrl(params.localUrl) || 'http://127.0.0.1:1234';
+    url = `${base}/v1/images/generations`;
+    body = JSON.stringify({
+      prompt,
+      model,
+      n: 1,
+      response_format: 'b64_json'
+    });
+  }
+
+  const res = await transport.send({
+    requestId,
+    method: 'POST',
+    url,
+    headers,
+    body,
+    signal: params.signal,
+    label: `${meta.name} Image Generation`
+  });
+
+  if (res.status < 200 || res.status >= 300) {
+    const json = safeJson(res.text);
+    const msg = json?.error?.message || res.text || `HTTP ${res.status}`;
+    throw new Error(`${meta.name} error (${res.status}): ${msg}`);
+  }
+
+  const data = safeJson(res.text);
+  if (!data) throw new Error(`Invalid JSON response from ${meta.name}`);
+
+  let dataUrl = '';
+  if (provider === 'openai' || provider === 'local') {
+    const b64 = data.data?.[0]?.b64_json;
+    if (b64) {
+      dataUrl = `data:image/png;base64,${b64}`;
+    } else if (data.data?.[0]?.url) {
+      dataUrl = data.data[0].url;
+    }
+  } else if (provider === 'gemini') {
+    const b64 = data.predictions?.[0]?.bytesBase64Encoded;
+    if (b64) {
+      dataUrl = `data:image/png;base64,${b64}`;
+    }
+  }
+
+  if (!dataUrl) {
+    throw new Error(`No image payload returned by ${meta.name}. Check model compatibility.`);
+  }
+
+  return {
+    dataUrl,
+    prompt,
+    model,
+    provider
+  };
 }

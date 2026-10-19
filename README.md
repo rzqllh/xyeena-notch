@@ -44,14 +44,14 @@ Xyeena Notch docks neatly to the top edge of your Windows display as an adaptive
 - **Automated Provider Hook Installer:** Automatic discovery, atomic `.bak` backup, and idempotent install/uninstall for Antigravity, Claude Code, Codex, and Gemini CLI.
 
 ### 5. Flow Offline Dictation & Consented Notetaker
-- **Privacy-First Dictation Framework:** Push-to-talk (`Alt+D`) hotkey handling, verbal filler word filtering, dictionary snippets expansion, and local statistics. Delegates to OS Windows Voice Typing (`Win+H`); embedded in-process speech engine remains pending.
-- **Consented Meeting Notetaker:** Explicit user consent gate, visual session indicators in compact and expanded views, session-memory note storage (max 20 entries), and markdown export. Native hardware audio capture stream (WASAPI) is pending; UI strictly differentiates session controller state from live microphone hardware capture.
+- **Privacy-First Dictation Framework:** Push-to-talk (`Alt+D`) hotkey handling, verbal filler word filtering, dictionary snippets expansion, and local word statistics. Integrated with in-process WinRT `SpeechRecognizer` for offline English (`en-US`) recognition; Indonesian (`id-ID`) requires the host language pack with fallback to Windows Voice Typing (`Win+H`).
+- **Consented Meeting Notetaker with Windows WASAPI:** Explicit user consent gate, visual live recording indicators, bounded note retention (max 20 entries), markdown export, and genuine Windows-native WASAPI hardware audio capture backend via `IMMDeviceEnumerator` and `IAudioClient` (`AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM`). Captures real hardware PCM audio frames in a background thread, supports pause/resume, and exports standard 16-bit PCM RIFF/WAVE files directly to Downloads folder upon explicit user request.
 - **Voice Commands for Xyn:** Hands-free command parser for Island modes, navigation, chat, media playback, and recap generation.
 
 ### 6. Android Companion Local Pairing & Verification
 - **Zero Cloud Relay:** Local network pairing protocol via time-bounded 5-minute QR payload schema (`xyeena-companion-v1`), unbiased CSPRNG-backed 6-digit numeric PIN, and 32-byte secret nonce (64 hex characters).
 - **Cryptographic Authentication:** Mutual authentication using zero-dependency RFC 4231 HMAC-SHA256, constant-time verification, request ID binding, action fingerprint validation, and replay protection (nonce/counter tracking).
-- **Fail-Closed Execution:** Remote approval execution remains disabled until the entire authenticated mobile transport and physical Android APK pass end-to-end acceptance.
+- **Fail-Closed Execution:** Remote approval execution remains disabled until the entire authenticated mobile transport and physical Android APK pass end-to-end acceptance (Android F29 deferred by owner).
 - **Immediate Revocation:** Clear mobile credentials and revoke remote approval authority instantly from Settings.
 
 ### 7. External Integrations & Developer Productivity
@@ -67,10 +67,11 @@ Xyeena Notch docks neatly to the top edge of your Windows display as an adaptive
 - **Bounded Capacity:** Strict 64 MiB total memory cap, 20 MiB per image, and configurable 20/50/100 item limits.
 - **Privacy Controls:** Read-Once mode, item pinning, search filtering, sensitive credentials filter (`looksSensitive`), one-click history purge, and automatic wipe on application exit.
 
-### 9. Multi-Provider Companion AI Chat (BYOK)
+### 9. Multi-Provider Companion AI Chat & Image Generation (BYOK)
 - **Supported Providers:** Google Gemini, Anthropic Claude, OpenAI, OpenRouter, and local offline models (Ollama and LM Studio).
-- **Session-Only BYOK:** API keys reside in private in-memory stores; keys are never persisted to disk, localStorage, or exported in diagnostics.
-- **Native Non-Blocking Transport:** Curl-based native HTTP runner in Rust with atomic cancellation registry, strict URL authority allowlists, loopback-only local routing, and 3xx redirect rejection.
+- **Unbuffered Native Streaming:** Real unbuffered curl streaming (`native_ai_stream`) over Tauri event bus with live `onDelta` UI rendering, cancellation support, and dynamic model dropdowns synchronized with provider catalogs.
+- **Inline Image Generation:** Real provider-backed image generation (`generateImage`) supporting OpenAI DALL-E 3/2, Google Imagen 3, and Local SD/Diffusers, rendered directly as interactive media cards with Copy Image and Save to Downloads actions.
+- **Session-Only BYOK:** API keys reside in private in-memory stores; keys are never persisted to disk, localStorage, or exported in diagnostics. Native non-blocking HTTP runner in Rust with atomic cancellation registry, strict URL authority allowlists, loopback-only local routing, and 3xx redirect rejection.
 
 ### 10. Local Weekly Recap Engine (`@xyeena/recap`)
 - **Zero-Cloud Analytics:** Aggregates local activity from authenticated local runs.

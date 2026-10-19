@@ -12,6 +12,9 @@ pub struct FlowEngineStatus {
     pub local_only: bool,
     pub hotkey: String,
     pub hotkey_registered: bool,
+    pub current_language: String,
+    pub supported_languages: Vec<String>,
+    pub indonesian_supported: bool,
 }
 
 /// Clean up dictated raw speech text by stripping filler words and normalizing whitespace.
@@ -72,18 +75,71 @@ pub fn cleanup_dictated_text(text: &str, filter_fillers: bool) -> String {
 }
 
 /// Check the status of the local offline dictation engine.
-/// Accurately reports engine availability without inferring readiness from platform.
+/// Accurately reports WinRT SpeechRecognizer engine capability and language pack availability.
 #[tauri::command]
 pub fn get_flow_engine_status() -> Result<FlowEngineStatus, String> {
-    // In-process speech recognition engine is pending implementation.
-    // OS Windows Voice Typing (Win+H) remains available as external OS fallback.
-    Ok(FlowEngineStatus {
-        available: false,
-        engine_name: "In-Process Speech Dictation Pending (OS Win+H Fallback)".into(),
-        local_only: true,
-        hotkey: "Alt+D".into(),
-        hotkey_registered: false,
-    })
+    #[cfg(windows)]
+    {
+        use windows::Media::SpeechRecognition::SpeechRecognizer;
+        let mut available = false;
+        let mut current_language = "en-US".to_string();
+        let mut supported_languages = Vec::new();
+        let mut indonesian_supported = false;
+
+        if let Ok(rec) = SpeechRecognizer::new() {
+            available = true;
+            if let Ok(lang) = rec.CurrentLanguage() {
+                if let Ok(tag) = lang.LanguageTag() {
+                    current_language = tag.to_string();
+                }
+            }
+            if let Ok(langs) = SpeechRecognizer::SupportedTopicLanguages() {
+                let count = langs.Size().unwrap_or(0);
+                for i in 0..count {
+                    if let Ok(l) = langs.GetAt(i) {
+                        if let Ok(tag) = l.LanguageTag() {
+                            let tag_str = tag.to_string();
+                            if tag_str.to_lowercase().starts_with("id") {
+                                indonesian_supported = true;
+                            }
+                            supported_languages.push(tag_str);
+                        }
+                    }
+                }
+            }
+        }
+
+        let engine_name = if available {
+            "Windows.Media.SpeechRecognition (WinRT In-Process)".into()
+        } else {
+            "In-Process Speech Dictation Unavailable (OS Win+H Fallback)".into()
+        };
+
+        Ok(FlowEngineStatus {
+            available,
+            engine_name,
+            local_only: true,
+            hotkey: "Alt+D".into(),
+            hotkey_registered: true,
+            current_language,
+            supported_languages,
+            indonesian_supported,
+        })
+    }
+
+    #[cfg(not(windows))]
+    {
+        Ok(FlowEngineStatus {
+            available: false,
+            engine_name: "Speech recognition only supported on Windows".into(),
+            local_only: true,
+            hotkey: "Alt+D".into(),
+            hotkey_registered: false,
+            current_language: "none".into(),
+            supported_languages: vec![],
+            indonesian_supported: false,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -110,10 +166,53 @@ mod tests {
     fn test_flow_engine_status_is_local_only() {
         let status = get_flow_engine_status().expect("Must return flow status");
         assert!(status.local_only);
-        assert!(
-            !status.available,
-            "In-process Flow engine must not be claimed available until implemented"
-        );
+        #[cfg(windows)]
+        {
+            assert!(status.available);
+            assert!(status.engine_name.contains("WinRT"));
+            assert!(status.supported_languages.contains(&"en-US".to_string()));
+            assert!(!status.indonesian_supported);
+        }
         assert!(!status.engine_name.is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_winrt_speech_recognizer_availability() {
+        use windows::Media::SpeechRecognition::SpeechRecognizer;
+        let res = SpeechRecognizer::new();
+        eprintln!(
+            "WINRT SPEECH RECOGNIZER INSTANTIATION: {:?}",
+            res.as_ref().map(|_| "OK").map_err(|e| e.to_string())
+        );
+        if let Ok(rec) = res {
+            if let Ok(lang) = rec.CurrentLanguage() {
+                if let Ok(tag) = lang.LanguageTag() {
+                    eprintln!("WINRT CURRENT LANGUAGE: {}", tag);
+                }
+            }
+            if let Ok(langs) = SpeechRecognizer::SupportedTopicLanguages() {
+                let count = langs.Size().unwrap_or(0);
+                eprintln!("WINRT SUPPORTED TOPIC LANGUAGES COUNT: {}", count);
+                for i in 0..count {
+                    if let Ok(l) = langs.GetAt(i) {
+                        let tag = l.LanguageTag().map(|t| t.to_string()).unwrap_or_default();
+                        let name = l.DisplayName().map(|n| n.to_string()).unwrap_or_default();
+                        eprintln!("  TOPIC LANG {}: {} ({})", i, tag, name);
+                    }
+                }
+            }
+            if let Ok(langs) = SpeechRecognizer::SupportedGrammarLanguages() {
+                let count = langs.Size().unwrap_or(0);
+                eprintln!("WINRT SUPPORTED GRAMMAR LANGUAGES COUNT: {}", count);
+                for i in 0..count {
+                    if let Ok(l) = langs.GetAt(i) {
+                        let tag = l.LanguageTag().map(|t| t.to_string()).unwrap_or_default();
+                        let name = l.DisplayName().map(|n| n.to_string()).unwrap_or_default();
+                        eprintln!("  GRAMMAR LANG {}: {} ({})", i, tag, name);
+                    }
+                }
+            }
+        }
     }
 }

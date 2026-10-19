@@ -491,7 +491,33 @@ pub fn resolve_agy_command_prefix(
     if let Some(cfg) = config_path {
         let config_dir = cfg.parent().unwrap_or_else(|| Path::new("."));
 
-        // 3a: Try relative path from config_dir
+        // In Antigravity, workspace hooks live inside .agents / .agent / _agents / _agent,
+        // but hook commands are executed by the IDE with the workspace root as the CWD.
+        let workspace_root = if config_dir
+            .file_name()
+            .map(|n| {
+                let s = n.to_string_lossy();
+                s.eq_ignore_ascii_case(".agents")
+                    || s.eq_ignore_ascii_case(".agent")
+                    || s.eq_ignore_ascii_case("_agents")
+                    || s.eq_ignore_ascii_case("_agent")
+            })
+            .unwrap_or(false)
+        {
+            config_dir.parent().unwrap_or(config_dir)
+        } else {
+            config_dir
+        };
+
+        // 3a: Try relative path from workspace_root
+        if let Some(rel) = diff_paths(Path::new(relay_exe_path), workspace_root) {
+            let rel_str = rel.to_string_lossy().to_string();
+            if !rel_str.contains(' ') && !rel_str.starts_with("..") {
+                return Ok(rel_str);
+            }
+        }
+
+        // 3b: Try relative path from config_dir
         if let Some(rel) = diff_paths(Path::new(relay_exe_path), config_dir) {
             let rel_str = rel.to_string_lossy().to_string();
             if !rel_str.contains(' ') {
