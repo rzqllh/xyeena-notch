@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.0-alpha.1-recovery] — 2026-10-19
+
+### Post-Smoke-Test Product Recovery & Runtime Hardening
+
+This release resolves user-reported defects from physical Windows smoke testing across Draft PR #8:
+
+#### Fixed
+
+- **AI Chat Context Integrity (P0 / F15):** Eliminated synthetic `'Hello'` message injection on input submit. Every request generates exactly one committed assistant turn. Streaming replies are managed via transient state rather than polluting conversation history. User-selected models persist across turns without resetting to default.
+- **AI Backend Diagnostic Tracing (P0 / F15):** Implemented opt-in developer-only rotating diagnostic logging in Rust (`ai_diagnostics.rs`) writing strictly to `%LOCALAPPDATA%\xyeena-island\logs\ai-diagnostics.log` (2 MiB bound, max 4 MiB total disk). Systematically redacts query credentials (`key=[REDACTED]`), logs zero prompts or bodies, and provides live status toggle in Settings.
+- **Decoupled Image Generation (P0 / F15):** Fully decoupled Chat and Image provider configurations. Introduced modern image models (`gemini-nano-banana-2.1` via `generateContent`, `gemini-3.1-flash-image`, `gpt-image-2` via `openai_v1`). Enforced explicit cost acknowledgment consent checkbox for chargeable models.
+- **Lossless Clipboard Image Preservation (P1 / F17, F18):** Registered native Windows `"PNG"` format prioritized over lossy bitmap transcoding, preserving exact original PNG bytes and transparency. DIBV5/DIB pixel data and dimensions preserved. Export saves using true detected format (`.png`, `.webp`, `.jpg`, `.bmp`) rather than hardcoded `.bmp`.
+- **Atomic Island Motion Smoothness (P1 / F01):** Replaced dual `set_size` + `set_position` Tauri IPC calls with atomic Win32 `SetWindowPos` (`SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER`), eliminating visual jitter and edge tearing. Overrode CSS transitions during active geometry animations to establish native window geometry as the authoritative timeline.
+- **Idle RAM and CPU Optimization (P1 / F33):** Suspended 2 hidden canvas animation loops in `@xyeena/xyn` (`XyeenaGuardian.start()` / `stop()`) when elements are not visible. Halted GSMTC master volume polling during compact and glance modes, eliminating continuous 250ms interval wakeups.
+- **Native Explorer Drag-and-Drop (P1 / F19):** Wired `@tauri-apps/api/webview` `getCurrentWebview().onDragDropEvent` to handle actual Windows Explorer file drops, hover visual feedback, and path resolution.
+- **Capability-Based File Conversions (P1 / F19):** Created truthful `CONVERSION_CAPABILITIES` matrix with verified local transformations (Image: WebP/PNG/JPEG; Text/Data: JSON/CSV/MD/TXT-B64) and honest `Conversion unavailable` reporting for unsupported documents without fake success claims.
+- **Agent Hook Safety (P1 / F05, F07):** Added fail-closed checks for unverified provider hook contracts (`codex`, `gemini-cli`), returning explicit unverified status rather than generating fictional hook files.
+
 ## [1.0.0-alpha.1] — 2026-10-18
 
 ### Coucou Windows 0.5.0 Windows Parity Implementation & Hardening Prerelease

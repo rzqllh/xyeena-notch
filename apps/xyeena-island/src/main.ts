@@ -1,5 +1,6 @@
 import {invoke} from '@tauri-apps/api/core';
 import {listen} from '@tauri-apps/api/event';
+import {getCurrentWebview} from '@tauri-apps/api/webview';
 import {isPermissionGranted,requestPermission,sendNotification} from '@tauri-apps/plugin-notification';
 import {readText,writeText} from '@tauri-apps/plugin-clipboard-manager';
 import {ClipboardHistory} from './core/clipboard.mjs';
@@ -15,7 +16,7 @@ import {sessionStore} from './core/session-store.mjs';
 import type {NativeAgentEvent,NativeSessionSnapshot,MonitoredSession,ApprovalSnapshot} from './core/session-store.d.mts';
 import {RunChangeFeed} from './core/notifications.mjs';
 import {chooseGuardianState,toMascotState,guardianStatus,defineXyeenaGuardian} from './core/mascot.mjs';
-import {inspectFile,convertImageDataUrl} from './core/files.mjs';
+import {inspectFile,convertImageDataUrl,getAvailableConversions,convertTextData} from './core/files.mjs';
 import {ChatEngine,AI_PROVIDERS,IMAGE_PROVIDERS,generateImage,renderSafeMarkdown,ApiError} from './core/ai-chat.mjs';
 import {KNOWN_ADAPTERS,getAdapter,normalizeSessionSnapshot} from './core/agent-adapters.mjs';
 import {mayForwardDecision} from './core/agent-events.mjs';
@@ -148,9 +149,7 @@ root.innerHTML=`
        <button class="icon-btn" id="file-close" type="button" title="Dismiss">×</button>
      </div>
      <div class="file-actions-row" id="file-actions">
-       <button class="file-action-btn file-action-accent" id="file-convert-webp" type="button">Convert to WebP</button>
-       <button class="file-action-btn" id="file-convert-png" type="button">PNG</button>
-       <button class="file-action-btn" id="file-convert-jpeg" type="button">JPEG</button>
+       <div id="file-dynamic-conversions" class="file-conversions-group"></div>
        <button class="file-action-btn" id="file-open-editor" type="button" hidden>Open in Editor</button>
        <button class="file-action-btn" id="file-ask-xyn" type="button">Ask Xyn</button>
        <button class="file-action-btn" id="file-copy-info" type="button">Copy Info</button>
@@ -262,12 +261,21 @@ root.innerHTML=`
         </div>
       </div>
       <div id="chat-image-controls" class="chat-image-config-bar" hidden>
-        <span class="chat-image-disclaimer" id="chat-image-disclaimer">🖼️ Paid Image Model — Cost disclaimer applies</span>
-        <select id="chat-image-model-select" class="chat-image-model-dropdown" aria-label="Image Model">
-          <option value="dall-e-3">dall-e-3 (1024x1024)</option>
-          <option value="dall-e-2">dall-e-2 (512x512)</option>
-          <option value="imagen-3.0-generate-002">imagen-3.0-generate-002</option>
-        </select>
+        <div class="chat-image-select-row" style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+          <select id="chat-image-provider-select" class="chat-provider-dropdown" aria-label="Image Provider" title="Select Image Provider">
+            <option value="gemini">Google Gemini</option>
+            <option value="openai">OpenAI</option>
+            <option value="local">Local Diffusers</option>
+          </select>
+          <select id="chat-image-model-select" class="chat-image-model-dropdown" aria-label="Image Model" title="Select Image Model"></select>
+        </div>
+        <div class="chat-image-meta-row" style="display:flex;justify-content:space-between;align-items:center;font-size:10px;">
+          <span class="chat-image-disclaimer" id="chat-image-disclaimer">🖼️ Paid Image Model — Cost disclaimer applies</span>
+          <label class="chat-image-consent-wrap" id="chat-image-consent-wrap" style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" id="chat-image-consent" aria-label="Acknowledge potential provider API charges" />
+            <span style="color:var(--text-dim);">Acknowledge charges</span>
+          </label>
+        </div>
       </div>
       <div id="chat-inline-setup" class="chat-setup-box" hidden>
         <div class="chat-setup-header">
@@ -617,6 +625,7 @@ root.innerHTML=`
         <div class="setting"><span><strong>Keyboard shortcuts</strong><small>Esc: Collapse · ←/→: Switch tab · Enter: Send chat</small></span><span class="badge-tag">In-app</span></div>
         <div class="setting"><span><strong>Test notification</strong><small>Verify native Windows toast alerts</small></span><button class="minor-btn test-notification" type="button">Send Test Toast</button></div>
         <div class="setting"><span><strong>Diagnostic logs</strong><small>Local inspection without credentials</small></span><button class="minor-btn" id="btn-export-diagnostics" type="button">Export Clean Logs</button></div>
+        <div class="setting"><span><strong>AI backend tracing</strong><small id="ai-diag-path">Local size-bounded log (%LOCALAPPDATA%\\xyeena-island\\logs)</small></span><button class="minor-btn" id="btn-toggle-ai-diag" type="button">Enable AI Tracing</button></div>
         <details class="project-details" id="about-credits" open><summary>About & credits <span>MIT source</span></summary>
           <p class="explain">Xyeena Island 1.0.0-alpha.1 · Balanced Desktop Companion.<br>Xyn is the canonical Golden Lion mascot (@xyeena/xyn).<br>Window motion mathematics adapted from Coucou by Louis Raillé (MIT), with no Coucou/Mochi character, brand or media assets.</p>
           <p class="explain">Full code and asset license details: THIRD_PARTY_NOTICES.md and docs/MASCOT-ASSET-RESEARCH.md in this repository.</p>
@@ -842,6 +851,10 @@ function tickMotion(now:number){
   shell.dataset.animating='settled';
  }
 }
+function syncVolumePolling(){
+ if((mode==='expanded'||mode==='pinned'||mode==='focused')&&panel==='now')startVolumePolling();
+ else stopVolumePolling();
+}
 function setMode(next:IslandMode,instant=false){
  if(exitTimer)clearTimeout(exitTimer);
  if(mode===next&&!instant)return;
@@ -862,8 +875,7 @@ function setMode(next:IslandMode,instant=false){
  }
  syncGuardian();
  syncGazePolling();
- if(next==='hidden'||next==='dormant')stopVolumePolling();
- else startVolumePolling();
+ syncVolumePolling();
 }
 function apply(event:IslandEvent){setMode(transition(mode,event));}
 function setPanel(next:Panel){
@@ -889,11 +901,11 @@ function setPanel(next:Panel){
    sendFrame(target);
   }
  }
- if(next==='now'){void refreshMedia();startVolumePolling();}
+ if(next==='now'){void refreshMedia();syncVolumePolling();}
  if(next==='activity'){q<HTMLElement>('#unread').hidden=true;void refreshRuns();renderAgentSessions();}
  if(next==='clipboard')renderClipboard();
  if(next==='chat'){checkChatInlineSetup();renderChatMessages();}
- if(next==='preferences'){void runProviderDetection();}
+ if(next==='preferences'){void runProviderDetection();void syncAiDiagnosticsUI();}
 }
 for(const tab of root.querySelectorAll<HTMLButtonElement>('.nav-tab')){
  tab.addEventListener('click',()=>setPanel(tab.dataset.panel as Panel));
@@ -974,13 +986,72 @@ let activeFileDataUrl='';
 let activeFileName='';
 let activeFilePath='';
 let activeFilePreview='';
+let activeFileContent='';
 function closeFileCard(){
  const card=q<HTMLElement>('#file-card');
- card.hidden=true;activeFileDataUrl='';activeFileName='';activeFilePath='';activeFilePreview='';
+ card.hidden=true;activeFileDataUrl='';activeFileName='';activeFilePath='';activeFilePreview='';activeFileContent='';
  const openEditorBtn=q<HTMLButtonElement>('#file-open-editor');
  if(openEditorBtn)openEditorBtn.hidden=true;
 }
 q<HTMLButtonElement>('#file-close').addEventListener('click',closeFileCard);
+
+function renderFileConversions(ext:string,category:string){
+ const container=q<HTMLElement>('#file-dynamic-conversions');
+ if(!container)return;
+ container.innerHTML='';
+ const avail=getAvailableConversions(ext,category);
+ if(!avail.supported){
+  const disabledBtn=document.createElement('button');
+  disabledBtn.className='file-action-btn disabled';
+  disabledBtn.disabled=true;
+  disabledBtn.textContent='Conversion unavailable';
+  if(avail.reason)disabledBtn.title=avail.reason;
+  container.appendChild(disabledBtn);
+  return;
+ }
+ for(const opt of avail.options){
+  const btn=document.createElement('button');
+  btn.type='button';
+  btn.className='file-action-btn';
+  btn.textContent=opt.label;
+  btn.addEventListener('click',async()=>{
+   if(opt.category==='image'){
+    await convertActiveImage(opt.targetMime as any,opt.targetExt);
+   }else if(opt.category==='text'){
+    await convertActiveText(opt.id,opt.targetExt,opt.label);
+   }
+  });
+  container.appendChild(btn);
+ }
+}
+
+async function convertActiveText(conversionId:string,targetExt:string,label:string){
+ const sourceContent=activeFileContent||activeFilePreview;
+ if(!sourceContent){
+  feed.recordEvent('Conversion error','No text content available to convert','ERROR');
+  renderAlerts();
+  return;
+ }
+ try{
+  const result=convertTextData(sourceContent,conversionId);
+  const newName=activeFileName.replace(/\.[^.]+$/,'')+'.'+targetExt;
+  if(isTauri){
+   const saved=await native('save_file_to_downloads',{
+    filename:newName,
+    content:result.content,
+    isBase64:false
+   }) as string;
+   feed.recordEvent('File converted',`${newName} saved to ${saved}`,'FILE');
+  }else{
+   feed.recordEvent('File converted',`${newName} (${Math.round(result.sizeBytes/1024)} KB)`,'FILE');
+  }
+  renderAlerts();
+  triggerMascotSalute();
+ }catch(err){
+  feed.recordEvent('Conversion failed',String(err),'ERROR');
+  renderAlerts();
+ }
+}
 
 async function handleFileDrop(file:File){
  const meta=inspectFile(file);
@@ -991,15 +1062,13 @@ async function handleFileDrop(file:File){
  activeFileName=meta.name;
  activeFilePath='';
  activeFilePreview='';
+ activeFileContent='';
  const openEditorBtn=q<HTMLButtonElement>('#file-open-editor');
  if(openEditorBtn)openEditorBtn.hidden=true;
  const card=q<HTMLElement>('#file-card');
  const title=q<HTMLElement>('#file-title');
  const info=q<HTMLElement>('#file-meta');
  const thumb=q<HTMLImageElement>('#file-thumb');
- const convertWebp=q<HTMLButtonElement>('#file-convert-webp');
- const convertPng=q<HTMLButtonElement>('#file-convert-png');
- const convertJpeg=q<HTMLButtonElement>('#file-convert-jpeg');
 
  title.textContent=meta.name;
  info.textContent=`${meta.formattedSize} · ${meta.category.toUpperCase()}`;
@@ -1008,10 +1077,6 @@ async function handleFileDrop(file:File){
  apply('activate');
 
  const isImg=meta.category==='image';
- convertWebp.hidden=!isImg;
- convertPng.hidden=!isImg;
- convertJpeg.hidden=!isImg;
-
  if(isImg){
   const reader=new FileReader();
   reader.onload=()=>{
@@ -1022,7 +1087,16 @@ async function handleFileDrop(file:File){
   reader.readAsDataURL(file);
  }else{
   thumb.hidden=true;
+  if(['json','csv','md','txt'].includes(meta.extension)||meta.category==='code'||meta.category==='document'){
+   try{
+    const text=await file.text();
+    activeFileContent=text;
+    activeFilePreview=text.slice(0,500);
+   }catch{}
+  }
  }
+
+ renderFileConversions(meta.extension,meta.category);
 
  feed.recordEvent('File inspected',`${meta.name} (${meta.formattedSize})`,'FILE');
  renderAlerts();
@@ -1052,9 +1126,6 @@ async function convertActiveImage(targetMime:'image/webp'|'image/png'|'image/jpe
  }
 }
 
-q<HTMLButtonElement>('#file-convert-webp').addEventListener('click',()=>void convertActiveImage('image/webp','webp'));
-q<HTMLButtonElement>('#file-convert-png').addEventListener('click',()=>void convertActiveImage('image/png','png'));
-q<HTMLButtonElement>('#file-convert-jpeg').addEventListener('click',()=>void convertActiveImage('image/jpeg','jpg'));
 q<HTMLButtonElement>('#file-copy-info').addEventListener('click',async()=>{
  const infoText=`${q<HTMLElement>('#file-title').textContent} - ${q<HTMLElement>('#file-meta').textContent}`;
  try{
@@ -1123,6 +1194,7 @@ async function handleNativePathDrop(filePath:string){
    sizeBytes:number;
    dataUrl?:string;
    textPreview?:string;
+   textContent?:string;
    category:string;
    extension:string;
   };
@@ -1130,15 +1202,13 @@ async function handleNativePathDrop(filePath:string){
   activeFileName=dropped.name;
   activeFilePath=filePath;
   activeFilePreview=dropped.textPreview||'';
+  activeFileContent=dropped.textContent||dropped.textPreview||'';
   const openEditorBtn=q<HTMLButtonElement>('#file-open-editor');
   if(openEditorBtn)openEditorBtn.hidden=!isTauri||!activeFilePath;
   const card=q<HTMLElement>('#file-card');
   const title=q<HTMLElement>('#file-title');
   const info=q<HTMLElement>('#file-meta');
   const thumb=q<HTMLImageElement>('#file-thumb');
-  const convertWebp=q<HTMLButtonElement>('#file-convert-webp');
-  const convertPng=q<HTMLButtonElement>('#file-convert-png');
-  const convertJpeg=q<HTMLButtonElement>('#file-convert-jpeg');
 
   const formattedSize=dropped.sizeBytes>1048576
    ?`${(dropped.sizeBytes/1048576).toFixed(1)} MB`
@@ -1151,10 +1221,6 @@ async function handleNativePathDrop(filePath:string){
   apply('activate');
 
   const isImg=dropped.category==='image';
-  convertWebp.hidden=!isImg;
-  convertPng.hidden=!isImg;
-  convertJpeg.hidden=!isImg;
-
   if(isImg&&dropped.dataUrl){
    activeFileDataUrl=dropped.dataUrl;
    thumb.src=activeFileDataUrl;
@@ -1162,6 +1228,8 @@ async function handleNativePathDrop(filePath:string){
   }else{
    thumb.hidden=true;
   }
+
+  renderFileConversions(dropped.extension,dropped.category);
 
   feed.recordEvent('File inspected',`${dropped.name} (${formattedSize})`,'FILE');
   renderAlerts();
@@ -1173,6 +1241,23 @@ async function handleNativePathDrop(filePath:string){
 }
 
 if(isTauri){
+ try{
+  void getCurrentWebview().onDragDropEvent(event=>{
+   const payload=event.payload;
+   if(payload.type==='enter'||payload.type==='over'){
+    shell.dataset.dropHover='true';
+   }else if(payload.type==='leave'){
+    shell.dataset.dropHover='false';
+   }else if(payload.type==='drop'){
+    shell.dataset.dropHover='false';
+    if(payload.paths&&payload.paths.length>0){
+     void handleNativePathDrop(payload.paths[0]);
+    }
+   }
+  });
+ }catch(err){
+  console.warn('Native drag-drop subscription error:',err);
+ }
  void listen<{paths?:string[]}>('tauri://drag-drop',e=>{
   shell.dataset.dropHover='false';
   const paths=e.payload?.paths;
@@ -1368,8 +1453,10 @@ function startVolumePolling(){
  if(volumePollTimer)return;
  void refreshVolume();
  volumePollTimer=setInterval(()=>{
-  if(panel==='now'&&!document.hidden&&mode!=='hidden'&&mode!=='dormant'&&!isDraggingVolume){
+  if((mode==='expanded'||mode==='pinned'||mode==='focused')&&panel==='now'&&!document.hidden&&!isDraggingVolume){
    void refreshVolume();
+  }else{
+   stopVolumePolling();
   }
  },250);
 }
@@ -1544,7 +1631,18 @@ function renderClipboard(){
   saveBtn.addEventListener('click',async()=>{
    try{
     if(!isTauri){q<HTMLElement>('#clip-state').textContent='Saved (web mode simulated)';return;}
-    const filename=item.type==='image'?`xyeena-clip-${item.id}.bmp`:`xyeena-clip-${item.id}.txt`;
+    let ext='txt';
+    if(item.type==='image'){
+     ext='bmp';
+     if(item.dataUrl){
+      if(item.dataUrl.startsWith('data:image/png'))ext='png';
+      else if(item.dataUrl.startsWith('data:image/webp'))ext='webp';
+      else if(item.dataUrl.startsWith('data:image/jpeg')||item.dataUrl.startsWith('data:image/jpg'))ext='jpg';
+      else if(item.dataUrl.startsWith('data:image/gif'))ext='gif';
+      else if(item.dataUrl.startsWith('data:image/bmp'))ext='bmp';
+     }
+    }
+    const filename=`xyeena-clip-${item.id}.${ext}`;
     const content=item.type==='image'?(item.dataUrl||''):item.text;
     const path=await native('save_file_to_downloads',{filename,content,isBase64:item.type==='image'}) as string;
     q<HTMLElement>('#clip-state').textContent='Saved to: '+path;
@@ -1730,49 +1828,77 @@ function checkChatInlineSetup(){
  box.hidden=!needsKey||hasKey;
 }
 
+let activeStreamingReply: { id: string; role: 'assistant'; content: string; isStreaming?: boolean; isError?: boolean } | null = null;
+
 function renderChatMessages(){
  const viewport=q<HTMLElement>('#chat-messages');
  viewport.replaceChildren();
- if(!chat.messages.length){
+ const allMessages=[...chat.messages];
+ if(activeStreamingReply){
+  allMessages.push(activeStreamingReply as any);
+ }
+ if(!allMessages.length){
   const welcome=document.createElement('div');
   welcome.className='chat-bubble chat-bubble-assistant';
   welcome.innerHTML=t('chat_welcome', prefs.language);
   viewport.append(welcome);
   return;
  }
- for(const msg of chat.messages){
+ for(const msg of allMessages){
   const bubble=document.createElement('div');
-  bubble.className=`chat-bubble chat-bubble-${msg.role}`;
+  bubble.className=`chat-bubble chat-bubble-${msg.role}${msg.isStreaming?' chat-bubble-streaming':''}`;
   bubble.innerHTML=renderSafeMarkdown(msg.content);
   if((msg as any).image){
    const imgMeta=(msg as any).image;
    const card=document.createElement('div');
    card.className='chat-image-card';
-   card.innerHTML=`
-     <img src="${imgMeta.dataUrl}" alt="${imgMeta.prompt}" class="chat-rendered-img" />
-     <div class="chat-image-footer">
-       <span class="chat-image-tag">${imgMeta.provider} · ${imgMeta.model}</span>
-       <div class="chat-image-btns">
-         <button type="button" class="action-btn-sm btn-copy-img">Copy</button>
-         <button type="button" class="action-btn-sm btn-save-img">Save</button>
-       </div>
-     </div>
-   `;
-   card.querySelector('.btn-copy-img')?.addEventListener('click',async()=>{
-     try{
-       if(isTauri)await native('write_native_image',{dataUrl:imgMeta.dataUrl});
-       playFeedbackSound('tap');
-     }catch{}
+   const validUrl=typeof imgMeta.dataUrl==='string'&&
+    (imgMeta.dataUrl.startsWith('data:image/')||imgMeta.dataUrl.startsWith('https://'))
+    ? imgMeta.dataUrl
+    : '';
+   if(validUrl){
+    const imgEl=document.createElement('img');
+    imgEl.src=validUrl;
+    imgEl.alt=String(imgMeta.prompt||'Generated image');
+    imgEl.className='chat-rendered-img';
+    card.append(imgEl);
+   }
+   const footer=document.createElement('div');
+   footer.className='chat-image-footer';
+   const tag=document.createElement('span');
+   tag.className='chat-image-tag';
+   tag.textContent=`${imgMeta.provider||''} · ${imgMeta.model||''}`;
+   footer.append(tag);
+
+   const btns=document.createElement('div');
+   btns.className='chat-image-btns';
+   const copyBtn=document.createElement('button');
+   copyBtn.type='button';
+   copyBtn.className='action-btn-sm btn-copy-img';
+   copyBtn.textContent='Copy';
+   copyBtn.addEventListener('click',async()=>{
+    try{
+     if(isTauri)await native('write_native_image',{dataUrl:imgMeta.dataUrl});
+     playFeedbackSound('tap');
+    }catch{}
    });
-   card.querySelector('.btn-save-img')?.addEventListener('click',async()=>{
-     try{
-       if(isTauri){
-         const fn=`xyeena-image-${Date.now()}.png`;
-         await native('save_file_to_downloads',{filename:fn,content:imgMeta.dataUrl,isBase64:true});
-         playFeedbackSound('chime');
-       }
-     }catch{}
+   const saveBtn=document.createElement('button');
+   saveBtn.type='button';
+   saveBtn.className='action-btn-sm btn-save-img';
+   saveBtn.textContent='Save';
+   saveBtn.addEventListener('click',async()=>{
+    try{
+     if(isTauri){
+      const ext=imgMeta.dataUrl.includes('image/jpeg')?'jpg':imgMeta.dataUrl.includes('image/webp')?'webp':'png';
+      const fn=`xyeena-image-${Date.now()}.${ext}`;
+      await native('save_file_to_downloads',{filename:fn,content:imgMeta.dataUrl,isBase64:true});
+      playFeedbackSound('chime');
+     }
+    }catch{}
    });
+   btns.append(copyBtn,saveBtn);
+   footer.append(btns);
+   card.append(footer);
    bubble.append(card);
   }
   for(const pre of bubble.querySelectorAll('pre')){
@@ -1863,9 +1989,51 @@ q<HTMLSelectElement>('#setting-ai-model')?.addEventListener('change',e=>{
 });
 
 let isImageModeActive=false;
+let activeImageProvider='gemini';
 const btnChatModeToggle=q<HTMLButtonElement>('#btn-chat-mode-toggle');
 const chatImageControls=q<HTMLElement>('#chat-image-controls');
+const chatImageProviderSelect=q<HTMLSelectElement>('#chat-image-provider-select');
 const chatImageModelSelect=q<HTMLSelectElement>('#chat-image-model-select');
+const chatImageDisclaimer=q<HTMLElement>('#chat-image-disclaimer');
+const chatImageConsent=q<HTMLInputElement>('#chat-image-consent');
+
+function syncImageModels(providerId:string){
+ activeImageProvider=providerId;
+ const pMeta=IMAGE_PROVIDERS.find(p=>p.id===providerId)||IMAGE_PROVIDERS[0];
+ if(chatImageModelSelect){
+  chatImageModelSelect.innerHTML='';
+  for(const m of pMeta.models){
+   const opt=document.createElement('option');
+   opt.value=m.id;
+   opt.textContent=`${m.name} (${m.supportedSizes[0]})`;
+   chatImageModelSelect.appendChild(opt);
+  }
+  chatImageModelSelect.value=pMeta.defaultModel;
+ }
+ updateImageDisclaimer();
+}
+
+function updateImageDisclaimer(){
+ const pMeta=IMAGE_PROVIDERS.find(p=>p.id===activeImageProvider);
+ const mMeta=pMeta?.models.find(m=>m.id===chatImageModelSelect?.value)||pMeta?.models[0];
+ if(chatImageDisclaimer&&mMeta){
+  chatImageDisclaimer.textContent=mMeta.costNote;
+ }
+ const consentWrap=q<HTMLElement>('#chat-image-consent-wrap');
+ if(consentWrap&&mMeta){
+  consentWrap.hidden=!mMeta.requiresConsent;
+ }
+}
+
+chatImageProviderSelect?.addEventListener('change',e=>{
+ syncImageModels((e.target as HTMLSelectElement).value);
+});
+
+chatImageModelSelect?.addEventListener('change',()=>{
+ updateImageDisclaimer();
+});
+
+syncImageModels('gemini');
 
 btnChatModeToggle?.addEventListener('click',()=>{
  isImageModeActive=!isImageModeActive;
@@ -1941,21 +2109,22 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
  if(isImageGen){
   const thisReqSeq=++chatReqSeq;
   chat.addUserMessage(rawText);
+  activeStreamingReply={
+   id:`stream-${Date.now()}`,
+   role:'assistant',
+   content:'🎨 Generating image with on-device/provider pipeline...',
+   isStreaming:true
+  };
   renderChatMessages();
   setXynChatState('thinking');
-  const placeholder=chat.addAssistantReply('🎨 Generating image with on-device/provider pipeline...');
-  renderChatMessages();
 
   try{
    chatAbortController=new AbortController();
-   const selectedImageModel=chatImageModelSelect?.value||'dall-e-3';
-   const imgProv=selectedImageModel.startsWith('imagen')?'gemini':selectedImageModel.startsWith('dall')?'openai':'local';
+   const imgProv=chatImageProviderSelect?.value||activeImageProvider||'gemini';
+   const selectedImageModel=chatImageModelSelect?.value||'gemini-nano-banana-2.1';
    const key=providerCredentials.getKey(imgProv);
    const localUrl=q<HTMLInputElement>('#setting-ai-local-url')?.value||'';
-
-   if(imgProv!=='local'&&!key){
-    throw new Error(`API key required for ${imgProv} image generation. Please set it in Settings > AI & Agents.`);
-   }
+   const consentChecked=chatImageConsent?.checked||false;
 
    const imgRes=await generateImage({
     prompt,
@@ -1963,12 +2132,13 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
     model:selectedImageModel,
     apiKey:key,
     localUrl,
+    costAcknowledged:consentChecked,
     nativeInvoker:isTauri?native:undefined,
     signal:chatAbortController.signal,
    });
 
    if(thisReqSeq!==chatReqSeq)return;
-   chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
+   activeStreamingReply=null;
    chat.addAssistantReply(`🎨 **Generated Image** for: "${prompt}"`,{
     image:imgRes,
    } as any);
@@ -1979,7 +2149,7 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
    setXynChatState('idle');
   }catch(err:any){
    if(thisReqSeq!==chatReqSeq)return;
-   chat.messages=chat.messages.filter(m=>m.id!==placeholder.id);
+   activeStreamingReply=null;
    chat.addAssistantReply(`⚠️ **Image generation error:** ${err?.message||String(err)}`,{isError:true});
    renderChatMessages();
    setXynChatState('error',err);
@@ -1993,21 +2163,26 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
  }
 
  const chosenProvider=q<HTMLSelectElement>('#chat-provider-select').value;
- onProviderChange(chosenProvider);
+ if(chosenProvider!==chat.activeProvider){
+  onProviderChange(chosenProvider);
+ }
  if(q<HTMLSelectElement>('#chat-model-select')?.value){
   chat.activeModel=q<HTMLSelectElement>('#chat-model-select').value;
  }
 
  const thisReqSeq=++chatReqSeq;
  chat.addUserMessage(rawText);
+ activeStreamingReply={
+  id:`stream-${Date.now()}`,
+  role:'assistant',
+  content:'',
+  isStreaming:true
+ };
  renderChatMessages();
 
  feed.recordEvent('Chat message submitted',`Provider: ${chat.activeProvider} (${chat.activeModel})`,'ACTION');
  renderAlerts();
  setXynChatState('thinking');
-
- const liveReply=chat.addAssistantReply('');
- renderChatMessages();
 
  try{
   chatAbortController=new AbortController();
@@ -2026,7 +2201,9 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
    signal:chatAbortController.signal,
    onDelta:(_delta:string,full:string)=>{
     if(thisReqSeq!==chatReqSeq)return;
-    liveReply.content=full;
+    if(activeStreamingReply){
+     activeStreamingReply.content=full;
+    }
     const viewport=q<HTMLElement>('#chat-messages');
     if(viewport&&viewport.lastElementChild){
      const lastBubble=viewport.lastElementChild as HTMLElement;
@@ -2037,6 +2214,7 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
   });
 
   if(thisReqSeq!==chatReqSeq)return;
+  activeStreamingReply=null;
 
   renderChatMessages();
   playFeedbackSound('chime');
@@ -2044,12 +2222,16 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
   setXynChatState('idle');
  }catch(err:any){
   if(thisReqSeq!==chatReqSeq)return;
+  const streamText=activeStreamingReply?.content||'';
+  activeStreamingReply=null;
   if(err?.name==='AbortError'){
-   liveReply.content='*Response generation cancelled.*';
-   liveReply.isError=true;
+   if(streamText.trim()){
+    chat.addAssistantReply(streamText+'\n\n*(Generation stopped)*');
+   }else{
+    chat.addAssistantReply('*Response generation cancelled.*',{isError:true});
+   }
   }else{
-   liveReply.content=`⚠️ **Chat error:** ${err?.message||String(err)}`;
-   liveReply.isError=true;
+   chat.addAssistantReply(`⚠️ **Chat error:** ${err?.message||String(err)}`,{isError:true});
   }
   renderChatMessages();
   setXynChatState('error',err);
@@ -2664,6 +2846,38 @@ q<HTMLButtonElement>('#btn-export-diagnostics').addEventListener('click',async()
   feed.recordEvent('Diagnostics exported','Local session JSON generated','ACTION');
  }
  renderAlerts();
+});
+
+async function syncAiDiagnosticsUI(){
+ if(!isTauri)return;
+ try{
+  const status=await native('get_ai_diagnostics_status') as {enabled:boolean;logPath:string;fileSizeBytes:number};
+  const btn=q<HTMLButtonElement>('#btn-toggle-ai-diag');
+  const pathLabel=q<HTMLElement>('#ai-diag-path');
+  btn.textContent=status.enabled?'Disable AI Tracing':'Enable AI Tracing';
+  btn.classList.toggle('active',status.enabled);
+  const sizeKb=Math.round(status.fileSizeBytes/1024);
+  pathLabel.textContent=status.enabled
+   ?`Active: ${status.logPath} (${sizeKb} KB)`
+   :`Disabled (${status.logPath})`;
+ }catch(err){
+  console.warn('AI diagnostics status error:',err);
+ }
+}
+
+q<HTMLButtonElement>('#btn-toggle-ai-diag').addEventListener('click',async()=>{
+ if(!isTauri)return;
+ try{
+  const status=await native('get_ai_diagnostics_status') as {enabled:boolean};
+  const next=!status.enabled;
+  await native('set_ai_diagnostics_enabled',{enabled:next});
+  await syncAiDiagnosticsUI();
+  feed.recordEvent('AI tracing',next?'AI diagnostic tracing enabled':'AI diagnostic tracing disabled','ACTION');
+  renderAlerts();
+ }catch(err){
+  feed.recordEvent('AI tracing error',String(err),'ERROR');
+  renderAlerts();
+ }
 });
 
 // S03: Agent Provider Hook Installer
@@ -3564,7 +3778,7 @@ async function initialize(){
   syncGuardian();
  });
  setMode(prefs.pinned?'pinned':'compact',true);
- void refreshMedia();startVolumePolling();renderClipboard();
+ void refreshMedia();syncVolumePolling();renderClipboard();
  setInterval(()=>{if(!document.hidden||mode==='compact')void refreshMedia();},5000);
  setInterval(()=>{if(sourcePath&&(prefs.notifyRunChanges||!document.hidden))void refreshRuns();},10000);
 }

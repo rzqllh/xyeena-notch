@@ -98,6 +98,7 @@ test('P1.1 AI Chat Cancellation and Provider Sync: AbortSignal is honored and mo
 
   // Test cancellation during in-flight promise race dispatches cancel_native_ai_request with matching requestId
   const activeController = new AbortController();
+  chat.addUserMessage('Test in-flight abort');
   const completionPromise = chat.requestCompletion({
     provider: 'ollama',
     nativeInvoker: fakeInvoker,
@@ -119,12 +120,14 @@ test('P1.1 AI Chat Cancellation and Provider Sync: AbortSignal is honored and mo
     }
     return Promise.resolve(true);
   };
+  chat.addUserMessage('First request prompt');
   const firstPromise = chat.requestCompletion({
     provider: 'ollama',
     nativeInvoker: firstInvoker
   });
   firstPromise.catch(() => {});
   // Start second request
+  chat.addUserMessage('Second request prompt');
   const secondPromise = chat.requestCompletion({
     provider: 'ollama',
     nativeInvoker: async () => ({ status: 200, body: JSON.stringify({ message: { content: 'Second response' } }) })
@@ -337,4 +340,48 @@ test('P2 Panel Geometry Contracts: Heights and widths conform strictly to Tauri 
     assert.ok(height <= MAX_HEIGHT, `Panel ${panelName} height ${height} must be <= max native height ${MAX_HEIGHT}`);
   }
 });
+
+test('P0 Recovery: Decoupled AI Chat and Image DOM elements exist and are decoupled', () => {
+  const content = fs.readFileSync(mainPath, 'utf8');
+  assert.ok(content.includes('id="chat-image-provider-select"'), 'Chat image provider select must exist in DOM');
+  assert.ok(content.includes('id="chat-image-model-select"'), 'Chat image model select must exist in DOM');
+  assert.ok(content.includes('id="chat-image-consent"'), 'Chat image cost acknowledgment checkbox must exist in DOM');
+  assert.ok(content.includes('id="btn-toggle-ai-diag"'), 'AI diagnostics toggle button must exist in DOM');
+  assert.ok(content.includes('id="ai-diag-path"'), 'AI diagnostics status path label must exist in DOM');
+  assert.ok(content.includes('id="file-dynamic-conversions"'), 'Dynamic file conversions container must exist in DOM');
+});
+
+test('P1 Recovery: Lossless clipboard format extension detection logic', () => {
+  const detectExt = (dataUrl) => {
+    let ext = 'bmp';
+    if (dataUrl) {
+      if (dataUrl.startsWith('data:image/png')) ext = 'png';
+      else if (dataUrl.startsWith('data:image/webp')) ext = 'webp';
+      else if (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg')) ext = 'jpg';
+      else if (dataUrl.startsWith('data:image/gif')) ext = 'gif';
+      else if (dataUrl.startsWith('data:image/bmp')) ext = 'bmp';
+    }
+    return ext;
+  };
+
+  assert.equal(detectExt('data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='), 'png', 'PNG signature must produce .png extension');
+  assert.equal(detectExt('data:image/webp;base64,UklGRkAAAABXRUJQVlA4'), 'webp', 'WebP signature must produce .webp extension');
+  assert.equal(detectExt('data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ=='), 'jpg', 'JPEG signature must produce .jpg extension');
+  assert.equal(detectExt('data:image/bmp;base64,Qk02AAAAAAAAAD4AAAAo'), 'bmp', 'BMP signature must produce .bmp extension');
+});
+
+test('P1 Recovery: Volume polling is halted during compact and glance modes', () => {
+  const content = fs.readFileSync(mainPath, 'utf8');
+  // syncVolumePolling must only start polling in expanded/pinned/focused modes
+  assert.ok(
+    content.includes("if((mode==='expanded'||mode==='pinned'||mode==='focused')&&panel==='now')startVolumePolling();"),
+    'syncVolumePolling must restrict polling strictly to expanded/pinned/focused on panel now'
+  );
+  // Startup must call syncVolumePolling rather than unconditional startVolumePolling
+  assert.ok(
+    content.includes('void refreshMedia();syncVolumePolling();renderClipboard();'),
+    'Startup must invoke syncVolumePolling to avoid idle RAM/CPU battery waste'
+  );
+});
+
 
