@@ -70,7 +70,7 @@ root.innerHTML=`
      <xyeena-guardian id="compact-guardian" size="84" interactive animated></xyeena-guardian>
    </span>
    <div class="compact-copy">
-     <div class="compact-meta"><strong class="brand-title">XYEENA</strong><span class="compact-dot" aria-hidden="true"></span><span class="compact-tag" id="compact-status-tag">Ready</span><span class="badge-tag" id="compact-mic-indicator" style="background:#ef4444;color:#fff;font-size:9px;padding:1px 5px;margin-left:4px;" hidden>REC</span></div>
+     <div class="compact-meta"><strong class="brand-title">XYEENA</strong><span class="compact-dot" aria-hidden="true"></span><span class="compact-tag" id="compact-status-tag">Ready</span><span class="badge-tag" id="compact-mic-indicator" class="badge-tag badge-mic" hidden>REC</span></div>
      <small id="compact-context">Desktop Companion</small>
    </div>
    <div class="compact-actions">
@@ -106,7 +106,7 @@ root.innerHTML=`
     <span class="mascot-slot mascot-header" id="header-mascot-slot" role="button" tabindex="0" aria-label="Xyeena Guardian: click for salute" title="Xyeena Lion Guardian">
       <xyeena-guardian id="header-guardian" size="54" interactive animated></xyeena-guardian>
     </span>
-    <div class="header-titles"><strong>Xyeena Island</strong><span class="header-status" id="header-status">On device</span><span class="badge-tag" id="header-mic-indicator" style="background:#ef4444;color:#fff;font-size:9px;padding:1px 5px;margin-left:4px;" hidden>MIC LIVE</span></div>
+    <div class="header-titles"><strong>Xyeena Island</strong><span class="header-status" id="header-status">On device</span><span class="badge-tag" id="header-mic-indicator" class="badge-tag badge-mic" hidden>MIC LIVE</span></div>
     <button class="icon-btn pin" type="button" aria-label="Pin Island" aria-pressed="false" title="Keep expanded">${icon('pin',16)}</button>
     <button class="icon-btn collapse" type="button" aria-label="Collapse Island" title="Collapse">${icon('chevron',18)}</button>
   </header>
@@ -146,7 +146,7 @@ root.innerHTML=`
          <strong class="file-card-title" id="file-title">File</strong>
          <span class="file-card-meta" id="file-meta">0 KB</span>
        </div>
-       <button class="icon-btn" id="file-close" type="button" title="Dismiss">×</button>
+       <button class="icon-btn" id="file-close" type="button" title="Dismiss" aria-label="Dismiss">${icon('x', 14)}</button>
      </div>
      <div class="file-actions-row" id="file-actions">
        <div id="file-dynamic-conversions" class="file-conversions-group"></div>
@@ -259,11 +259,11 @@ root.innerHTML=`
             <option value="lmstudio">LM Studio (Local)</option>
           </select>
           <select id="chat-model-select" aria-label="AI Model" class="chat-model-dropdown" title="Select AI Model"></select>
-          <button class="minor-btn" id="btn-chat-mode-toggle" type="button" title="Switch between Chat and Image Generation">🖼️ Image</button>
+          <button class="minor-btn" id="btn-chat-mode-toggle" type="button" title="Switch between Chat and Image Generation">${icon('image', 14)} <span>Image</span></button>
         </div>
       </div>
       <div id="chat-image-controls" class="chat-image-config-bar" hidden>
-        <div class="chat-image-select-row" style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+        <div class="chat-image-select-row">
           <select id="chat-image-provider-select" class="chat-provider-dropdown" aria-label="Image Provider" title="Select Image Provider">
             <option value="gemini">Google Gemini</option>
             <option value="openai">OpenAI</option>
@@ -271,11 +271,11 @@ root.innerHTML=`
           </select>
           <select id="chat-image-model-select" class="chat-image-model-dropdown" aria-label="Image Model" title="Select Image Model"></select>
         </div>
-        <div class="chat-image-meta-row" style="display:flex;justify-content:space-between;align-items:center;font-size:10px;">
-          <span class="chat-image-disclaimer" id="chat-image-disclaimer">🖼️ Paid Image Model — Cost disclaimer applies</span>
-          <label class="chat-image-consent-wrap" id="chat-image-consent-wrap" style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+        <div class="chat-image-meta-row">
+          <span class="chat-image-disclaimer" id="chat-image-disclaimer">${icon('info', 12)} Paid Image Model — Cost disclaimer applies</span>
+          <label class="chat-image-consent-wrap" id="chat-image-consent-wrap">
             <input type="checkbox" id="chat-image-consent" aria-label="Acknowledge potential provider API charges" />
-            <span style="color:var(--text-dim);">Acknowledge charges</span>
+            <span class="chat-image-consent-text">Acknowledge charges</span>
           </label>
         </div>
       </div>
@@ -348,8 +348,8 @@ root.innerHTML=`
       <div class="settings-section" id="setsec-ai" hidden>
         <div class="setting"><span><strong>Companion AI Provider</strong><small>Active chat model endpoint</small></span><select id="setting-ai-provider" aria-label="Companion AI Provider"><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic Claude</option><option value="openai">OpenAI GPT</option><option value="openrouter">OpenRouter</option><option value="ollama">Ollama (Local)</option><option value="lmstudio">LM Studio (Local)</option></select></div>
         <div class="setting"><span><strong>Selected Model</strong><small>Active LLM model</small></span><select id="setting-ai-model" aria-label="Selected Model"></select></div>
-        <div class="setting"><span><strong>Local server endpoint</strong><small>Ollama / LM Studio URL</small></span><input type="text" id="setting-ai-local-url" value="http://localhost:11434" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
-        <div class="setting"><span><strong>Provider API Key (BYOK)</strong><small>Session memory; never logged or exported</small></span><input type="password" id="setting-ai-api-key" placeholder="Enter API key" autocomplete="off" spellcheck="false" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text);width:130px"></div>
+        <div class="setting"><span><strong>Local server endpoint</strong><small>Ollama / LM Studio URL</small></span><input type="text" id="setting-ai-local-url" value="http://localhost:11434" class="setting-input-inline"></div>
+        <div class="setting"><span><strong>Provider API Key (BYOK)</strong><small>Session memory; never logged or exported</small></span><input type="password" id="setting-ai-api-key" placeholder="Enter API key" autocomplete="off" spellcheck="false" class="setting-input-inline"></div>
         <div class="setting"><span><strong>Credential safety</strong><small>In-memory session key (opt-in BYOK)</small></span><span class="badge-tag" id="badge-ai-creds">Session Memory</span></div>
 
         <div class="installer-section-header">
@@ -361,7 +361,7 @@ root.innerHTML=`
         </div>
         <div class="setting">
           <span><strong>Target Provider</strong><small id="provider-detect-detail">Detecting installed agents...</small></span>
-          <div style="display:flex;gap:6px;align-items:center">
+          <div class="flex-row-gap-6">
             <select id="installer-provider-select" aria-label="Target Provider">
               <option value="antigravity">Antigravity (AGY)</option>
               <option value="claude-code" disabled>Claude Code (Coming soon)</option>
@@ -370,7 +370,7 @@ root.innerHTML=`
             <span class="badge-tag" id="provider-detect-badge">Checking</span>
           </div>
         </div>
-        <div class="setting" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div class="setting setting-col">
           <span><strong>Workspace Root Path</strong><small>Directory containing .agents/hooks.json</small></span>
           <div class="path-row">
             <label class="path-wrap">
@@ -411,55 +411,55 @@ root.innerHTML=`
       </div>
 
       <div class="settings-section" id="setsec-integrations" hidden>
-        <div class="integration-group-header" style="padding:4px 0 6px;">
-          <span class="kicker" style="font-size:9px;color:var(--accent);">GITHUB WORKSPACE REPOSITORY</span>
-          <p class="explain" style="padding:2px 0;margin:0;">Read-only pull requests, status check rollups, and recent GitHub Actions workflows.</p>
+        <div class="integration-group-header integration-group-header-first">
+          <span class="kicker integ-kicker">GITHUB WORKSPACE REPOSITORY</span>
+          <p class="explain integ-explain">Read-only pull requests, status check rollups, and recent GitHub Actions workflows.</p>
         </div>
 
-        <div class="setting" style="align-items:center;">
+        <div class="setting">
           <span>
             <strong id="github-repo-slug">Repository: inspecting...</strong>
-            <small id="github-branch-name" style="display:block;">Branch: —</small>
+            <small id="github-branch-name">Branch: —</small>
           </span>
-          <div style="display:flex;gap:6px;align-items:center;">
+          <div class="flex-row-gap-6">
             <button class="minor-btn" id="github-refresh-btn" type="button">Refresh</button>
             <button class="minor-btn" id="github-open-repo-btn" type="button" hidden>Open Repo</button>
           </div>
         </div>
 
-        <div id="github-pr-container" style="padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:var(--r-md,8px);margin-bottom:6px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <span style="font-size:11px;font-weight:600;color:var(--text);" id="github-pr-title">No active pull request</span>
+        <div id="github-pr-container" class="github-card">
+          <div class="flex-between">
+            <span class="github-title-sm" id="github-pr-title">No active pull request</span>
             <span class="badge-tag" id="github-pr-badge" hidden>Draft</span>
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <small id="github-pr-meta" style="color:var(--sub);font-size:10px;">Checks: — · Review: —</small>
-            <button class="minor-btn" id="github-open-pr-btn" type="button" style="padding:2px 8px;font-size:10px;" hidden>View PR</button>
+          <div class="flex-between">
+            <small id="github-pr-meta" class="github-meta-sm">Checks: — · Review: —</small>
+            <button class="minor-btn btn-view-pr" id="github-open-pr-btn" type="button" hidden>View PR</button>
           </div>
         </div>
 
-        <div id="github-ci-container" style="padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:var(--r-md,8px);margin-bottom:8px;">
-          <div style="font-size:10px;font-weight:600;color:var(--sub);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Recent CI Workflow Runs</div>
-          <div id="github-runs-list" style="display:flex;flex-direction:column;gap:4px;">
-            <small style="color:var(--muted);font-size:10px;">No recent runs loaded</small>
+        <div id="github-ci-container" class="github-card">
+          <div class="github-ci-title">Recent CI Workflow Runs</div>
+          <div id="github-runs-list" class="github-runs-col">
+            <small class="github-meta-sm">No recent runs loaded</small>
           </div>
         </div>
 
-        <p class="status-line" id="github-status-line" role="status" style="margin-bottom:8px;"></p>
+        <p class="status-line status-line-mb8" id="github-status-line" role="status"></p>
 
-        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
-          <span class="kicker" style="font-size:9px;color:var(--accent);">CONNECTED DEVELOPER SERVICES</span>
-          <p class="explain" style="padding:2px 0;margin:0;">Provider-scoped read-only status checks via environment tokens or credentials.</p>
+        <div class="integration-group-header">
+          <span class="kicker integ-kicker">CONNECTED DEVELOPER SERVICES</span>
+          <p class="explain integ-explain">Provider-scoped read-only status checks via environment tokens or credentials.</p>
         </div>
 
-        <div id="integrations-list" style="display:flex;flex-direction:column;gap:4px;">
+        <div id="integrations-list" class="github-runs-col">
         </div>
       </div>
 
       <div class="settings-section" id="setsec-flow" hidden>
-        <div class="integration-group-header" style="padding:4px 0 6px;">
-          <span class="kicker" style="font-size:9px;color:var(--accent);">OFFLINE SPEECH &amp; SNIPPETS</span>
-          <p class="explain" style="padding:2px 0;margin:0;">100% on-device speech processing with zero background recording and privacy-preserving text snippets.</p>
+        <div class="integration-group-header integration-group-header-first">
+          <span class="kicker integ-kicker">OFFLINE SPEECH &amp; SNIPPETS</span>
+          <p class="explain integ-explain">100% on-device speech processing with zero background recording and privacy-preserving text snippets.</p>
         </div>
 
         <div class="setting">
@@ -483,31 +483,31 @@ root.innerHTML=`
           <span class="badge-tag" id="flow-hotkey-badge">Alt+D</span>
         </div>
 
-        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
-          <span class="kicker" style="font-size:9px;color:var(--accent);">USAGE STATISTICS</span>
-          <p class="explain" style="padding:2px 0;margin:0;">Authentic local session counts and word metrics (never uploaded).</p>
+        <div class="integration-group-header">
+          <span class="kicker integ-kicker">USAGE STATISTICS</span>
+          <p class="explain integ-explain">Authentic local session counts and word metrics (never uploaded).</p>
         </div>
-        <div class="setting" style="justify-content:space-between;">
+        <div class="setting flex-between">
           <span><strong>Dictated sessions</strong><small>Total push-to-talk sessions completed</small></span>
           <span class="badge-tag" id="flow-stat-sessions">0 sessions</span>
         </div>
-        <div class="setting" style="justify-content:space-between;">
+        <div class="setting flex-between">
           <span><strong>Dictated words</strong><small>Total words dictated locally</small></span>
           <span class="badge-tag" id="flow-stat-words">0 words</span>
         </div>
 
-        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
-          <span class="kicker" style="font-size:9px;color:var(--accent);">DICTIONARY SNIPPETS</span>
-          <p class="explain" style="padding:2px 0;margin:0;">Automatic text expansions applied after transcription.</p>
+        <div class="integration-group-header">
+          <span class="kicker integ-kicker">DICTIONARY SNIPPETS</span>
+          <p class="explain integ-explain">Automatic text expansions applied after transcription.</p>
         </div>
-        <div id="flow-snippets-list" style="display:flex;flex-direction:column;gap:4px;">
+        <div id="flow-snippets-list" class="github-runs-col">
         </div>
       </div>
 
       <div class="settings-section" id="setsec-voice" hidden>
-        <div class="integration-group-header" style="padding:4px 0 6px;">
-          <span class="kicker" style="font-size:9px;color:var(--accent);">CONSENTED NOTETAKER &amp; VOICE CAPTURE</span>
-          <p class="explain" style="padding:2px 0;margin:0;">100% on-device audio transcription. Strictly zero background recording; microphone is active ONLY during explicit user-consented sessions.</p>
+        <div class="integration-group-header integration-group-header-first">
+          <span class="kicker integ-kicker">CONSENTED NOTETAKER &amp; VOICE CAPTURE</span>
+          <p class="explain integ-explain">100% on-device audio transcription. Strictly zero background recording; microphone is active ONLY during explicit user-consented sessions.</p>
         </div>
 
         <div class="setting">
@@ -523,94 +523,94 @@ root.innerHTML=`
           <span class="badge-tag" id="voice-endpoint-badge">Checking...</span>
         </div>
 
-        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
-          <span class="kicker" style="font-size:9px;color:var(--accent);">NOTETAKER CONTROLS</span>
-          <p class="explain" style="padding:2px 0;margin:0;">Start a consented recording session for local meeting notes.</p>
+        <div class="integration-group-header">
+          <span class="kicker integ-kicker">NOTETAKER CONTROLS</span>
+          <p class="explain integ-explain">Start a consented recording session for local meeting notes.</p>
         </div>
-        <div class="setting" style="flex-direction:column;align-items:stretch;gap:8px;">
-          <div style="display:flex;gap:6px;align-items:center;">
-            <input type="text" id="notetaker-title-input" placeholder="Meeting note title..." style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--text);" />
+        <div class="setting setting-col-8">
+          <div class="flex-row-gap-6">
+            <input type="text" id="notetaker-title-input" placeholder="Meeting note title..." class="notetaker-input" />
             <button class="action-btn" id="btn-notetaker-record" type="button">Start Note</button>
             <button class="minor-btn" id="btn-notetaker-pause" type="button" hidden>Pause</button>
-            <button class="action-btn" id="btn-notetaker-finish" type="button" style="background:#22c55e;" hidden>Finish</button>
+            <button class="action-btn btn-finish-note" id="btn-notetaker-finish" type="button" hidden>Finish</button>
             <button class="minor-btn" id="btn-notetaker-cancel" type="button" hidden>Cancel</button>
           </div>
-          <p class="status-line" id="notetaker-status-line" style="margin:0;font-size:10px;color:var(--muted);">Ready. Click "Start Note" after granting consent.</p>
+          <p class="status-line notetaker-status" id="notetaker-status-line">Ready. Click "Start Note" after granting consent.</p>
         </div>
 
-        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
-          <span class="kicker" style="font-size:9px;color:var(--accent);">SAVED TRANSCRIPT NOTES</span>
-          <p class="explain" style="padding:2px 0;margin:0;">Local bounded notes (max 20). Stored in session memory only.</p>
+        <div class="integration-group-header">
+          <span class="kicker integ-kicker">SAVED TRANSCRIPT NOTES</span>
+          <p class="explain integ-explain">Local bounded notes (max 20). Stored in session memory only.</p>
         </div>
-        <div id="notetaker-notes-list" style="display:flex;flex-direction:column;gap:6px;">
-          <small style="color:var(--muted);font-size:10px;">No notes recorded in this session yet.</small>
+        <div id="notetaker-notes-list" class="github-runs-col">
+          <small class="github-meta-sm">No notes recorded in this session yet.</small>
         </div>
 
-        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
-          <span class="kicker" style="font-size:9px;color:var(--accent);">VOICE COMMANDS CATALOG</span>
-          <p class="explain" style="padding:2px 0;margin:0;">Bounded voice actions supported via microphone or Alt+V trigger.</p>
+        <div class="integration-group-header">
+          <span class="kicker integ-kicker">VOICE COMMANDS CATALOG</span>
+          <p class="explain integ-explain">Bounded voice actions supported via microphone or Alt+V trigger.</p>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;font-size:10px;">
-          <div class="setting" style="align-items:center;"><span><strong>"Ask Xyn &lt;question&gt;"</strong><small>Send prompt to companion chat</small></span><span class="badge-tag">AI Chat</span></div>
-          <div class="setting" style="align-items:center;"><span><strong>"Expand / Compact / Hide Island"</strong><small>Change window mode</small></span><span class="badge-tag">Window</span></div>
-          <div class="setting" style="align-items:center;"><span><strong>"Show Chat / Clips / Activity / Settings"</strong><small>Switch navigation panel</small></span><span class="badge-tag">Navigation</span></div>
-          <div class="setting" style="align-items:center;"><span><strong>"Play / Pause / Next / Previous"</strong><small>Control Windows media</small></span><span class="badge-tag">Media</span></div>
-          <div class="setting" style="align-items:center;"><span><strong>"Generate Weekly Recap"</strong><small>Build local week summary</small></span><span class="badge-tag">Recap</span></div>
+        <div class="github-runs-col">
+          <div class="setting"><span><strong>"Ask Xyn &lt;question&gt;"</strong><small>Send prompt to companion chat</small></span><span class="badge-tag">AI Chat</span></div>
+          <div class="setting"><span><strong>"Expand / Compact / Hide Island"</strong><small>Change window mode</small></span><span class="badge-tag">Window</span></div>
+          <div class="setting"><span><strong>"Show Chat / Clips / Activity / Settings"</strong><small>Switch navigation panel</small></span><span class="badge-tag">Navigation</span></div>
+          <div class="setting"><span><strong>"Play / Pause / Next / Previous"</strong><small>Control Windows media</small></span><span class="badge-tag">Media</span></div>
+          <div class="setting"><span><strong>"Generate Weekly Recap"</strong><small>Build local week summary</small></span><span class="badge-tag">Recap</span></div>
         </div>
       </div>
 
       <div class="settings-section" id="setsec-companion" hidden>
-        <div class="integration-group-header" style="padding:6px 0 4px;">
-          <span class="kicker" style="font-size:9px;color:var(--accent);">ANDROID COMPANION &amp; MOBILE APPROVALS</span>
-          <p class="explain" style="padding:2px 0;margin:0;">Secure local pairing for mobile approval notifications and remote Allow Once / Deny decisions. Zero cloud relay, 100% on-device cryptography.</p>
+        <div class="integration-group-header">
+          <span class="kicker integ-kicker">ANDROID COMPANION &amp; MOBILE APPROVALS</span>
+          <p class="explain integ-explain">Secure local pairing for mobile approval notifications and remote Allow Once / Deny decisions. Zero cloud relay, 100% on-device cryptography.</p>
         </div>
 
-        <div class="setting" style="flex-direction:column;align-items:stretch;gap:8px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="setting setting-col-8">
+          <div class="flex-between">
             <span><strong>Pairing Status</strong><small id="companion-device-label">No companion device paired.</small></span>
             <span class="badge-tag" id="companion-status-badge">Unpaired</span>
           </div>
 
-          <div id="companion-unpaired-box" style="display:flex;flex-direction:column;gap:6px;">
-            <p class="explain" style="margin:0;font-size:11px;">Generate a time-bounded 6-digit code and QR payload to authenticate your Android companion app on the local network.</p>
+          <div id="companion-unpaired-box" class="github-runs-col">
+            <p class="explain integ-explain">Generate a time-bounded 6-digit code and QR payload to authenticate your Android companion app on the local network.</p>
             <div>
               <button class="action-btn" id="btn-companion-request-pairing" type="button">Pair New Android Device</button>
             </div>
           </div>
 
-          <div id="companion-pairing-box" style="display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:6px;padding:8px;" hidden>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:10px;color:var(--sub);">PAIRING CODE (5 MIN EXPIRY)</span>
-              <span id="companion-timer" style="font-size:10px;color:var(--accent);">300s</span>
+          <div id="companion-pairing-box" class="companion-pairing-card" hidden>
+            <div class="flex-between">
+              <span class="github-meta-sm">PAIRING CODE (5 MIN EXPIRY)</span>
+              <span id="companion-timer" class="companion-timer-text">300s</span>
             </div>
-            <div style="text-align:center;font-size:24px;font-family:monospace;letter-spacing:4px;font-weight:bold;color:var(--text);padding:4px 0;" id="companion-code-display">
+            <div class="companion-code-text" id="companion-code-display">
               000000
             </div>
             <div>
-              <small style="color:var(--muted);font-size:9px;">QR Payload (Scan with Xyeena Companion):</small>
-              <pre id="companion-qr-display" style="margin:4px 0 0 0;font-size:9px;background:rgba(0,0,0,0.3);padding:6px;border-radius:4px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;color:var(--sub);max-height:60px;"></pre>
+              <small class="github-meta-sm">QR Payload (Scan with Xyeena Companion):</small>
+              <pre id="companion-qr-display" class="companion-qr-box"></pre>
             </div>
-            <div style="display:flex;gap:6px;align-items:center;border-top:1px solid var(--line);padding-top:6px;">
-              <input type="text" id="companion-sim-name" placeholder="Device name (e.g. Pixel 8 Pro)" style="flex:1;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:10px;color:var(--text);" />
-              <button class="minor-btn" id="btn-companion-simulate-confirm" type="button" style="font-size:10px;">Confirm Pairing</button>
+            <div class="flex-row-gap-6">
+              <input type="text" id="companion-sim-name" placeholder="Device name (e.g. Pixel 8 Pro)" class="setting-input-inline" />
+              <button class="minor-btn" id="btn-companion-simulate-confirm" type="button">Confirm Pairing</button>
             </div>
           </div>
 
-          <div id="companion-paired-box" style="display:flex;flex-direction:column;gap:6px;" hidden>
-            <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:6px;padding:8px;">
+          <div id="companion-paired-box" class="github-runs-col" hidden>
+            <div class="companion-paired-card">
               <div>
-                <strong id="companion-paired-name" style="font-size:11px;color:var(--text);">Device Name</strong>
-                <p id="companion-paired-meta" style="margin:2px 0 0 0;font-size:9px;color:var(--sub);">ID: dev_123 · Paired at 12:00:00</p>
+                <strong id="companion-paired-name" class="github-title-sm">Device Name</strong>
+                <p id="companion-paired-meta" class="github-meta-sm">ID: dev_123 · Paired at 12:00:00</p>
               </div>
-              <button class="minor-btn" id="btn-companion-revoke" type="button" style="color:#ef4444;font-size:10px;">Revoke Device</button>
+              <button class="minor-btn btn-danger-sm" id="btn-companion-revoke" type="button">Revoke Device</button>
             </div>
-            <p class="explain" style="margin:0;font-size:10px;">Mobile approvals authorized. High-friction decisions will prompt this device with signature validation.</p>
+            <p class="explain integ-explain">Mobile approvals authorized. High-friction decisions will prompt this device with signature validation.</p>
           </div>
         </div>
 
-        <div class="integration-group-header" style="padding:6px 0 4px;border-top:1px solid var(--line);">
-          <span class="kicker" style="font-size:9px;color:var(--accent);">SECURITY CONSTRAINTS</span>
-          <p class="explain" style="padding:2px 0;margin:0;">Only Allow Once and Deny decisions can be forwarded remotely. Always Allow is permanently disabled in protocol rules.</p>
+        <div class="integration-group-header">
+          <span class="kicker integ-kicker">SECURITY CONSTRAINTS</span>
+          <p class="explain integ-explain">Only Allow Once and Deny decisions can be forwarded remotely. Always Allow is permanently disabled in protocol rules.</p>
         </div>
       </div>
 
@@ -1652,7 +1652,7 @@ function renderClipboard(){
   });
 
   const delBtn=document.createElement('button');delBtn.type='button';delBtn.className='clip-btn';
-  delBtn.textContent='×';delBtn.title='Delete item';
+  delBtn.title='Delete item';delBtn.setAttribute('aria-label', 'Delete item');delBtn.innerHTML=icon('x', 14);
   delBtn.addEventListener('click',()=>{clipboard.deleteItem(item.id);renderClipboard();});
 
   actions.append(pinBtn,copyBtn,saveBtn,delBtn);
@@ -2074,7 +2074,7 @@ syncImageModels('gemini');
 btnChatModeToggle?.addEventListener('click',()=>{
  isImageModeActive=!isImageModeActive;
  if(btnChatModeToggle){
-  btnChatModeToggle.textContent=isImageModeActive?'💬 Chat Mode':'🖼️ Image';
+  btnChatModeToggle.innerHTML=isImageModeActive?icon('chat', 14)+' <span>Chat Mode</span>':icon('image', 14)+' <span>Image</span>';
   btnChatModeToggle.classList.toggle('active',isImageModeActive);
  }
  if(chatImageControls){
@@ -2119,7 +2119,7 @@ function stopActiveChat(){
  if(activeStreamingReply){
   const streamText=(activeStreamingReply.content||'').trim();
   activeStreamingReply=null;
-  if(streamText && !streamText.startsWith('🎨 Generating image')){
+  if(streamText && !streamText.startsWith('[Image] Generating image')){
    chat.addAssistantReply(streamText+'\n\n*(Generation stopped)*');
   }else{
    chat.addAssistantReply('*Response generation cancelled.*',{isError:true});
@@ -2162,7 +2162,7 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
   activeStreamingReply={
    id:`stream-${Date.now()}`,
    role:'assistant',
-   content:'🎨 Generating image with on-device/provider pipeline...',
+   content:'[Image] Generating image with on-device/provider pipeline...',
    isStreaming:true
   };
   renderChatMessages();
@@ -2189,7 +2189,7 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
 
    if(thisReqSeq!==chatReqSeq)return;
    activeStreamingReply=null;
-   chat.addAssistantReply(`🎨 **Generated Image** for: "${prompt}"`,{
+   chat.addAssistantReply(`[Image] **Generated Image** for: "${prompt}"`,{
     image:imgRes,
    } as any);
 
@@ -2203,7 +2203,7 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
     return;
    }
    activeStreamingReply=null;
-   chat.addAssistantReply(`⚠️ **Image generation error:** ${err?.message||String(err)}`,{isError:true});
+   chat.addAssistantReply(`[Error] **Image generation error:** ${err?.message||String(err)}`,{isError:true});
    renderChatMessages();
    setXynChatState('error',err);
    setTimeout(()=>{if(thisReqSeq===chatReqSeq)setXynChatState('idle');},4000);
@@ -2287,7 +2287,7 @@ q<HTMLFormElement>('#chat-form').addEventListener('submit',async e=>{
     chat.addAssistantReply('*Response generation cancelled.*',{isError:true});
    }
   }else{
-   chat.addAssistantReply(`⚠️ **Chat error:** ${err?.message||String(err)}`,{isError:true});
+   chat.addAssistantReply(`[Error] **Chat error:** ${err?.message||String(err)}`,{isError:true});
   }
   renderChatMessages();
   setXynChatState('error',err);
@@ -3151,12 +3151,12 @@ async function refreshGitHubIntegration() {
      const conclusionColor = run.conclusion === 'success' ? '#51d9a7' : run.conclusion === 'failure' ? '#f87171' : 'var(--sub)';
      runItem.innerHTML = `
       <span>${run.name} (${run.event})</span>
-      <span style="color:${conclusionColor};font-weight:600;">${conclusionText}</span>
+      <span class="run-conclusion-text" style="--run-color:${conclusionColor};">${conclusionText}</span>
      `;
      runsList.appendChild(runItem);
     }
    } else {
-    runsList.innerHTML = '<small style="color:var(--muted);font-size:10px;">No recent workflow runs found</small>';
+    runsList.innerHTML = '<small class="github-meta-sm">No recent workflow runs found</small>';
    }
   }
 
@@ -3252,11 +3252,11 @@ function renderConnectedServicesList() {
    <span>
     <strong>${svc.name}</strong>
     <small>${svc.description} · ${svc.envVar}</small>
-    <span class="integ-status-text" id="integ-status-${svc.id}" style="display:block;font-size:10px;color:var(--muted);margin-top:2px;">Status: Unchecked</span>
+    <span class="integ-status-text" id="integ-status-${svc.id}">Status: Unchecked</span>
    </span>
-   <div style="display:flex;gap:6px;align-items:center;">
+   <div class="flex-row-gap-6">
     <span class="badge-tag" id="integ-badge-${svc.id}">Unchecked</span>
-    <button class="minor-btn" type="button" id="integ-btn-${svc.id}" style="padding:3px 8px;font-size:10px;">Check</button>
+    <button class="minor-btn btn-view-pr" type="button" id="integ-btn-${svc.id}">Check</button>
    </div>
   `;
   const btn = item.querySelector<HTMLButtonElement>(`#integ-btn-${svc.id}`);
@@ -3339,7 +3339,7 @@ function renderFlowSnippets() {
     <strong><code>${snip.trigger}</code></strong>
     <small>${snip.description || 'Snippet expansion'}</small>
    </span>
-   <span class="badge-tag" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${snip.replacement}</span>
+   <span class="badge-tag">${snip.replacement}</span>
   `;
   list.appendChild(row);
  }
@@ -3464,22 +3464,22 @@ function renderNotetakerNotes() {
  if (!list) return;
  list.innerHTML = '';
  if (notetaker.notes.length === 0) {
-  list.innerHTML = '<small style="color:var(--muted);font-size:10px;">No notes recorded in this session yet.</small>';
+  list.innerHTML = '<small class="github-meta-sm">No notes recorded in this session yet.</small>';
   return;
  }
  for (const note of notetaker.notes) {
   const card = document.createElement('div');
-  card.style.cssText = 'padding:6px 8px;background:rgba(255,255,255,0.03);border:1px solid var(--line);border-radius:6px;';
+  card.className = 'github-card';
   card.innerHTML = `
-   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-    <strong style="font-size:11px;color:var(--text);">${note.title}</strong>
-    <small style="color:var(--muted);font-size:9px;">${note.durationSeconds}s · ${note.createdAt.slice(11,16)}</small>
+   <div class="flex-between">
+    <strong class="note-title">${note.title}</strong>
+    <small class="github-meta-sm">${note.durationSeconds}s · ${note.createdAt.slice(11,16)}</small>
    </div>
-   <p style="font-size:10px;color:var(--sub);margin:0 0 4px 0;max-height:48px;overflow:hidden;text-overflow:ellipsis;">${note.transcript || '(Empty transcript)'}</p>
-   <div style="display:flex;gap:6px;align-items:center;">
-    <button class="minor-btn" type="button" data-export-id="${note.id}" style="padding:2px 6px;font-size:9px;">Export MD</button>
-    <button class="minor-btn" type="button" data-export-wav-id="${note.id}" style="padding:2px 6px;font-size:9px;">Export WAV</button>
-    <button class="minor-btn" type="button" data-del-id="${note.id}" style="padding:2px 6px;font-size:9px;color:#ef4444;">Delete</button>
+   <p class="note-desc">${note.transcript || '(Empty transcript)'}</p>
+   <div class="flex-row-gap-6">
+    <button class="minor-btn note-btn" type="button" data-export-id="${note.id}">Export MD</button>
+    <button class="minor-btn note-btn" type="button" data-export-wav-id="${note.id}">Export WAV</button>
+    <button class="minor-btn note-del-btn" type="button" data-del-id="${note.id}">Delete</button>
    </div>
   `;
   card.querySelector(`[data-export-id="${note.id}"]`)?.addEventListener('click', async () => {

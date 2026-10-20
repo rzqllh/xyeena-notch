@@ -1,0 +1,84 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — BASE STYLES
+   Reset, typography primitives, and accessible focus styles.
+   ========================================================================== */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-1);
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+/* Accessible focus visible ring */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Headings */
+h1, h2, h3 {
+  font-weight: 600;
+  color: var(--text-1);
+  letter-spacing: -0.015em;
+}
+
+h1 {
+  font-size: 14px;
+}
+
+h2 {
+  font-size: 12px;
+}
+
+h3 {
+  font-size: 11px;
+}
+
+/* Monospace text */
+code, pre, kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* Links */
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Button Reset */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

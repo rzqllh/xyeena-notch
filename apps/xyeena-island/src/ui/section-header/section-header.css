@@ -1,0 +1,38 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — SECTION HEADER PRIMITIVE
+   ========================================================================== */
+
+.section-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.section-hdr-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.section-hdr-kicker {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+}
+
+.section-hdr-title {
+  font-size: var(--text-size-sm);
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0;
+}
+
+.section-hdr-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

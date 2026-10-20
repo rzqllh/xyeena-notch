@@ -1,0 +1,67 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — CHECKBOX PRIMITIVE
+   ========================================================================== */
+
+.checkbox-wrap {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-wrap.disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.checkbox-input {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  margin: 2px 0 0 0;
+  display: inline-grid;
+  place-content: center;
+  transition: background-color var(--motion-fast), border-color var(--motion-fast);
+  flex-shrink: 0;
+}
+
+.checkbox-input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.checkbox-input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox-input:checked::before {
+  content: "";
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid var(--surface-0);
+  border-bottom: 2px solid var(--surface-0);
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+
+.checkbox-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.checkbox-label {
+  font-size: var(--text-size-sm);
+  color: var(--text-1);
+  cursor: pointer;
+}
+
+.checkbox-desc {
+  font-size: var(--text-size-xs);
+  color: var(--text-3);
+  margin: 0;
+}

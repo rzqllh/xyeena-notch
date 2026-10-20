@@ -9,15 +9,21 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "npm run test --workspace @xyeena/island && npm run test --workspace @xyeena/xyn && npm run test --workspace @xyeena/recap && node --test examples/guardian-playground/tests/*.test.mjs",
     "build": "npm run build --workspace @xyeena/island && npm run build:guardian",
     "build:guardian": "node examples/guardian-playground/scripts/build.mjs",
     "preview:guardian": "node examples/guardian-playground/scripts/dev-server.mjs",
+    "preview:gallery": "node examples/ui-gallery/scripts/dev-server.mjs",
     "doctor": "npm run doctor --workspace @xyeena/island",
     "desktop": "npm run desktop --workspace @xyeena/island",
     "release:audit": "npm run release:audit --workspace @xyeena/island",
     "ledger:verify": "node scripts/verify-ledger.mjs",
-    "check": "npm run init:audit && npm run ledger:verify && npm test && npm run build && npm run release:audit",
+    "contrast:check": "node scripts/check-contrast.mjs",
+    "icons:gen": "node scripts/gen-icons.mjs",
+    "icons:check": "node scripts/gen-icons.mjs --check",
+    "lint:ui": "node scripts/lint-ui.mjs",
+    "ui:compile": "node scripts/build-ui-esm.mjs",
+    "test": "npm run ui:compile && npm run test --workspace @xyeena/island && npm run test --workspace @xyeena/xyn && npm run test --workspace @xyeena/recap && node --test examples/guardian-playground/tests/*.test.mjs && node --test examples/ui-gallery/tests/*.test.mjs",
+    "check": "npm run init:audit && npm run ledger:verify && npm run contrast:check && npm run icons:check && npm run lint:ui && npm test && npm run build && npm run release:audit",
     "init:audit": "node scripts/audit-init.mjs"
   },
   "engines": {

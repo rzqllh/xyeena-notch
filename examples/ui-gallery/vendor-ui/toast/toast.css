@@ -1,0 +1,42 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — TOAST PRIMITIVE
+   ========================================================================== */
+
+.toast-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  box-shadow: var(--elevation-2);
+  font-family: var(--font-sans);
+  font-size: var(--text-size-sm);
+  color: var(--text-1);
+  transition: opacity var(--motion-fast), transform var(--motion-fast);
+  max-width: 340px;
+}
+
+.toast-ok {
+  border-color: var(--state-ok);
+  background: var(--surface-1);
+}
+
+.toast-warn {
+  border-color: var(--state-warn);
+}
+
+.toast-danger {
+  border-color: var(--state-danger);
+}
+
+.toast-info {
+  border-color: var(--accent);
+}
+
+.toast-msg {
+  flex: 1;
+  margin: 0;
+  line-height: 1.3;
+}
