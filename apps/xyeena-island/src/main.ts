@@ -166,6 +166,7 @@ root.innerHTML=`
     <section class="page" id="page-activity" role="tabpanel" hidden>
      <div class="section-heading"><div><span class="kicker" id="act-kicker">CODING AGENTS</span><h1 id="act-heading">Agent Sessions</h1></div><button class="minor-btn" id="refresh-activity-btn" type="button">${icon('refresh',14)} Refresh</button></div>
      <div class="agent-pills-row" id="agent-pills" aria-label="Detected agent sessions"></div>
+     <div class="activity-scroll-body" id="activity-scroll-body">
      <div id="session-detail-card" class="session-detail-card" hidden>
        <div class="session-card-header">
          <div class="session-provider-info">
@@ -239,6 +240,7 @@ root.innerHTML=`
        <div id="runs" class="history"></div>
        <button class="minor-btn disconnect" type="button" hidden>Disconnect</button>
      </details>
+    </div>
     </section>
     <section class="page" id="page-chat" role="tabpanel" hidden>
       <div class="section-heading chat-header-hero">

@@ -384,4 +384,47 @@ test('P1 Recovery: Volume polling is halted during compact and glance modes', ()
   );
 });
 
+test('W0 Regression: Agents page (#page-activity) has dedicated scroll owner for session detail and alerts', () => {
+  const mainContent = fs.readFileSync(mainPath, 'utf8');
+  const stylePath = path.resolve(__dirname, '../src/style.css');
+  const styleContent = fs.readFileSync(stylePath, 'utf8');
+
+  // DOM contract: #page-activity must contain #activity-scroll-body
+  assert.ok(
+    mainContent.includes('id="page-activity"'),
+    '#page-activity section must exist in main.ts'
+  );
+  assert.ok(
+    mainContent.includes('id="activity-scroll-body"'),
+    '#activity-scroll-body container must exist in main.ts'
+  );
+
+  // Structural hierarchy: header & pills stay fixed; detail card & alerts are inside scroll body
+  const scrollStart = mainContent.indexOf('id="activity-scroll-body"');
+  const pillsPos = mainContent.indexOf('id="agent-pills"');
+  const headingPos = mainContent.indexOf('id="act-heading"');
+  const detailPos = mainContent.indexOf('id="session-detail-card"');
+  const alertsPos = mainContent.indexOf('id="alerts"');
+
+  assert.ok(headingPos < scrollStart, 'Section heading must precede scroll container to remain fixed');
+  assert.ok(pillsPos < scrollStart, 'Agent pills row must precede scroll container to remain fixed');
+  assert.ok(detailPos > scrollStart, 'Session detail card must reside inside scroll container');
+  assert.ok(alertsPos > scrollStart, 'Alerts history must reside inside scroll container');
+
+  // CSS contract: #page-activity is overflow: hidden, .activity-scroll-body is the scroll owner
+  assert.ok(
+    styleContent.includes('.activity-scroll-body'),
+    'style.css must define .activity-scroll-body rules'
+  );
+  assert.ok(
+    /activity-scroll-body[\s\S]*?overflow-y:\s*auto/.test(styleContent),
+    '.activity-scroll-body must have overflow-y: auto'
+  );
+  assert.ok(
+    /activity-scroll-body[\s\S]*?min-height:\s*0/.test(styleContent),
+    '.activity-scroll-body must declare min-height: 0 for nested flex scroll'
+  );
+});
+
+
 

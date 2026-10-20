@@ -1354,6 +1354,27 @@ input[type="range"] {
   50% { opacity: 0.5; transform: scale(0.85); }
 }
 
+/* Agents Page Single Scroll Owner (W0 Hotfix) */
+#page-activity {
+  overflow: hidden;
+}
+
+#page-activity .section-heading,
+#page-activity .agent-pills-row {
+  flex-shrink: 0;
+}
+
+.activity-scroll-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 2px;
+}
+
 /* Focused Session Detail Card */
 .session-detail-card {
   display: flex;
