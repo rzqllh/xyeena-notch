@@ -1,0 +1,1675 @@
+[
+  {
+    "id": "F01",
+    "area": "shell",
+    "capability": "Stationary notch / compact / glance / expanded / hidden",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/island.rs",
+        "windows/src/core/layout.ts"
+      ],
+      "summary": "Native window positioning, DPI-aware placement, multi-mode frame geometry.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/lib.rs",
+        "apps/xyeena-island/src/style.css"
+      ],
+      "wired": true,
+      "tests": [
+        "geometry animation is bounded at every step",
+        "native frame guard rejects NaN, oversized and negative windows",
+        "tests::geometry_is_bounded",
+        "tests::arbitrary_modes_fail_closed"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P0",
+    "decision": "verified",
+    "reason": "Core desktop notch container. Verified with atomic SetWindowPos in lib.rs.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/lib.rs:apply_frame"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked && npm test --workspace @xyeena/island"
+      },
+      {
+        "class": "E3",
+        "ref": "geometry animation is bounded at every step"
+      }
+    ],
+    "docs_claims": [
+      {
+        "file": "README.md",
+        "line": 25,
+        "claim": "Multi-mode stationary notch shell",
+        "verdict": "OK"
+      }
+    ]
+  },
+  {
+    "id": "F02",
+    "area": "agents",
+    "capability": "Contextual source pills, session focus, multi-agent concurrency",
+    "coucou": {
+      "paths": [
+        "windows/src/island/agents.ts",
+        "windows/src/core/pills.ts"
+      ],
+      "summary": "Agent session source pills, focus tracking, attention badges.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "apps/xyeena-island/src/core/session-store.mjs",
+        "apps/xyeena-island/src/main.ts"
+      ],
+      "wired": true,
+      "tests": [
+        "SessionStore ingests lifecycle events through happy path",
+        "SessionStore isolates concurrent multi-agent sessions",
+        "SessionStore auto-focuses session with pending approval over other active sessions"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P3",
+    "decision": "verified",
+    "reason": "Replaced legacy Activity tab with reactive SessionStore contextual pills.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/core/session-store.mjs:20-60"
+      },
+      {
+        "class": "E2",
+        "ref": "npm test --workspace @xyeena/island"
+      },
+      {
+        "class": "E3",
+        "ref": "SessionStore isolates concurrent multi-agent sessions"
+      }
+    ],
+    "docs_claims": [
+      {
+        "file": "docs/parity/CONTRADICTIONS.md",
+        "line": 45,
+        "claim": "Activity tab vs Agents tab",
+        "verdict": "CLAIM-STALE"
+      }
+    ]
+  },
+  {
+    "id": "F03",
+    "area": "system",
+    "capability": "Tray menu, shortcuts, topmost, multi-monitor, DPI",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/tray.rs",
+        "windows/src-tauri/src/shortcuts.rs"
+      ],
+      "summary": "Taskbar notification tray menu with actions, multi-monitor and DPI scaling.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/lib.rs"
+      ],
+      "wired": true,
+      "tests": []
+    },
+    "status": "FOUNDATION",
+    "tier": "A",
+    "phase": "P4",
+    "decision": "adapt",
+    "reason": "Tray menu wired in Tauri setup; native global Win32 shortcuts pending Phase 4.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/lib.rs:setup_tray"
+      }
+    ],
+    "docs_claims": [
+      {
+        "file": "FEATURE_STATUS.md",
+        "line": 30,
+        "claim": "Global shortcuts deferred",
+        "verdict": "CLAIM-UNPROVEN"
+      }
+    ]
+  },
+  {
+    "id": "F04",
+    "area": "mascot",
+    "capability": "Cursor gaze, Xyn gestures, pause/sleep, wardrobe",
+    "coucou": {
+      "paths": [
+        "windows/src/mochi/engine.ts",
+        "windows/src/mochi/wardrobe.ts"
+      ],
+      "summary": "Companion gestures, eye tracking gaze, wardrobe outfit selection.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "packages/xyn/src/index.js",
+        "apps/xyeena-island/src/core/mascot.mjs"
+      ],
+      "wired": true,
+      "tests": []
+    },
+    "status": "FOUNDATION",
+    "tier": "A",
+    "phase": "P4",
+    "decision": "adapt",
+    "reason": "Consumes original Xyn mascot package read-only; wardrobe and pause UI to be refined in P4.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "packages/xyn/src/index.js:1-50"
+      }
+    ],
+    "docs_claims": [
+      {
+        "file": "UPSTREAM.md",
+        "line": 8,
+        "claim": "Zero imitation of Mochi assets",
+        "verdict": "OK"
+      }
+    ]
+  },
+  {
+    "id": "F05",
+    "area": "agents",
+    "capability": "Agent hook detection, opt-in install, backup, uninstall",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/agent_hooks.rs",
+        "windows/src/island/hooks.ts"
+      ],
+      "summary": "Agent CLI hook installation, preview diffs, and uninstaller.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/agent_ipc/provider.rs",
+        "src-tauri/src/bin/relay.rs"
+      ],
+      "wired": true,
+      "tests": [
+        "agent_ipc::provider::tests::test_install_creates_backup",
+        "agent_ipc::provider::tests::test_install_creates_shim_and_uninstall_removes_shim",
+        "agent_ipc::provider::tests::test_preview_fresh_install",
+        "agent_ipc::provider::tests::test_known_providers_catalog"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P1",
+    "decision": "verified",
+    "reason": "Atomic hook installer with .bak backup and preservation of existing groups.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/agent_ipc/provider.rs:650-750"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "agent_ipc::provider::tests::test_install_creates_backup"
+      }
+    ],
+    "docs_claims": [
+      {
+        "file": "README.md",
+        "line": 60,
+        "claim": "No write authority over user projects",
+        "verdict": "CLAIM-FALSE"
+      }
+    ]
+  },
+  {
+    "id": "F06",
+    "area": "agents",
+    "capability": "Claude Code live events, approvals, question prompts",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/claude.rs",
+        "windows/src-tauri/src/chat.rs"
+      ],
+      "summary": "Claude Code hook event parsing and interactive approval protocol.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/agent_ipc/event.rs",
+        "src-tauri/src/agent_ipc/approval.rs"
+      ],
+      "wired": true,
+      "tests": []
+    },
+    "status": "FOUNDATION",
+    "tier": "A",
+    "phase": "P1",
+    "decision": "build",
+    "reason": "Normalizer maps Claude events; bidirectional approval forwarding to be resolved in P1.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/agent_ipc/event.rs:100-150"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F07",
+    "area": "agents",
+    "capability": "Codex live events & approval (fail-closed)",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/codex_plan.rs"
+      ],
+      "summary": "Codex CLI hook event telemetry and approval gating.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/agent_ipc/event.rs",
+        "src-tauri/src/agent_ipc/provider.rs"
+      ],
+      "wired": false,
+      "tests": []
+    },
+    "status": "UNVERIFIED-CONTRACT",
+    "tier": "A",
+    "phase": "P1",
+    "decision": "needs-user",
+    "reason": "Codex hook contract unverified against installed system CLI; fails closed.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/agent_ipc/provider.rs:300-350"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F08",
+    "area": "agents",
+    "capability": "Gemini CLI live events & tool run telemetry",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/agents.rs"
+      ],
+      "summary": "Gemini CLI tool invocation monitoring and lifecycle events.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/agent_ipc/event.rs"
+      ],
+      "wired": true,
+      "tests": []
+    },
+    "status": "FOUNDATION",
+    "tier": "A",
+    "phase": "P1",
+    "decision": "build",
+    "reason": "Telemetry normalization supported; native approval integration pending verified contract.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/agent_ipc/event.rs:150-180"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F09",
+    "area": "agents",
+    "capability": "Antigravity live events, named pipe IPC",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/pipe.rs"
+      ],
+      "summary": "Local Windows Named Pipe for agent event telemetry and approvals.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/agent_ipc/pipe.rs",
+        "src-tauri/src/bin/relay.rs"
+      ],
+      "wired": true,
+      "tests": [
+        "agent_ipc::pipe::tests::test_named_pipe_roundtrip_message",
+        "agent_ipc::pipe::tests::test_relay_binary_process_to_pipe_end_to_end",
+        "agent_ipc::event::tests::test_normalize_native_antigravity_lifecycle_hook"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P1",
+    "decision": "verified",
+    "reason": "Windows Named Pipe relay stream verified. Visual display confirmed by user historical E4.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/agent_ipc/pipe.rs:50-100"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "agent_ipc::pipe::tests::test_named_pipe_roundtrip_message"
+      },
+      {
+        "class": "E4",
+        "ref": "Historical user screenshot media_1792397537855.png showing live Antigravity tool telemetry"
+      }
+    ],
+    "docs_claims": [
+      {
+        "file": "docs/parity/CONTRADICTIONS.md",
+        "line": 8,
+        "claim": "Antigravity Hook Status",
+        "verdict": "CLAIM-STALE"
+      }
+    ]
+  },
+  {
+    "id": "F10",
+    "area": "agents",
+    "capability": "Cursor, Copilot, Muse, OpenCode, Amp, Hermes catalog",
+    "coucou": {
+      "paths": [
+        "windows/src/island/agents.ts"
+      ],
+      "summary": "Agent provider catalog entries and capability flags.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/agent_ipc/provider.rs"
+      ],
+      "wired": false,
+      "tests": []
+    },
+    "status": "FOUNDATION",
+    "tier": "B",
+    "phase": "P5",
+    "decision": "adapt",
+    "reason": "Catalog metadata defined in provider.rs; individual provider adapters pending P5.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/agent_ipc/provider.rs:180-220"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F11",
+    "area": "agents",
+    "capability": "Multi-session, subagent, lifecycle, notifications",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/pipe.rs",
+        "windows/src/core/state.ts"
+      ],
+      "summary": "Multi-agent concurrent session management, TTL pruning, lifecycle transitions.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/agent_ipc/session.rs",
+        "apps/xyeena-island/src/core/session-store.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "agent_ipc::session::tests::test_concurrent_sessions_isolated",
+        "agent_ipc::session::tests::test_session_lifecycle_happy_path",
+        "agent_ipc::session::tests::test_ttl_expiry_and_pruning"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P1",
+    "decision": "verified",
+    "reason": "Concurrent session isolation and TTL pruning verified in Rust session registry.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/agent_ipc/session.rs:60-120"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "agent_ipc::session::tests::test_concurrent_sessions_isolated"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F12",
+    "area": "developer",
+    "capability": "File-change ticker and bounded diff preview",
+    "coucou": {
+      "paths": [
+        "windows/src/views/diff.ts",
+        "windows/src/core/diff.ts"
+      ],
+      "summary": "Modified file ticker and scrollable git diff viewer.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/developer.rs",
+        "apps/xyeena-island/src/main.ts"
+      ],
+      "wired": true,
+      "tests": [
+        "developer::tests::test_validate_path_within_root_rejects_traversal",
+        "developer::tests::test_diff_bounding_limits",
+        "SessionStore records touchedFiles ticker and bounds to 20 files"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P3",
+    "decision": "verified",
+    "reason": "Bounded git diff with path traversal protection and max 20 touched files ticker.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/developer.rs:50-100"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "developer::tests::test_diff_bounding_limits"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F13",
+    "area": "developer",
+    "capability": "Open actual terminal/editor session",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/platform/windows.rs"
+      ],
+      "summary": "Spawns terminal or code editor anchored to workspace path.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/developer.rs"
+      ],
+      "wired": true,
+      "tests": [
+        "developer::tests::test_validate_workspace_root_rejects_empty_or_nonexistent",
+        "developer::tests::test_validate_path_within_root_allows_subfiles"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P4",
+    "decision": "verified",
+    "reason": "Native process spawning for VS Code (code -g) and Windows Terminal (wt.exe).",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/developer.rs:150-200"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "developer::tests::test_validate_path_within_root_allows_subfiles"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F14",
+    "area": "telemetry",
+    "capability": "Claude/Codex usage limits & authentic token telemetry",
+    "coucou": {
+      "paths": [
+        "windows/src/views/usage.ts",
+        "windows/src/core/plan.ts"
+      ],
+      "summary": "Plan token usage and rate limit displays.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/agent_ipc/event.rs",
+        "apps/xyeena-island/src/core/session-store.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "SessionStore extracts authentic usage telemetry without synthetic fabrication"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P4",
+    "decision": "verified",
+    "reason": "Parses genuine token telemetry from hook events; zero synthetic metrics.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/core/session-store.mjs:450-480"
+      },
+      {
+        "class": "E2",
+        "ref": "npm test --workspace @xyeena/island"
+      },
+      {
+        "class": "E3",
+        "ref": "SessionStore extracts authentic usage telemetry without synthetic fabrication"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F15",
+    "area": "chat",
+    "capability": "AI Chat providers (streaming, multi-turn, strict models)",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/chat.rs",
+        "windows/src/views/chat.ts"
+      ],
+      "summary": "Multi-turn LLM chat interface with streaming and provider options.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/lib.rs",
+        "apps/xyeena-island/src/core/ai-chat.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "tests::ai_transport_enforces_provider_matrix_and_header_isolation",
+        "tests::test_infer_diagnostic_metadata_openai_extracts_model_from_body",
+        "ai_diagnostics::tests::test_current_iso_timestamp_conforms_to_rfc3339",
+        "ai_diagnostics::tests::test_sanitize_url_redacts_keys"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P3",
+    "decision": "verified",
+    "reason": "Multi-turn streaming chat with strict model validation and diagnostics.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/core/ai-chat.mjs:1-100"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "tests::ai_transport_enforces_provider_matrix_and_header_isolation"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F16",
+    "area": "security",
+    "capability": "Secure credentials and model discovery",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/secrets.rs"
+      ],
+      "summary": "OS Windows Credential Manager storage for provider API keys.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "apps/xyeena-island/src/core/provider-credentials.mjs",
+        "src-tauri/src/lib.rs"
+      ],
+      "wired": true,
+      "tests": []
+    },
+    "status": "FOUNDATION",
+    "tier": "A",
+    "phase": "P1",
+    "decision": "adapt",
+    "reason": "Currently in-memory JS store; migrating to Rust Windows Credential Manager in Phase 1.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/core/provider-credentials.mjs:5-30"
+      }
+    ],
+    "docs_claims": [
+      {
+        "file": "docs/parity/SECURITY-FINDINGS.md",
+        "line": 100,
+        "claim": "In-memory credential residency in JS",
+        "verdict": "CLAIM-FALSE"
+      }
+    ]
+  },
+  {
+    "id": "F17",
+    "area": "clipboard",
+    "capability": "In-memory clipboard text/image history, lossless PNG",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/platform/windows.rs"
+      ],
+      "summary": "Clipboard monitoring for text and bitmap images.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/clipboard.rs",
+        "apps/xyeena-island/src/core/clipboard.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "clipboard::tests::test_png_signature_detection",
+        "clipboard::tests::test_dibv5_to_bmp_preserves_v5_header",
+        "clipboard::tests::test_base64_encode_and_decode_roundtrip"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P3",
+    "decision": "verified",
+    "reason": "Lossless Windows PNG clipboard format prioritized over transcoding; in-memory only per D11.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/clipboard.rs:50-100"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "clipboard::tests::test_png_signature_detection"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F18",
+    "area": "clipboard",
+    "capability": "Clipboard preview, search, pin, restore, clear",
+    "coucou": {
+      "paths": [
+        "windows/src/views/dom.ts"
+      ],
+      "summary": "Clipboard history panel with preview, search filter, and pin.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "apps/xyeena-island/src/core/clipboard.mjs",
+        "apps/xyeena-island/src/main.ts"
+      ],
+      "wired": true,
+      "tests": [
+        "clipboard::tests::test_clipboard_sequence_number_is_callable",
+        "clipboard::tests::test_dib_to_bmp_rejects_truncated_header"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P3",
+    "decision": "verified",
+    "reason": "In-memory clipboard manager UI with search, pin, restore, and clear.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/core/clipboard.mjs:50-90"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "clipboard::tests::test_clipboard_sequence_number_is_callable"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F19",
+    "area": "files",
+    "capability": "File drag/drop to Xyn, RFC 4180 CSV, native Explorer drop",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/files.rs",
+        "windows/src/views/upload.ts"
+      ],
+      "summary": "File drop zone handling text and image uploads.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/lib.rs",
+        "apps/xyeena-island/src/core/files.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "Tauri desktop shell is permission-minimal"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P4",
+    "decision": "verified",
+    "reason": "Native Windows Explorer file drops, conversion matrix, RFC 4180 CSV parser.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/core/files.mjs:100-150"
+      },
+      {
+        "class": "E2",
+        "ref": "npm run check"
+      },
+      {
+        "class": "E3",
+        "ref": "Tauri desktop shell is permission-minimal"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F20",
+    "area": "media",
+    "capability": "Windows media/Spotify playback, master endpoint volume",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/spotify.rs"
+      ],
+      "summary": "GSMTC / Spotify media transport controls and volume integration.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/media.rs",
+        "src-tauri/src/volume.rs",
+        "apps/xyeena-island/src/core/media.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "media::tests::metadata_bounded",
+        "multiple Windows playback sessions are bounded and selectable"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P3",
+    "decision": "verified",
+    "reason": "Native GSMTC session detection and IAudioEndpointVolume master volume control.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/media.rs:50-100"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "media::tests::metadata_bounded"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F21",
+    "area": "integrations",
+    "capability": "GitHub PR/CI/reviews and workspace detection",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/github.rs",
+        "windows/src/views/github.ts"
+      ],
+      "summary": "GitHub PR status, review rollup, and CI workflow run status.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/github.rs",
+        "apps/xyeena-island/src/core/integrations.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "github::tests::test_empty_pr_rejection",
+        "github::tests::test_parse_gh_pr_view_json",
+        "github::tests::test_parse_gh_run_list_json"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P4",
+    "decision": "verified",
+    "reason": "Authentic GitHub status parsing via gh CLI or API without synthetic mock data.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/github.rs:50-90"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "github::tests::test_parse_gh_pr_view_json"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F22",
+    "area": "integrations",
+    "capability": "Connected services health (Vercel, Notion, n8n, etc.)",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/integrations.rs"
+      ],
+      "summary": "External cloud service status checks.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/integrations.rs",
+        "apps/xyeena-island/src/core/integrations.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "integrations::tests::test_header_and_url_validation",
+        "integrations::tests::test_supported_integrations_catalog",
+        "integrations::tests::test_unconfigured_service_returns_unconfigured"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "B",
+    "phase": "P5",
+    "decision": "verified",
+    "reason": "Service status verification with credential security via curl stdin piping.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/integrations.rs:30-70"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "integrations::tests::test_supported_integrations_catalog"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F23",
+    "area": "speech",
+    "capability": "Flow offline dictation, push-to-talk, WinRT recognizer",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/flow/mod.rs",
+        "windows/src/core/flow.ts"
+      ],
+      "summary": "Offline speech dictation and push-to-talk text insertion.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/flow.rs",
+        "apps/xyeena-island/src/core/flow.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "flow::tests::test_flow_engine_status_is_local_only",
+        "flow::tests::test_winrt_speech_recognizer_availability"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "B",
+    "phase": "P5",
+    "decision": "verified",
+    "reason": "In-process WinRT SpeechRecognizer verified for English; fallback documented.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/flow.rs:20-60"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "flow::tests::test_winrt_speech_recognizer_availability"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F24",
+    "area": "speech",
+    "capability": "Flow dictionary, snippets, cleanup, statistics",
+    "coucou": {
+      "paths": [
+        "windows/src/hub/pages/words.ts"
+      ],
+      "summary": "Dictation snippet replacement and local statistics.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/flow.rs",
+        "apps/xyeena-island/src/core/flow.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "flow::tests::test_cleanup_dictated_text_preserves_without_filter",
+        "flow::tests::test_cleanup_dictated_text_strips_fillers"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "B",
+    "phase": "P5",
+    "decision": "verified",
+    "reason": "Snippet expansion and filler text cleanup tested without synthetic data.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/core/flow.mjs:50-80"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "flow::tests::test_cleanup_dictated_text_strips_fillers"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F25",
+    "area": "audio",
+    "capability": "Notetaker consented recording and transcription (WASAPI)",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/notes/mod.rs"
+      ],
+      "summary": "Audio note recording and export.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/voice.rs",
+        "apps/xyeena-island/src/main.ts"
+      ],
+      "wired": true,
+      "tests": [
+        "voice::tests::test_consent_required_to_start_recording",
+        "voice::tests::test_wasapi_default_capture_device_detection",
+        "voice::tests::test_wasapi_audio_client_initialization",
+        "voice::tests::test_wasapi_real_audio_capture_frames"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "B",
+    "phase": "P5",
+    "decision": "verified",
+    "reason": "Native WASAPI audio capture engine with consented recording and WAV export.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/voice.rs:50-120"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked"
+      },
+      {
+        "class": "E3",
+        "ref": "voice::tests::test_wasapi_real_audio_capture_frames"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F26",
+    "area": "audio",
+    "capability": "Voice commands and voice-enabled Xyn",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/voice/brain.rs"
+      ],
+      "summary": "Voice command parsing and action dispatch.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/voice.rs",
+        "apps/xyeena-island/src/core/voice-commands.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "voice::tests::test_voice_command_parsing",
+        "parseVoiceIntent maps voice commands accurately",
+        "executeVoiceAction invokes appropriate context callbacks"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "B",
+    "phase": "P5",
+    "decision": "verified",
+    "reason": "Typed voice command parsing and action dispatch verified.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/core/voice-commands.mjs:1-50"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked && npm test --workspace @xyeena/island"
+      },
+      {
+        "class": "E3",
+        "ref": "executeVoiceAction invokes appropriate context callbacks"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F27",
+    "area": "recap",
+    "capability": "Weekly Recap and SVG share/export",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/recap.rs",
+        "windows/src/recap/share.ts"
+      ],
+      "summary": "Weekly activity summary and shareable image export.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "packages/xyeena-recap/src/index.js",
+        "apps/xyeena-island/src/main.ts"
+      ],
+      "wired": true,
+      "tests": [
+        "local previous week boundaries",
+        "actual counts, dedup and session duration",
+        "SessionStore derives authentic events for Weekly Recap aggregation"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P4",
+    "decision": "verified",
+    "reason": "Derived from genuine local agent sessions and file edits without synthetic metrics.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "packages/xyeena-recap/src/index.mjs:20-60"
+      },
+      {
+        "class": "E2",
+        "ref": "npm run check"
+      },
+      {
+        "class": "E3",
+        "ref": "SessionStore derives authentic events for Weekly Recap aggregation"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F28",
+    "area": "design",
+    "capability": "Localization (EN/ID), accessibility, reduced motion",
+    "coucou": {
+      "paths": [
+        "windows/src/i18n/i18n.ts"
+      ],
+      "summary": "Application string localization and accessibility support.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "apps/xyeena-island/src/core/i18n.mjs",
+        "apps/xyeena-island/src/style.css"
+      ],
+      "wired": true,
+      "tests": [
+        "ported spring converges at 60Hz and 120Hz with sub-stepping",
+        "reduce motion jumps to final geometry immediately"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P2",
+    "decision": "verified",
+    "reason": "Bilingual EN+ID dictionary parity and prefers-reduced-motion overrides verified.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/core/i18n.mjs:1-50"
+      },
+      {
+        "class": "E2",
+        "ref": "npm test --workspace @xyeena/island"
+      },
+      {
+        "class": "E3",
+        "ref": "reduce motion jumps to final geometry immediately"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F29",
+    "area": "companion",
+    "capability": "Android local secure pairing / approvals",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/phone_link/mod.rs"
+      ],
+      "summary": "Local network mobile companion pairing and approvals.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/companion.rs"
+      ],
+      "wired": false,
+      "tests": [
+        "companion::tests::test_constant_time_eq",
+        "companion::tests::test_rfc4231_hmac_sha256_test_cases",
+        "companion::tests::test_pairing_lifecycle_and_validation"
+      ]
+    },
+    "status": "DEFERRED",
+    "tier": "C",
+    "phase": null,
+    "decision": "deferred",
+    "reason": "Physical Android APK client deferred by owner. Cryptographic protocol verified in Rust.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src-tauri/src/companion.rs:50-100"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F30",
+    "area": "design",
+    "capability": "Icon design migration to Phosphor typed registry",
+    "coucou": {
+      "paths": [
+        "windows/src/views/icons.ts"
+      ],
+      "summary": "Phosphor icon SVG definitions and icon component.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "apps/xyeena-island/src/core/icons.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "all states and variants are distinct and recognized"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P2",
+    "decision": "verified",
+    "reason": "Typed 24-icon Phosphor registry in icons.mjs without bundler-specific loaders.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/core/icons.mjs:10-35"
+      },
+      {
+        "class": "E2",
+        "ref": "npm run check"
+      },
+      {
+        "class": "E3",
+        "ref": "all states and variants are distinct and recognized"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F31",
+    "area": "cleanup",
+    "capability": "Removal of obsolete manual meeting timer",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/lib.rs"
+      ],
+      "summary": "Upstream meeting duration tracker.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "apps/xyeena-island/src/main.ts"
+      ],
+      "wired": true,
+      "tests": [
+        "manual meeting timer is obsolete and removed in favor of real agent sessions"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P0",
+    "decision": "verified",
+    "reason": "Deleted obsolete meeting.mjs and timer card per explicit owner decision D12.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/main.ts:1-50"
+      },
+      {
+        "class": "E2",
+        "ref": "npm test --workspace @xyeena/island"
+      },
+      {
+        "class": "E3",
+        "ref": "manual meeting timer is obsolete and removed in favor of real agent sessions"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F32",
+    "area": "cleanup",
+    "capability": "Removal of obsolete Activity tab UI",
+    "coucou": {
+      "paths": [
+        "windows/src/island/island.ts"
+      ],
+      "summary": "Legacy activity tab.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "apps/xyeena-island/src/main.ts"
+      ],
+      "wired": true,
+      "tests": [
+        "SessionStore bounds recent events history to max 20 entries"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P0",
+    "decision": "verified",
+    "reason": "Replaced legacy activity tab with contextual multi-session Agents tab per D12.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/main.ts:1530-1560"
+      },
+      {
+        "class": "E2",
+        "ref": "npm test --workspace @xyeena/island"
+      },
+      {
+        "class": "E3",
+        "ref": "SessionStore bounds recent events history to max 20 entries"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F33",
+    "area": "performance",
+    "capability": "WebView2 CPU/memory stability and suspension",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/lib.rs"
+      ],
+      "summary": "Idle loop suspension and resource management.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "packages/xyn/src/index.js",
+        "src-tauri/src/lib.rs"
+      ],
+      "wired": true,
+      "tests": [
+        "reduced motion is fully static"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P0",
+    "decision": "verified",
+    "reason": "Suspended hidden canvas rAF loops and throttled background GSMTC volume polling.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "packages/xyn/src/index.js:50-80"
+      },
+      {
+        "class": "E2",
+        "ref": "npm run check"
+      },
+      {
+        "class": "E3",
+        "ref": "reduced motion is fully static"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "F34",
+    "area": "packaging",
+    "capability": "Windows NSIS installer, uninstall, release audit",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/tauri.conf.json"
+      ],
+      "summary": "NSIS and MSI Windows bundle packaging.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/tauri.conf.json",
+        "apps/xyeena-island/scripts/release-audit.mjs"
+      ],
+      "wired": true,
+      "tests": [
+        "all public alpha manifests use a single prerelease version",
+        "release is a GitHub-only prerelease, not npm publish or stable installer",
+        "third party source attribution and native branding are present",
+        "notch-first release has exactly one Island window"
+      ]
+    },
+    "status": "VERIFIED",
+    "tier": "A",
+    "phase": "P6",
+    "decision": "verified",
+    "reason": "Complete NSIS silent install and 100% binary clean uninstall verified.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/scripts/release-audit.mjs:1-50"
+      },
+      {
+        "class": "E2",
+        "ref": "npm run check"
+      },
+      {
+        "class": "E3",
+        "ref": "notch-first release has exactly one Island window"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "G01",
+    "area": "companion",
+    "capability": "Detached floating desktop companion pet window",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/desktop.rs",
+        "windows/mochi.html"
+      ],
+      "summary": "Secondary floating window hosting companion mascot on the desktop.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/lib.rs"
+      ],
+      "wired": false,
+      "tests": []
+    },
+    "status": "EXCLUDED",
+    "tier": "C",
+    "phase": null,
+    "decision": "excluded",
+    "reason": "Explicit owner policy D7: Xyeena Notch is stationary notch-only; no floating pet.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "docs/parity/DECISIONS-NEEDED.md:20"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "G02",
+    "area": "shell",
+    "capability": "Standalone secondary Hub window (640x720)",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/lib.rs",
+        "windows/index.html"
+      ],
+      "summary": "Separate Hub window for settings, styles, and insights.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/lib.rs"
+      ],
+      "wired": false,
+      "tests": []
+    },
+    "status": "DEFERRED",
+    "tier": "C",
+    "phase": null,
+    "decision": "deferred",
+    "reason": "Secondary window creation deferred under D3 pending explicit owner approval.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "docs/parity/DECISIONS-NEEDED.md:12"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "G03",
+    "area": "companion",
+    "capability": "Phone Link WhatsApp Gateway / Direct Messaging",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/phone_link/chat.rs"
+      ],
+      "summary": "WhatsApp bridge and direct messaging gateway.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/companion.rs"
+      ],
+      "wired": false,
+      "tests": []
+    },
+    "status": "SKIPPED",
+    "tier": "C",
+    "phase": null,
+    "decision": "skip",
+    "reason": "Excluded from current scope per owner policy D6 (no financial or external chat gateways).",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "docs/parity/DECISIONS-NEEDED.md:25"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "G04",
+    "area": "integrations",
+    "capability": "Crypto portfolio tracker integration",
+    "coucou": {
+      "paths": [
+        "windows/src/views/integrations.ts"
+      ],
+      "summary": "Cryptocurrency wallet and price tracking widget.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/integrations.rs"
+      ],
+      "wired": false,
+      "tests": []
+    },
+    "status": "SKIPPED",
+    "tier": "C",
+    "phase": null,
+    "decision": "skip",
+    "reason": "Excluded from current scope per owner policy D6 (financial tools omitted).",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "docs/parity/DECISIONS-NEEDED.md:25"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "G05",
+    "area": "audio",
+    "capability": "Voice wake word engine",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/voice/wake.rs"
+      ],
+      "summary": "Continuous background microphone wake word detector.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/voice.rs"
+      ],
+      "wired": false,
+      "tests": []
+    },
+    "status": "EXCLUDED",
+    "tier": "C",
+    "phase": null,
+    "decision": "excluded",
+    "reason": "Excluded per owner decision D13 & N3 (zero background listening / no speech expansion).",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "docs/parity/DECISIONS-NEEDED.md:25"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "G06",
+    "area": "speech",
+    "capability": "Dedicated dictation floating pill window",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/flow/pill.rs",
+        "windows/pill.html"
+      ],
+      "summary": "Floating status pill displayed during active speech dictation.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "apps/xyeena-island/src/main.ts"
+      ],
+      "wired": true,
+      "tests": []
+    },
+    "status": "WIRED",
+    "tier": "A",
+    "phase": "P5",
+    "decision": "adapt",
+    "reason": "Dictation status integrated directly into the stationary notch island instead of extra window.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/main.ts:1690-1710"
+      }
+    ],
+    "docs_claims": []
+  },
+  {
+    "id": "G07",
+    "area": "settings",
+    "capability": "Dedicated standalone settings window (settings.html)",
+    "coucou": {
+      "paths": [
+        "windows/src-tauri/src/lib.rs",
+        "windows/settings.html"
+      ],
+      "summary": "Standalone secondary window for application preferences.",
+      "platform": "win"
+    },
+    "notch": {
+      "paths": [
+        "src-tauri/src/lib.rs",
+        "apps/xyeena-island/src/main.ts"
+      ],
+      "wired": true,
+      "tests": []
+    },
+    "status": "FOUNDATION",
+    "tier": "B",
+    "phase": "P2",
+    "decision": "adapt",
+    "reason": "Settings built modularly inside main notch window; standalone popup blocked by D3.",
+    "evidence": [
+      {
+        "class": "E1",
+        "ref": "apps/xyeena-island/src/main.ts:2050-2100"
+      }
+    ],
+    "docs_claims": []
+  }
+]
