@@ -1,0 +1,266 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — UI PRIMITIVES GALLERY STYLES
+   Browser-only preview and visual regression review harness.
+   ========================================================================== */
+
+@import "./vendor-styles/tokens.css";
+@import "./vendor-styles/base.css";
+@import "./vendor-styles/layout.css";
+@import "./vendor-styles/utilities.css";
+@import "./vendor-ui/primitives.css";
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--surface-0);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  font-size: var(--text-size-sm);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scaling toggles */
+[data-scale="100"] {
+  font-size: 12px;
+}
+[data-scale="125"] {
+  font-size: 15px;
+}
+[data-scale="150"] {
+  font-size: 18px;
+}
+
+/* Reduced motion simulation */
+[data-reduced-motion="true"] *,
+[data-reduced-motion="true"] *::before,
+[data-reduced-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* Gallery Header Toolbar */
+.gallery-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-dock);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-3) var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--elevation-1);
+}
+
+.gallery-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.gallery-title {
+  font-size: var(--text-size-base);
+  font-weight: 700;
+  color: var(--text-1);
+  letter-spacing: -0.01em;
+}
+
+.gallery-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.gallery-control-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--surface-0);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+
+.control-label {
+  font-size: var(--text-size-xs);
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.gallery-control-select {
+  background: transparent;
+  color: var(--text-1);
+  border: none;
+  font-size: var(--text-size-xs);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.gallery-btn-scale {
+  background: transparent;
+  color: var(--text-2);
+  border: none;
+  font-size: var(--text-size-xs);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  transition: all var(--motion-fast);
+}
+
+.gallery-btn-scale:hover {
+  color: var(--text-1);
+  background: var(--surface-1);
+}
+
+.gallery-btn-scale.active {
+  color: var(--accent);
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+/* Main Layout */
+.gallery-layout {
+  display: flex;
+  flex: 1;
+}
+
+.gallery-nav {
+  width: 220px;
+  border-right: 1px solid var(--line);
+  background: var(--surface-0);
+  padding: var(--space-4);
+  position: sticky;
+  top: 53px;
+  height: calc(100vh - 53px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.gallery-nav a {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-2);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-size-xs);
+  transition: background-color var(--motion-fast), color var(--motion-fast);
+}
+
+.gallery-nav a:hover {
+  background: var(--surface-1);
+  color: var(--text-1);
+}
+
+.gallery-content {
+  flex: 1;
+  padding: var(--space-6) var(--space-8);
+  max-width: 960px;
+  box-sizing: border-box;
+}
+
+/* Gallery Section Cards */
+.gallery-section {
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--line);
+}
+
+.gallery-section-title {
+  font-size: var(--text-size-lg);
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.gallery-section-desc {
+  font-size: var(--text-size-xs);
+  color: var(--text-3);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.gallery-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.gallery-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.gallery-demo-box {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+}
+
+/* Swatches */
+.token-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: var(--space-3);
+}
+
+.token-swatch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+}
+
+.swatch-color {
+  height: 36px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--line);
+}
+
+.swatch-name {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-2);
+}
+
+.swatch-hex {
+  font-size: 9px;
+  color: var(--text-3);
+}
+
+/* Icons Grid */
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  gap: var(--space-2);
+}
+
+.icon-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  gap: var(--space-1);
+}
+
+.icon-name {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}

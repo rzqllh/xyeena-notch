@@ -1,0 +1,71 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — LAYOUT UTILITIES
+   Structural flex primitives and ScrollArea contract.
+   ========================================================================== */
+
+/* Stack: Vertical flex column with customizable gap */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.stack-xs { gap: var(--space-1); }
+.stack-sm { gap: var(--space-2); }
+.stack-md { gap: var(--space-3); }
+.stack-lg { gap: var(--space-4); }
+
+/* Cluster: Horizontal flex row with wrapping */
+.cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cluster-xs { gap: var(--space-1); }
+.cluster-sm { gap: var(--space-2); }
+.cluster-md { gap: var(--space-3); }
+.cluster-lg { gap: var(--space-4); }
+.cluster-nowrap { flex-wrap: nowrap; }
+
+/* Split: Two items spaced apart horizontally */
+.split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* ScrollArea: THE ONLY SCROLL OWNER PRIMITIVE (Per W2 contract) */
+.scroll-area {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  padding-right: 2px;
+}
+
+.scroll-area:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+.scroll-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-area::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: var(--radius-full);
+}
+
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: var(--line-strong);
+}

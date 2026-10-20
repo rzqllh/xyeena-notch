@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xyeena Island — UI Primitives Gallery</title>
+  <link rel="stylesheet" href="./gallery.css">
+</head>
+<body data-scale="100">
+  <header class="gallery-toolbar">
+    <div class="gallery-brand">
+      <span class="gallery-title">Xyeena UI Gallery</span>
+    </div>
+    <div class="gallery-controls">
+      <div class="gallery-control-group">
+        <label for="theme-select" class="control-label">Theme</label>
+        <select id="theme-select" class="gallery-control-select">
+          <option value="dark" selected>Dark</option>
+          <option value="light">Light</option>
+          <option value="system">System</option>
+        </select>
+      </div>
+
+      <div class="gallery-control-group" role="group" aria-label="Display Scale">
+        <span class="control-label">Scale</span>
+        <button type="button" class="gallery-btn-scale active" data-scale-val="100">100%</button>
+        <button type="button" class="gallery-btn-scale" data-scale-val="125">125%</button>
+        <button type="button" class="gallery-btn-scale" data-scale-val="150">150%</button>
+      </div>
+
+      <label class="gallery-control-group">
+        <input type="checkbox" id="motion-toggle">
+        <span class="control-label">Reduced Motion</span>
+      </label>
+
+      <label class="gallery-control-group">
+        <input type="checkbox" id="rtl-toggle">
+        <span class="control-label">RTL</span>
+      </label>
+    </div>
+  </header>
+
+  <div class="gallery-layout">
+    <nav class="gallery-nav" aria-label="Gallery Sections">
+      <a href="#tokens">Tokens &amp; Foundations</a>
+      <a href="#icons">Phosphor Icons</a>
+      <a href="#icon">Icon</a>
+      <a href="#button">Button</a>
+      <a href="#icon-button">IconButton</a>
+      <a href="#toggle">Toggle</a>
+      <a href="#checkbox">Checkbox</a>
+      <a href="#select">Select</a>
+      <a href="#text-field">TextField</a>
+      <a href="#secret-field">SecretField</a>
+      <a href="#tabs">Tabs</a>
+      <a href="#pill">Pill</a>
+      <a href="#badge">Badge</a>
+      <a href="#status-dot">StatusDot</a>
+      <a href="#row">Row</a>
+      <a href="#section-header">SectionHeader</a>
+      <a href="#scroll-area">ScrollArea</a>
+      <a href="#empty-state">EmptyState</a>
+      <a href="#toast">Toast</a>
+      <a href="#popover">Popover</a>
+      <a href="#dialog">Dialog</a>
+      <a href="#kbd">Kbd</a>
+      <a href="#tooltip">Tooltip</a>
+    </nav>
+
+    <main class="gallery-content" id="gallery-root">
+      <!-- Section: Tokens -->
+      <section class="gallery-section" id="tokens">
+        <h2 class="gallery-section-title">Design Tokens</h2>
+        <p class="gallery-section-desc">Opaque surfaces, low-chroma text hierarchy, accent colors, and semantic statuses.</p>
+        <div class="gallery-demo-box">
+          <div class="token-grid" id="token-swatches"></div>
+        </div>
+      </section>
+
+      <!-- Section: Icons -->
+      <section class="gallery-section" id="icons">
+        <h2 class="gallery-section-title">Icon Registry</h2>
+        <p class="gallery-section-desc">47 generated Phosphor icons with aliased canonical mappings. 0 emoji, 0 text glyphs.</p>
+        <div class="gallery-demo-box">
+          <div class="icon-grid" id="icon-registry-grid"></div>
+        </div>
+      </section>
+
+      <!-- Section: Icon Primitive -->
+      <section class="gallery-section" id="icon">
+        <h2 class="gallery-section-title">1. Icon</h2>
+        <p class="gallery-section-desc">Vector SVG icon with size variants and accessible label support.</p>
+        <div class="gallery-demo-box" id="demo-icon"></div>
+      </section>
+
+      <!-- Section: Button -->
+      <section class="gallery-section" id="button">
+        <h2 class="gallery-section-title">2. Button</h2>
+        <p class="gallery-section-desc">Variants: primary, secondary, ghost, danger. States: normal, loading, disabled with description.</p>
+        <div class="gallery-demo-box" id="demo-button"></div>
+      </section>
+
+      <!-- Section: IconButton -->
+      <section class="gallery-section" id="icon-button">
+        <h2 class="gallery-section-title">3. IconButton</h2>
+        <p class="gallery-section-desc">Mandatory accessible label contract with tooltip integration.</p>
+        <div class="gallery-demo-box" id="demo-icon-button"></div>
+      </section>
+
+      <!-- Section: Toggle -->
+      <section class="gallery-section" id="toggle">
+        <h2 class="gallery-section-title">4. Toggle</h2>
+        <p class="gallery-section-desc">Accessible switch with role="switch" and keyboard space/enter activation.</p>
+        <div class="gallery-demo-box" id="demo-toggle"></div>
+      </section>
+
+      <!-- Section: Checkbox -->
+      <section class="gallery-section" id="checkbox">
+        <h2 class="gallery-section-title">5. Checkbox</h2>
+        <p class="gallery-section-desc">Tristate support (checked, unchecked, indeterminate), disabled state, and label.</p>
+        <div class="gallery-demo-box" id="demo-checkbox"></div>
+      </section>
+
+      <!-- Section: Select -->
+      <section class="gallery-section" id="select">
+        <h2 class="gallery-section-title">6. Select</h2>
+        <p class="gallery-section-desc">Dropdown menu with keyboard navigation, option grouping, and validation states.</p>
+        <div class="gallery-demo-box" id="demo-select"></div>
+      </section>
+
+      <!-- Section: TextField -->
+      <section class="gallery-section" id="text-field">
+        <h2 class="gallery-section-title">7. TextField</h2>
+        <p class="gallery-section-desc">Single-line input with label, prefix/suffix icons, helper text, and validation.</p>
+        <div class="gallery-demo-box" id="demo-text-field"></div>
+      </section>
+
+      <!-- Section: SecretField -->
+      <section class="gallery-section" id="secret-field">
+        <h2 class="gallery-section-title">8. SecretField</h2>
+        <p class="gallery-section-desc">Masked input, transient typing visibility, paste/save/forget, and zero DOM retention of saved keys.</p>
+        <div class="gallery-demo-box" id="demo-secret-field"></div>
+      </section>
+
+      <!-- Section: Tabs -->
+      <section class="gallery-section" id="tabs">
+        <h2 class="gallery-section-title">9. Tabs</h2>
+        <p class="gallery-section-desc">Roving tabindex navigation, Home/End/Arrow key support, and panel association.</p>
+        <div class="gallery-demo-box" id="demo-tabs"></div>
+      </section>
+
+      <!-- Section: Pill -->
+      <section class="gallery-section" id="pill">
+        <h2 class="gallery-section-title">10. Pill</h2>
+        <p class="gallery-section-desc">Compact filter or token element with interactive and closable variants.</p>
+        <div class="gallery-demo-box" id="demo-pill"></div>
+      </section>
+
+      <!-- Section: Badge -->
+      <section class="gallery-section" id="badge">
+        <h2 class="gallery-section-title">11. Badge</h2>
+        <p class="gallery-section-desc">Read-only numeric and status badges with low-chroma semantic variants.</p>
+        <div class="gallery-demo-box" id="demo-badge"></div>
+      </section>
+
+      <!-- Section: StatusDot -->
+      <section class="gallery-section" id="status-dot">
+        <h2 class="gallery-section-title">12. StatusDot</h2>
+        <p class="gallery-section-desc">Never color-only: always includes accompanying text label or aria-label.</p>
+        <div class="gallery-demo-box" id="demo-status-dot"></div>
+      </section>
+
+      <!-- Section: Row -->
+      <section class="gallery-section" id="row">
+        <h2 class="gallery-section-title">13. Row</h2>
+        <p class="gallery-section-desc">Flat list item with leading icon, title, subtitle, and trailing action. No nested cards.</p>
+        <div class="gallery-demo-box" id="demo-row"></div>
+      </section>
+
+      <!-- Section: SectionHeader -->
+      <section class="gallery-section" id="section-header">
+        <h2 class="gallery-section-title">14. SectionHeader</h2>
+        <p class="gallery-section-desc">Header container for groupings with title, description, and action button slot.</p>
+        <div class="gallery-demo-box" id="demo-section-header"></div>
+      </section>
+
+      <!-- Section: ScrollArea -->
+      <section class="gallery-section" id="scroll-area">
+        <h2 class="gallery-section-title">15. ScrollArea</h2>
+        <p class="gallery-section-desc">The single scroll owner primitive: slim scrollbar, min-height: 0 flex contract, keyboard scrollable.</p>
+        <div class="gallery-demo-box" id="demo-scroll-area"></div>
+      </section>
+
+      <!-- Section: EmptyState -->
+      <section class="gallery-section" id="empty-state">
+        <h2 class="gallery-section-title">16. EmptyState</h2>
+        <p class="gallery-section-desc">Informative fallback container with icon, title, description, and primary CTA.</p>
+        <div class="gallery-demo-box" id="demo-empty-state"></div>
+      </section>
+
+      <!-- Section: Toast -->
+      <section class="gallery-section" id="toast">
+        <h2 class="gallery-section-title">17. Toast</h2>
+        <p class="gallery-section-desc">Accessible notifications with role="status", auto-dismiss, and action button.</p>
+        <div class="gallery-demo-box" id="demo-toast"></div>
+      </section>
+
+      <!-- Section: Popover -->
+      <section class="gallery-section" id="popover">
+        <h2 class="gallery-section-title">18. Popover</h2>
+        <p class="gallery-section-desc">Anchored contextual overlay with focus containment and escape dismissal.</p>
+        <div class="gallery-demo-box" id="demo-popover"></div>
+      </section>
+
+      <!-- Section: Dialog -->
+      <section class="gallery-section" id="dialog">
+        <h2 class="gallery-section-title">19. Dialog</h2>
+        <p class="gallery-section-desc">Modal overlay with backdrop, focus trap, escape listener, and confirm/cancel actions.</p>
+        <div class="gallery-demo-box" id="demo-dialog"></div>
+      </section>
+
+      <!-- Section: Kbd -->
+      <section class="gallery-section" id="kbd">
+        <h2 class="gallery-section-title">20. Kbd</h2>
+        <p class="gallery-section-desc">Keyboard key and shortcut representations using semantic &lt;kbd&gt; tags.</p>
+        <div class="gallery-demo-box" id="demo-kbd"></div>
+      </section>
+
+      <!-- Section: Tooltip -->
+      <section class="gallery-section" id="tooltip">
+        <h2 class="gallery-section-title">21. Tooltip</h2>
+        <p class="gallery-section-desc">Accessible supplementary hint triggered by mouse hover or keyboard focus.</p>
+        <div class="gallery-demo-box" id="demo-tooltip"></div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>

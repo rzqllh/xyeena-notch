@@ -1,0 +1,61 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — STATUS DOT PRIMITIVE
+   Never color-only: always includes accessible status representation.
+   ========================================================================== */
+
+.status-dot-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  user-select: none;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-3);
+  position: relative;
+}
+
+.status-dot-ok {
+  background: var(--state-ok);
+  box-shadow: 0 0 6px var(--state-ok);
+}
+
+.status-dot-warn {
+  background: var(--state-warn);
+  box-shadow: 0 0 6px var(--state-warn);
+}
+
+.status-dot-danger {
+  background: var(--state-danger);
+  box-shadow: 0 0 6px var(--state-danger);
+}
+
+.status-dot-busy {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+.status-dot-idle {
+  background: var(--text-3);
+}
+
+.status-dot-text {
+  font-size: var(--text-size-xs);
+  color: var(--text-2);
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot-busy {
+    animation: none;
+  }
+}

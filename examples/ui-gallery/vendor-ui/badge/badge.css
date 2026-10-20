@@ -1,0 +1,55 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — BADGE PRIMITIVE
+   ========================================================================== */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--text-size-xs);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  user-select: none;
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--line);
+}
+
+.badge-default {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.badge-ok {
+  background: var(--state-ok-surface);
+  color: var(--state-ok);
+  border-color: var(--state-ok);
+}
+
+.badge-warn {
+  background: var(--state-warn-surface);
+  color: var(--state-warn);
+  border-color: var(--state-warn);
+}
+
+.badge-danger {
+  background: var(--state-danger-surface);
+  color: var(--state-danger);
+  border-color: var(--state-danger);
+}
+
+.badge-info {
+  background: var(--state-info-surface);
+  color: var(--state-info);
+  border-color: var(--state-info);
+}
+
+.badge-accent {
+  background: var(--accent);
+  color: var(--surface-0);
+  border-color: var(--accent);
+}

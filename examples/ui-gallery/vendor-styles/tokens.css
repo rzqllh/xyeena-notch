@@ -1,0 +1,138 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — DESIGN TOKENS
+   Authoritative token system supporting dark, light, and reduced-motion modes.
+   Direction source: existing implementation + user statements; review required.
+   ========================================================================== */
+
+:root {
+  /* Surface Policy: Opaque surfaces preventing background desktop bleed */
+  --surface-0: #0b0e14;
+  --surface-1: #131720;
+  --surface-2: #1a202c;
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --surface-active: rgba(255, 255, 255, 0.08);
+
+  /* Typography Colors */
+  --text-1: #f0f3f6;
+  --text-2: #9ca6b3;
+  --text-3: #808c9c; /* WCAG AA compliant >= 4.5:1 on --surface-0 */
+
+  /* Borders & Dividers */
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+
+  /* Restrained Ice-Blue Accent */
+  --accent: #89b8ca;
+  --accent-hover: #9ec9da;
+  --accent-subtle: rgba(137, 184, 202, 0.12);
+  --accent-text: #080e14;
+
+  /* Semantic Feedback States */
+  --state-ok: #7ec89f;
+  --state-warn: #dfb351;
+  --state-danger: #e26d6d;
+  --state-info: #89b8ca;
+
+  /* Focus Ring */
+  --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--accent);
+
+  /* Spacing Scale (4 / 8 / 12 / 16 / 20px) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+
+  /* Radii Scale (≤ 4 values) */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+
+  /* Elevation Scale (≤ 3 levels with written purpose) */
+  --elevation-0: none;                               /* Level 0: Flat bordered cards */
+  --elevation-1: 0 4px 16px rgba(0, 0, 0, 0.35);     /* Level 1: Popovers and floating menus */
+  --elevation-2: 0 8px 32px rgba(0, 0, 0, 0.50);     /* Level 2: Island window shell */
+
+  /* Z-Index Hierarchy */
+  --z-base: 1;
+  --z-content: 10;
+  --z-sticky: 100;
+  --z-popover: 500;
+  --z-modal: 1000;
+  --z-toast: 2000;
+
+  /* Motion Tokens (aligned with core/motion.mjs) */
+  --dur-fast: 120ms;
+  --dur-normal: 240ms;
+  --dur-close: 340ms;
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-close: cubic-bezier(0.45, 0, 0.2, 1);
+
+  /* Typography Families */
+  --font-family: "Segoe UI Variable Text", "Segoe UI Variable Display", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
+
+  /* Backward Compatibility Aliases (Phase 1 -> Phase 2 bridge) */
+  --notch-bg: var(--surface-0);
+  --base: var(--surface-0);
+  --panel: var(--surface-1);
+  --panel-elevated: var(--surface-2);
+  --hover: var(--surface-hover);
+  --active: var(--surface-active);
+  --text: var(--text-1);
+  --sub: var(--text-2);
+  --muted: var(--text-3);
+  --good: var(--state-ok);
+  --warning: var(--state-warn);
+  --danger: var(--state-danger);
+  --r-sm: var(--radius-sm);
+  --r-md: var(--radius-md);
+  --r-lg: var(--radius-lg);
+  --r-window: 18px;
+  --sp-1: var(--space-1);
+  --sp-2: var(--space-2);
+  --sp-3: var(--space-3);
+  --sp-4: var(--space-4);
+  --sp-5: var(--space-5);
+  --ctrl-sm: 28px;
+  --ctrl-md: 32px;
+}
+
+/* Light Theme Override */
+[data-theme="light"] {
+  --surface-0: #f4f6f8;
+  --surface-1: #ffffff;
+  --surface-2: #eef1f5;
+  --surface-hover: rgba(0, 0, 0, 0.04);
+  --surface-active: rgba(0, 0, 0, 0.07);
+
+  --text-1: #111827;
+  --text-2: #4b5563;
+  --text-3: #596372;
+
+  --line: rgba(0, 0, 0, 0.10);
+  --line-strong: rgba(0, 0, 0, 0.18);
+
+  --accent: #2a6880;
+  --accent-hover: #1e5367;
+  --accent-subtle: rgba(42, 104, 128, 0.12);
+  --accent-text: #ffffff;
+
+  --state-ok: #137242;
+  --state-warn: #946300;
+  --state-danger: #b91c1c;
+  --state-info: #2a6880;
+
+  --elevation-1: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --elevation-2: 0 8px 32px rgba(0, 0, 0, 0.15);
+}
+
+/* Reduced Motion Override */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-normal: 0ms;
+    --dur-close: 0ms;
+  }
+}

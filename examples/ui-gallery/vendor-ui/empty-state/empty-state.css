@@ -1,0 +1,51 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — EMPTY STATE PRIMITIVE
+   ========================================================================== */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-6) var(--space-4);
+  gap: var(--space-3);
+  user-select: none;
+}
+
+.empty-state-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--surface-1);
+  color: var(--text-3);
+  border: 1px solid var(--line);
+}
+
+.empty-state-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 260px;
+}
+
+.empty-state-title {
+  font-size: var(--text-size-sm);
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0;
+}
+
+.empty-state-desc {
+  font-size: var(--text-size-xs);
+  color: var(--text-3);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.empty-state-action {
+  margin-top: var(--space-2);
+}

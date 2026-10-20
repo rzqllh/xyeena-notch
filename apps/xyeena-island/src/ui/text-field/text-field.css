@@ -1,0 +1,74 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — TEXT FIELD PRIMITIVE
+   ========================================================================== */
+
+.text-field-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+}
+
+.text-field-label {
+  font-size: var(--text-size-xs);
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.text-field-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+
+.text-field-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.text-field-box.error {
+  border-color: var(--state-danger);
+}
+
+.text-field-box.error:focus-within {
+  box-shadow: 0 0 0 2px var(--state-danger-surface);
+}
+
+.text-field-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: var(--space-2);
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.text-field-input {
+  width: 100%;
+  background: transparent;
+  color: var(--text-1);
+  border: none;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-sans);
+  font-size: var(--text-size-sm);
+  outline: none;
+}
+
+.text-field-input::placeholder {
+  color: var(--text-3);
+}
+
+.text-field-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.text-field-error {
+  font-size: var(--text-size-xs);
+  color: var(--state-danger);
+  margin: 0;
+}

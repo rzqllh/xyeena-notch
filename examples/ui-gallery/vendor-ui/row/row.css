@@ -1,0 +1,77 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — ROW PRIMITIVE
+   Flat list row adhering to zero-nested-cards policy.
+   ========================================================================== */
+
+.row-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  transition: background-color var(--motion-fast), border-color var(--motion-fast);
+}
+
+.row-item.interactive {
+  cursor: pointer;
+}
+
+.row-item.interactive:hover {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+}
+
+.row-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.row-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  flex: 1;
+}
+
+.row-leading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.row-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.row-title {
+  font-size: var(--text-size-sm);
+  font-weight: 500;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-subtitle {
+  font-size: var(--text-size-xs);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}
+
+.row-trailing {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}

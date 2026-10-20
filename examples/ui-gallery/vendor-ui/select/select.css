@@ -1,0 +1,56 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — SELECT PRIMITIVE
+   ========================================================================== */
+
+.select-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.select-label {
+  font-size: var(--text-size-xs);
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.select-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.select-input {
+  width: 100%;
+  appearance: none;
+  background: var(--surface-1);
+  color: var(--text-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-6) var(--space-2) var(--space-3);
+  font-family: var(--font-sans);
+  font-size: var(--text-size-sm);
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+
+.select-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.select-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.select-arrow {
+  position: absolute;
+  right: var(--space-2);
+  pointer-events: none;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

@@ -1,0 +1,24 @@
+/* ==========================================================================
+   XYEENA NOTCH / ISLAND — TOOLTIP PRIMITIVE
+   ========================================================================== */
+
+.tooltip-bubble {
+  position: absolute;
+  z-index: var(--z-tooltip);
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text-1);
+  border: 1px solid var(--line-strong);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--elevation-2);
+  transition: opacity var(--motion-fast);
+}
+
+.tooltip-bubble[hidden] {
+  display: none !important;
+}
