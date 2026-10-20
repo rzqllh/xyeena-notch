@@ -4,13 +4,17 @@
 //! the message frame, and transmits it over the local per-user Windows Named
 //! Pipe to Xyeena Island.
 //!
-//! Design Constraints:
+//! Features (W3):
 //! - Short-lived, zero-daemon process (< 10ms execution time).
 //! - Fail-safe: Exits cleanly with code 0 if Xyeena Island is not running,
 //!   never blocking or interrupting agent workflows.
 //! - Security: No credential logging, no arbitrary execution.
+//! - Opt-in `--capture <dir>` flag guarded strictly by `XYEENA_CAPTURE=1`
+//!   with irreversible field-level redaction at collection.
 
+use std::fs;
 use std::io::Read;
+use std::path::Path;
 use xyeena_island_lib::agent_ipc::framing::{encode_frame, MAX_PAYLOAD_SIZE};
 use xyeena_island_lib::agent_ipc::get_pipe_name;
 
@@ -32,6 +36,7 @@ fn main() {
     let mut provider_hint: Option<String> = None;
     let mut session_id_hint: Option<String> = None;
     let mut check_delivery = false;
+    let mut capture_dir: Option<String> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -52,6 +57,13 @@ fn main() {
             }
             "--check-delivery" => {
                 check_delivery = true;
+            }
+            "--capture" => {
+                if i + 1 < args.len() {
+                    capture_dir = Some(args[i + 1].clone());
+                    i += 2;
+                    continue;
+                }
             }
             arg if !arg.starts_with("--") && event_type_hint.is_none() => {
                 event_type_hint = Some(arg.to_string());
@@ -91,9 +103,13 @@ fn main() {
         if !obj.contains_key("event")
             && !obj.contains_key("event_type")
             && !obj.contains_key("type")
+            && !obj.contains_key("hook_event_name")
         {
             if let Some(ref ev) = event_type_hint {
-                obj.insert("event".into(), serde_json::Value::String(ev.clone()));
+                obj.insert(
+                    "hook_event_name".into(),
+                    serde_json::Value::String(ev.clone()),
+                );
             }
         }
         if !obj.contains_key("provider") && !obj.contains_key("agent") {
@@ -101,7 +117,10 @@ fn main() {
                 obj.insert("provider".into(), serde_json::Value::String(p.clone()));
             }
         }
-        if !obj.contains_key("session_id") && !obj.contains_key("sessionId") {
+        if !obj.contains_key("session_id")
+            && !obj.contains_key("sessionId")
+            && !obj.contains_key("conversationId")
+        {
             if let Some(ref s) = session_id_hint {
                 obj.insert("session_id".into(), serde_json::Value::String(s.clone()));
             }
@@ -117,7 +136,14 @@ fn main() {
         }
     }
 
-    // 3. Encode newline-delimited frame
+    // 3. Optional sanitized capture (strictly guarded by XYEENA_CAPTURE=1)
+    if let Some(ref dir_str) = capture_dir {
+        if std::env::var("XYEENA_CAPTURE").as_deref() == Ok("1") {
+            capture_sanitized_payload(&payload, dir_str);
+        }
+    }
+
+    // 4. Encode newline-delimited frame
     let frame = match encode_frame(&payload) {
         Ok(f) => f,
         Err(_) => {
@@ -130,7 +156,7 @@ fn main() {
         }
     };
 
-    // 4. Send over Windows Named Pipe (fail-open)
+    // 5. Send over Windows Named Pipe (fail-open)
     #[cfg(windows)]
     let delivered = send_to_pipe(&frame);
     #[cfg(not(windows))]
@@ -143,6 +169,82 @@ fn main() {
     // Output empty JSON object for Antigravity hook command compatibility
     print!("{{}}");
     std::process::exit(0);
+}
+
+/// Irreversibly redacts sensitive fields at collection before writing to capture dir.
+fn capture_sanitized_payload(payload: &serde_json::Value, dir_str: &str) {
+    let dir = Path::new(dir_str);
+    if fs::create_dir_all(dir).is_err() {
+        return;
+    }
+
+    let mut sanitized = payload.clone();
+    if let Some(obj) = sanitized.as_object_mut() {
+        // Redact prompt / messages
+        for key in &["prompt", "user_prompt", "instruction", "content", "text"] {
+            if let Some(v) = obj.get_mut(*key) {
+                if let Some(s) = v.as_str() {
+                    *v = serde_json::json!({
+                        "redacted": true,
+                        "field": key,
+                        "len": s.len()
+                    });
+                }
+            }
+        }
+
+        // Redact tool args
+        let tc = if obj.contains_key("toolCall") {
+            obj.get_mut("toolCall")
+        } else {
+            obj.get_mut("tool_call")
+        };
+        if let Some(tc) = tc {
+            if let Some(tc_obj) = tc.as_object_mut() {
+                let args = if tc_obj.contains_key("args") {
+                    tc_obj.get_mut("args")
+                } else {
+                    tc_obj.get_mut("arguments")
+                };
+                if let Some(args) = args {
+                    if let Some(args_obj) = args.as_object_mut() {
+                        for (k, v) in args_obj.iter_mut() {
+                            if let Some(s) = v.as_str() {
+                                *v = serde_json::json!({
+                                    "redacted": true,
+                                    "key": k,
+                                    "len": s.len()
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let filename = format!("captured_{}.json", now);
+    let payload_path = dir.join(&filename);
+    let meta_path = dir.join(format!("{}.meta.json", filename));
+
+    if let Ok(json_bytes) = serde_json::to_string_pretty(&sanitized) {
+        let _ = fs::write(&payload_path, json_bytes);
+    }
+
+    let meta = serde_json::json!({
+        "provider": payload.get("provider").and_then(|v| v.as_str()).unwrap_or("antigravity"),
+        "provider_version": "1.15.8",
+        "captured_at": format!("{}", now),
+        "sanitized": true
+    });
+    if let Ok(meta_bytes) = serde_json::to_string_pretty(&meta) {
+        let _ = fs::write(&meta_path, meta_bytes);
+    }
 }
 
 #[cfg(windows)]
@@ -189,11 +291,6 @@ fn send_to_pipe(frame: &[u8]) -> bool {
 }
 
 /// Reads bounded payload from stdin without blocking indefinitely.
-///
-/// Features:
-/// - Skips stdin immediately if attached to an interactive terminal.
-/// - Ingests multiple stream chunks until a complete valid JSON object is received or EOF.
-/// - Enforces a bounded wait deadline (100ms max) and allocation ceiling (MAX_PAYLOAD_SIZE).
 #[cfg(windows)]
 fn read_stdin_bounded(has_event_hint: bool) -> Vec<u8> {
     use std::io::IsTerminal;
@@ -221,7 +318,6 @@ fn read_stdin_bounded(has_event_hint: bool) -> Vec<u8> {
             let mut avail = 0u32;
             let peek_res = unsafe { PeekNamedPipe(handle, None, 0, None, Some(&mut avail), None) };
             if peek_res.is_err() {
-                // Writer closed pipe or broken -> EOF reached
                 break;
             }
 
@@ -235,7 +331,6 @@ fn read_stdin_bounded(has_event_hint: bool) -> Vec<u8> {
                     chunk.truncate(actual_read as usize);
                     buf.extend_from_slice(&chunk);
 
-                    // If we have received a valid complete JSON, return immediately
                     if serde_json::from_slice::<serde_json::Value>(&buf).is_ok() {
                         return buf;
                     }
@@ -260,7 +355,6 @@ fn read_stdin_bounded(has_event_hint: bool) -> Vec<u8> {
         return buf;
     }
 
-    // Disk file or other redirection with EOF
     let mut buf = Vec::new();
     let _ = stdin.take(MAX_PAYLOAD_SIZE as u64).read_to_end(&mut buf);
     buf

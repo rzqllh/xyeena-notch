@@ -61,6 +61,75 @@ class ProviderCredentialStore {
       this.#keys.clear();
     }
   }
+
+  /**
+   * Asynchronously saves credential to native Windows Credential Manager or session fallback.
+   * @param {string} providerId
+   * @param {string} secret
+   * @param {boolean} [persist=true]
+   * @param {((cmd: string, args?: any) => Promise<any>) | null} [invoker]
+   * @returns {Promise<boolean>}
+   */
+  async saveCredential(providerId, secret, persist = true, invoker = null) {
+    if (!this.setKey(providerId, secret)) {
+      return false;
+    }
+    if (invoker && typeof invoker === 'function') {
+      try {
+        await invoker('credential_save', {
+          provider: providerId.toLowerCase(),
+          secret: (secret || '').trim(),
+          persist
+        });
+      } catch (err) {
+        console.warn('Native credential_save failed, retained in memory:', err);
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Asynchronously deletes credential from native store.
+   * @param {string} providerId
+   * @param {((cmd: string, args?: any) => Promise<any>) | null} [invoker]
+   * @returns {Promise<void>}
+   */
+  async forgetCredential(providerId, invoker = null) {
+    this.clearKey(providerId);
+    if (invoker && typeof invoker === 'function' && providerId) {
+      try {
+        await invoker('credential_forget', { provider: providerId.toLowerCase() });
+      } catch (err) {
+        console.warn('Native credential_forget failed:', err);
+      }
+    }
+  }
+
+  /**
+   * Asynchronously queries native credential status without receiving secret.
+   * @param {string} providerId
+   * @param {((cmd: string, args?: any) => Promise<any>) | null} [invoker]
+   * @returns {Promise<{ configured: boolean, storageType: string }>}
+   */
+  async checkStatus(providerId, invoker = null) {
+    if (invoker && typeof invoker === 'function' && providerId) {
+      try {
+        const res = await invoker('credential_status', { provider: providerId.toLowerCase() });
+        if (res && typeof res.configured === 'boolean') {
+          return {
+            configured: res.configured,
+            storageType: res.storage_type || 'unknown'
+          };
+        }
+      } catch (err) {
+        // Fall back to memory check
+      }
+    }
+    return {
+      configured: this.hasKey(providerId),
+      storageType: 'memory'
+    };
+  }
 }
 
 export const providerCredentials = new ProviderCredentialStore();

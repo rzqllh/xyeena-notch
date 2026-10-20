@@ -4,11 +4,13 @@ pub mod agent_ipc;
 pub mod ai_diagnostics;
 mod clipboard;
 pub mod companion;
+pub mod credentials;
 pub mod developer;
 pub mod flow;
 pub mod github;
 pub mod integrations;
 mod media;
+pub mod settings_store;
 pub mod voice;
 mod volume;
 use std::fs;
@@ -1541,8 +1543,60 @@ fn get_agent_ipc_pipe_name() -> String {
 #[tauri::command]
 fn get_agent_sessions(
     registry: tauri::State<'_, agent_ipc::SharedSessionRegistry>,
-) -> Vec<agent_ipc::AgentSession> {
-    registry.all_sessions()
+    settings: tauri::State<'_, settings_store::SettingsStore>,
+) -> Vec<agent_ipc::dto::SessionDto> {
+    let aliases = settings
+        .get_snapshot()
+        .map(|s| s.session_aliases)
+        .unwrap_or_default();
+    registry.get_session_dtos(&aliases)
+}
+
+#[tauri::command]
+fn credential_status(provider: String) -> Result<credentials::CredentialStatusDto, String> {
+    credentials::credential_status(&provider)
+}
+
+#[tauri::command]
+fn credential_save(provider: String, key: String, persist: bool) -> Result<(), String> {
+    credentials::save_credential(&provider, &key, persist)
+}
+
+#[tauri::command]
+fn credential_forget(provider: String) -> Result<(), String> {
+    credentials::forget_credential(&provider)
+}
+
+#[tauri::command]
+fn settings_set_alias(
+    session_id: String,
+    alias: String,
+    settings: tauri::State<'_, settings_store::SettingsStore>,
+) -> Result<Option<String>, String> {
+    settings.set_alias(&session_id, &alias)
+}
+
+#[tauri::command]
+fn settings_get_alias(
+    session_id: String,
+    settings: tauri::State<'_, settings_store::SettingsStore>,
+) -> Option<String> {
+    settings.get_alias(&session_id)
+}
+
+#[tauri::command]
+fn settings_set_focus(
+    session_id: Option<String>,
+    settings: tauri::State<'_, settings_store::SettingsStore>,
+    registry: tauri::State<'_, agent_ipc::SharedSessionRegistry>,
+) -> Result<(), String> {
+    registry.set_focused_session(session_id.clone());
+    settings.set_focused_session(session_id)
+}
+
+#[tauri::command]
+fn settings_get_focus(settings: tauri::State<'_, settings_store::SettingsStore>) -> Option<String> {
+    settings.get_focused_session()
 }
 
 #[tauri::command]
@@ -1653,13 +1707,19 @@ fn uninstall_provider_hooks(
 #[tauri::command]
 fn get_pending_approvals(
     approval_registry: tauri::State<'_, agent_ipc::SharedApprovalRegistry>,
-) -> Vec<agent_ipc::ApprovalSnapshot> {
-    approval_registry.pending_snapshots()
+) -> Vec<agent_ipc::dto::ApprovalDto> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    approval_registry.pending_dtos(now)
 }
 
 #[derive(serde::Deserialize)]
 struct SubmitApprovalPayload {
-    request_id: String,
+    internal_request_id: String,
+    session_id: String,
     auth_token: String,
     action_fingerprint: String,
     decision: agent_ipc::ApprovalDecision,
@@ -1671,12 +1731,20 @@ fn submit_approval_decision(
     approval_registry: tauri::State<'_, agent_ipc::SharedApprovalRegistry>,
     app: tauri::AppHandle,
 ) -> Result<agent_ipc::PendingApproval, String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
     let resolved = approval_registry
         .submit_decision(
-            &payload.request_id,
+            &payload.internal_request_id,
+            &payload.session_id,
             &payload.auth_token,
             &payload.action_fingerprint,
             payload.decision,
+            now,
         )
         .map_err(|e| e.to_string())?;
 
@@ -1694,6 +1762,18 @@ fn show_island(app: &tauri::AppHandle, requested: &str) {
     }
 }
 
+fn get_default_settings_store() -> settings_store::SettingsStore {
+    let app_dir = std::env::var("LOCALAPPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("xyeena-island");
+    let settings_path = app_dir.join("settings.json");
+    settings_store::SettingsStore::new(settings_path).unwrap_or_else(|_| {
+        settings_store::SettingsStore::new(std::env::temp_dir().join("xyeena_temp_settings.json"))
+            .unwrap()
+    })
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -1702,6 +1782,7 @@ pub fn run() {
         .manage(ai_diagnostics::AiDiagnosticsManager::default())
         .manage(agent_ipc::SharedSessionRegistry::new())
         .manage(agent_ipc::SharedApprovalRegistry::new())
+        .manage(get_default_settings_store())
         .setup(|app| {
             let registry = app
                 .state::<agent_ipc::SharedSessionRegistry>()
@@ -1805,6 +1886,13 @@ pub fn run() {
             uninstall_provider_hooks,
             get_pending_approvals,
             submit_approval_decision,
+            credential_status,
+            credential_save,
+            credential_forget,
+            settings_set_alias,
+            settings_get_alias,
+            settings_set_focus,
+            settings_get_focus,
             developer::get_workspace_diff,
             developer::open_in_editor,
             developer::open_in_terminal,

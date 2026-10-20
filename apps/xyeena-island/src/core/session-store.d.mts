@@ -45,6 +45,12 @@ export interface MonitoredSession {
   key: string;
   provider: string;
   sessionId: string;
+  displayName?: string;
+  displaySuffix?: string;
+  activityState?: string;
+  activityCopy?: { en: string; id: string };
+  attention?: boolean;
+  attentionCount?: number;
   state: AgentLifecycleState;
   status: AgentVisualStatus;
   workspaceRoot?: string;
@@ -56,6 +62,7 @@ export interface MonitoredSession {
   lastCommand?: string;
   lastSummary?: string;
   touchedFiles: string[];
+  timeline?: any[];
   usage?: SessionUsage;
   recentEvents: SessionEventRecord[];
   pendingApproval?: ApprovalSnapshot;
@@ -80,16 +87,30 @@ export interface NativeAgentEvent {
 }
 
 export interface NativeSessionSnapshot {
+  key?: string;
   provider: string;
   session_id: string;
-  state: AgentLifecycleState;
+  display_name?: string;
+  display_suffix?: string;
+  activity_state?: string;
+  activity_copy?: { en: string; id: string };
+  attention?: boolean;
+  attention_count?: number;
+  is_focused?: boolean;
+  state?: AgentLifecycleState;
+  workspace_folder?: string;
   workspace_root?: string;
   cwd?: string;
   started_at_ms: number;
   last_activity_ms: number;
   event_count: number;
+  last_tool_kind?: string;
+  last_tool_preview?: string;
   last_tool_name?: string;
   last_tool_command?: string;
+  touched_files?: Array<{ path: string; change_kind: string; timestamp_ms: number }>;
+  timeline?: any[];
+  pending_approval?: any;
 }
 
 export declare function sessionKey(provider: string, sessionId: string): string;

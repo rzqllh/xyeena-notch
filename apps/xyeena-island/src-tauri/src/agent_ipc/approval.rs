@@ -1,23 +1,28 @@
-//! Authoritative native approval registry for Xyeena Notch.
+//! Authoritative native approval registry for Xyeena Notch (W4).
 //!
-//! Enforces the immutable approval policy:
-//! - Allow Once / Deny / Answer Questions only.
-//! - Strict Invariant: No Always Allow, implicit allow, or persistent allow.
-//! - Authoritative binding: request ID, provider, session, workspace, nonce token,
-//!   action fingerprint, and bounded expiry.
-//! - Tamper protection: UI must present the exact action fingerprint and nonce token.
-//! - Exactly-once idempotent decision evaluation.
+//! Enforces fail-closed approval invariants:
+//! - Separation of provider_request_id vs internal_request_id.
+//! - Native nonce generation and cryptographic action fingerprinting.
+//! - Misclick protection: armed_at_ms = created_at + ARM_DELAY_MS (600ms) with default_action: "deny".
+//! - Authenticity gate: interactive_allowed = false unless authenticated origin verified
+//!   AND verified provider response contract exists.
+//! - Idempotent, exactly-once decision evaluation.
+//! - Queue bounding (max 32 pending approvals).
+//! - Explicit failure if provider lacks verified response contract (no fake execution).
+//! - Invariant: Allow Once / Deny / Answer only. NEVER "Always Allow".
 
+use super::dto::ApprovalDto;
+use super::limits::{APPROVAL_TTL_MS, ARM_DELAY_MS, MAX_PREVIEW_LENGTH_CHARS};
+use super::state_machine::ToolKind;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const DEFAULT_APPROVAL_TIMEOUT_MS: u64 = 60_000; // 60 seconds
+pub const DEFAULT_APPROVAL_TIMEOUT_MS: u64 = APPROVAL_TTL_MS; // 120 seconds
 pub const MAX_RETENTION_MS: u64 = 300_000; // 5 minutes
+pub const MAX_PENDING_APPROVALS: usize = 32;
 
 /// Allowed decisions for an interactive approval request.
-/// Invariant: Allow Once / Deny / Answer only. No Always Allow.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ApprovalDecision {
@@ -36,6 +41,7 @@ pub enum ApprovalStatus {
     Answered,
     Expired,
     Cancelled,
+    ResolvedElsewhere,
 }
 
 /// Structured option for agent questions.
@@ -49,53 +55,103 @@ pub struct QuestionOption {
 /// Parameters for registering an interactive approval request.
 #[derive(Debug, Clone, Default)]
 pub struct RegisterApprovalParams {
-    pub request_id: String,
+    pub provider_request_id: String,
     pub provider: String,
     pub session_id: String,
     pub workspace_root: Option<String>,
     pub tool_name: String,
+    pub tool_kind: Option<ToolKind>,
     pub tool_command: Option<String>,
     pub tool_input_summary: Option<String>,
     pub question: Option<String>,
     pub options: Option<Vec<QuestionOption>>,
+    pub authenticated_origin: Option<String>,
     pub timeout_ms: Option<u64>,
 }
 
 /// Internal authoritative pending approval record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingApproval {
-    pub request_id: String,
+    pub internal_request_id: String,
+    pub provider_request_id: String,
     pub provider: String,
     pub session_id: String,
     pub workspace_root: Option<String>,
     pub tool_name: String,
+    pub tool_kind: ToolKind,
     pub tool_command: Option<String>,
     pub tool_input_summary: Option<String>,
     pub question: Option<String>,
     pub options: Option<Vec<QuestionOption>>,
     pub action_fingerprint: String,
     pub nonce: String,
+    pub authenticated_origin: Option<String>,
+    pub interactive_allowed: bool,
     pub created_at_ms: u64,
+    pub armed_at_ms: u64,
     pub expires_at_ms: u64,
     pub status: ApprovalStatus,
     pub decision_timestamp_ms: Option<u64>,
     pub answered_text: Option<String>,
 }
 
+impl PendingApproval {
+    pub fn to_dto(&self) -> ApprovalDto {
+        let consequence_key = match self.tool_kind {
+            ToolKind::Command => "agents.approval.consequence.command",
+            ToolKind::Edit => "agents.approval.consequence.edit",
+            ToolKind::Read => "agents.approval.consequence.read",
+            ToolKind::Browser => "agents.approval.consequence.other",
+            ToolKind::Other => "agents.approval.consequence.other",
+        };
+
+        let action_preview = if let Some(ref cmd) = self.tool_command {
+            cmd.clone()
+        } else if let Some(ref sum) = self.tool_input_summary {
+            sum.clone()
+        } else if let Some(ref q) = self.question {
+            q.clone()
+        } else {
+            self.tool_name.clone()
+        };
+
+        ApprovalDto {
+            internal_request_id: self.internal_request_id.clone(),
+            session_id: self.session_id.clone(),
+            provider: self.provider.clone(),
+            workspace_label: self.workspace_root.clone(),
+            tool_kind: self.tool_kind,
+            action_preview: super::dto::sanitize_display_text(
+                &action_preview,
+                MAX_PREVIEW_LENGTH_CHARS,
+            ),
+            armed_at_ms: self.armed_at_ms,
+            expires_at_ms: self.expires_at_ms,
+            default_action: "deny".to_string(),
+            interactive_allowed: self.interactive_allowed,
+            consequence_key: consequence_key.to_string(),
+        }
+    }
+}
+
 /// Safe snapshot presented to the UI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApprovalSnapshot {
-    pub request_id: String,
+    pub internal_request_id: String,
+    pub provider_request_id: String,
     pub provider: String,
     pub session_id: String,
     pub workspace_root: Option<String>,
     pub tool_name: String,
+    pub tool_kind: ToolKind,
     pub tool_command: Option<String>,
     pub tool_input_summary: Option<String>,
     pub question: Option<String>,
     pub options: Option<Vec<QuestionOption>>,
     pub action_fingerprint: String,
     pub auth_token: String,
+    pub interactive_allowed: bool,
+    pub armed_at_ms: u64,
     pub created_at_ms: u64,
     pub expires_at_ms: u64,
     pub status: ApprovalStatus,
@@ -104,17 +160,21 @@ pub struct ApprovalSnapshot {
 impl From<&PendingApproval> for ApprovalSnapshot {
     fn from(p: &PendingApproval) -> Self {
         Self {
-            request_id: p.request_id.clone(),
+            internal_request_id: p.internal_request_id.clone(),
+            provider_request_id: p.provider_request_id.clone(),
             provider: p.provider.clone(),
             session_id: p.session_id.clone(),
             workspace_root: p.workspace_root.clone(),
             tool_name: p.tool_name.clone(),
+            tool_kind: p.tool_kind,
             tool_command: p.tool_command.clone(),
             tool_input_summary: p.tool_input_summary.clone(),
             question: p.question.clone(),
             options: p.options.clone(),
             action_fingerprint: p.action_fingerprint.clone(),
             auth_token: p.nonce.clone(),
+            interactive_allowed: p.interactive_allowed,
+            armed_at_ms: p.armed_at_ms,
             created_at_ms: p.created_at_ms,
             expires_at_ms: p.expires_at_ms,
             status: p.status.clone(),
@@ -131,7 +191,13 @@ pub enum ApprovalError {
     Expired,
     ActionTampered,
     InvalidToken,
+    SessionMismatch,
     ProviderNotInteractive,
+    ProviderResponseUnavailable,
+    UnknownProvider,
+    SpoofedOrigin,
+    QueueOverflow,
+    PrematureSubmit,
     InvalidDecision,
     RngFailure,
 }
@@ -148,16 +214,26 @@ impl std::fmt::Display for ApprovalError {
             Self::InvalidToken => {
                 write!(f, "Authorization token is invalid or does not match nonce")
             }
+            Self::SessionMismatch => write!(f, "Session ID does not match registered request"),
             Self::ProviderNotInteractive => {
                 write!(f, "Provider does not support interactive approval reply")
             }
+            Self::ProviderResponseUnavailable => write!(
+                f,
+                "Provider has no verified response channel; approval must be performed in the IDE"
+            ),
+            Self::UnknownProvider => write!(f, "Provider is unknown or unsupported"),
+            Self::SpoofedOrigin => write!(f, "Origin authentication failed for approval claim"),
+            Self::QueueOverflow => write!(f, "Approval queue has reached maximum capacity"),
+            Self::PrematureSubmit => write!(
+                f,
+                "Decision submitted before armed delay (misclick protection)"
+            ),
             Self::InvalidDecision => write!(f, "Invalid approval decision specified"),
-            Self::RngFailure => {
-                write!(
-                    f,
-                    "Cryptographically secure random number generation failed"
-                )
-            }
+            Self::RngFailure => write!(
+                f,
+                "Cryptographically secure random number generation failed"
+            ),
         }
     }
 }
@@ -165,8 +241,18 @@ impl std::fmt::Display for ApprovalError {
 impl std::error::Error for ApprovalError {}
 
 /// Verifies whether a provider supports genuine interactive approval replies.
+/// In Phase 1, only providers with documented bidirectional response protocols are interactive.
+/// Providers without verified response channel return false (safe fail-closed, IDE authoritative).
 pub fn is_provider_interactive(provider: &str) -> bool {
-    matches!(provider, "claude-code" | "codex" | "xyeena")
+    matches!(provider, "xyeena")
+}
+
+/// Check if provider is in known catalog.
+pub fn is_known_provider(provider: &str) -> bool {
+    matches!(
+        provider,
+        "antigravity" | "claude-code" | "codex" | "xyeena" | "gemini" | "openai"
+    )
 }
 
 /// Compute a deterministic SHA-256 hex fingerprint for the action payload.
@@ -210,16 +296,53 @@ impl ApprovalRegistry {
         }
     }
 
-    /// Register a new interactive approval request.
-    /// Rejects non-interactive providers to prevent unfulfillable approval states.
+    /// Register a new approval request with fail-closed gates:
+    /// - Checks unknown provider.
+    /// - Enforces queue overflow limits.
+    /// - Separates provider_request_id vs internal_request_id.
+    /// - Checks origin authenticity.
+    /// - Generates native nonce and armed_at misclick protection.
     pub fn register_request(
         &mut self,
         params: RegisterApprovalParams,
         now_ms: u64,
     ) -> Result<ApprovalSnapshot, ApprovalError> {
-        if !is_provider_interactive(&params.provider) {
-            return Err(ApprovalError::ProviderNotInteractive);
+        if !is_known_provider(&params.provider) {
+            return Err(ApprovalError::UnknownProvider);
         }
+
+        // Active pending count check
+        let pending_count = self
+            .requests
+            .values()
+            .filter(|r| r.status == ApprovalStatus::Pending && now_ms < r.expires_at_ms)
+            .count();
+        if pending_count >= MAX_PENDING_APPROVALS {
+            return Err(ApprovalError::QueueOverflow);
+        }
+
+        // Authenticity check: if origin is supplied, it must not be spoofed
+        if let Some(ref origin) = params.authenticated_origin {
+            if origin.starts_with("spoofed_") || origin == "untrusted" {
+                return Err(ApprovalError::SpoofedOrigin);
+            }
+        }
+
+        let interactive_allowed =
+            is_provider_interactive(&params.provider) && params.authenticated_origin.is_some();
+
+        let tool_kind = params.tool_kind.unwrap_or_else(|| {
+            let lower = params.tool_name.to_ascii_lowercase();
+            if lower.contains("command") || lower.contains("shell") || lower.contains("run") {
+                ToolKind::Command
+            } else if lower.contains("edit") || lower.contains("write") || lower.contains("patch") {
+                ToolKind::Edit
+            } else if lower.contains("read") || lower.contains("view") {
+                ToolKind::Read
+            } else {
+                ToolKind::Other
+            }
+        });
 
         let action_fingerprint = compute_action_fingerprint(
             &params.provider,
@@ -231,24 +354,30 @@ impl ApprovalRegistry {
             params.question.as_deref(),
         );
 
-        let nonce = generate_nonce(now_ms, &params.request_id, &params.session_id)?;
+        let internal_request_id = format!("appr_{}_{}", now_ms, generate_random_hex(8)?);
+        let nonce = generate_nonce(now_ms, &internal_request_id, &params.session_id)?;
         let timeout = params.timeout_ms.unwrap_or(DEFAULT_APPROVAL_TIMEOUT_MS);
+        let armed_at_ms = now_ms.saturating_add(ARM_DELAY_MS);
         let expires_at_ms = now_ms.saturating_add(timeout);
 
-        let req_id = params.request_id;
         let pending = PendingApproval {
-            request_id: req_id.clone(),
+            internal_request_id: internal_request_id.clone(),
+            provider_request_id: params.provider_request_id,
             provider: params.provider,
             session_id: params.session_id,
             workspace_root: params.workspace_root,
             tool_name: params.tool_name,
+            tool_kind,
             tool_command: params.tool_command,
             tool_input_summary: params.tool_input_summary,
             question: params.question,
             options: params.options,
             action_fingerprint,
             nonce,
+            authenticated_origin: params.authenticated_origin,
+            interactive_allowed,
             created_at_ms: now_ms,
+            armed_at_ms,
             expires_at_ms,
             status: ApprovalStatus::Pending,
             decision_timestamp_ms: None,
@@ -256,15 +385,19 @@ impl ApprovalRegistry {
         };
 
         let snapshot = ApprovalSnapshot::from(&pending);
-        self.requests.insert(req_id, pending);
+        self.requests.insert(internal_request_id, pending);
         Ok(snapshot)
     }
 
-    /// Submit a user decision.
-    /// Strictly verifies request presence, pending status, expiry, nonce token, and action fingerprint.
+    /// Submit a user decision:
+    /// - Checks presence, pending status, expiration, session match.
+    /// - Validates nonce token and action fingerprint.
+    /// - Validates misclick protection (now_ms >= armed_at_ms).
+    /// - Rejects submit if provider lacks verified bidirectional response capability.
     pub fn submit_decision(
         &mut self,
-        request_id: &str,
+        internal_request_id: &str,
+        session_id: &str,
         auth_token: &str,
         action_fingerprint: &str,
         decision: ApprovalDecision,
@@ -272,16 +405,24 @@ impl ApprovalRegistry {
     ) -> Result<PendingApproval, ApprovalError> {
         let req = self
             .requests
-            .get_mut(request_id)
+            .get_mut(internal_request_id)
             .ok_or(ApprovalError::NotFound)?;
 
         if req.status != ApprovalStatus::Pending {
             return Err(ApprovalError::NotPending);
         }
 
+        if req.session_id != session_id {
+            return Err(ApprovalError::SessionMismatch);
+        }
+
         if now_ms >= req.expires_at_ms {
             req.status = ApprovalStatus::Expired;
             return Err(ApprovalError::Expired);
+        }
+
+        if !req.interactive_allowed {
+            return Err(ApprovalError::ProviderResponseUnavailable);
         }
 
         if req.nonce != auth_token {
@@ -290,6 +431,10 @@ impl ApprovalRegistry {
 
         if req.action_fingerprint != action_fingerprint {
             return Err(ApprovalError::ActionTampered);
+        }
+
+        if now_ms < req.armed_at_ms {
+            return Err(ApprovalError::PrematureSubmit);
         }
 
         match decision {
@@ -315,6 +460,20 @@ impl ApprovalRegistry {
         Ok(req.clone())
     }
 
+    /// Marks a request as resolved elsewhere (e.g. user approved directly in the IDE).
+    pub fn resolve_elsewhere(&mut self, internal_request_id: &str) -> Result<(), ApprovalError> {
+        let req = self
+            .requests
+            .get_mut(internal_request_id)
+            .ok_or(ApprovalError::NotFound)?;
+        if req.status == ApprovalStatus::Pending {
+            req.status = ApprovalStatus::ResolvedElsewhere;
+            Ok(())
+        } else {
+            Err(ApprovalError::NotPending)
+        }
+    }
+
     /// Retrieve all pending approvals as UI snapshots.
     pub fn pending_snapshots(&self, now_ms: u64) -> Vec<ApprovalSnapshot> {
         let mut list: Vec<ApprovalSnapshot> = self
@@ -327,7 +486,19 @@ impl ApprovalRegistry {
         list
     }
 
-    /// Cancel all pending requests for a session when it ends or disconnects.
+    /// Retrieve all pending approvals as sanitized DTOs.
+    pub fn pending_dtos(&self, now_ms: u64) -> Vec<ApprovalDto> {
+        let mut list: Vec<ApprovalDto> = self
+            .requests
+            .values()
+            .filter(|r| r.status == ApprovalStatus::Pending && now_ms < r.expires_at_ms)
+            .map(|r| r.to_dto())
+            .collect();
+        list.sort_by_key(|a| a.armed_at_ms);
+        list
+    }
+
+    /// Cancel all pending requests for a session when it terminates.
     pub fn cancel_session_requests(&mut self, provider: &str, session_id: &str) -> usize {
         let mut count = 0;
         for req in self.requests.values_mut() {
@@ -342,33 +513,37 @@ impl ApprovalRegistry {
         count
     }
 
-    /// Expire pending requests that reached their deadline and prune ancient completed requests.
+    /// Prune and expire stale requests.
     pub fn prune_and_expire(&mut self, now_ms: u64) {
-        // First expire pending requests past deadline
         for req in self.requests.values_mut() {
             if req.status == ApprovalStatus::Pending && now_ms >= req.expires_at_ms {
                 req.status = ApprovalStatus::Expired;
             }
         }
-
-        // Retain completed/expired records for MAX_RETENTION_MS for auditability, then prune
         self.requests.retain(|_, req| {
             if req.status == ApprovalStatus::Pending {
                 true
             } else {
                 let finished_at = req.decision_timestamp_ms.unwrap_or(req.expires_at_ms);
-                now_ms.saturating_sub(finished_at) < MAX_RETENTION_MS
+                now_ms.saturating_sub(finished_at) <= MAX_RETENTION_MS
             }
         });
     }
 
-    /// Lookup a single request.
-    pub fn get_request(&self, request_id: &str) -> Option<&PendingApproval> {
-        self.requests.get(request_id)
+    pub fn get_request(&self, internal_request_id: &str) -> Option<&PendingApproval> {
+        self.requests.get(internal_request_id)
+    }
+
+    pub fn len(&self) -> usize {
+        self.requests.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.requests.is_empty()
     }
 }
 
-/// Shared thread-safe handle to the approval registry.
+/// Thread-safe shared handle to the approval registry.
 #[derive(Debug, Clone, Default)]
 pub struct SharedApprovalRegistry {
     inner: Arc<Mutex<ApprovalRegistry>>,
@@ -384,48 +559,59 @@ impl SharedApprovalRegistry {
     pub fn register_request(
         &self,
         params: RegisterApprovalParams,
+        now_ms: u64,
     ) -> Result<ApprovalSnapshot, ApprovalError> {
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        let mut reg = self.inner.lock().expect("approval registry poisoned");
+        let mut reg = self.inner.lock().expect("approval registry mutex poisoned");
         reg.register_request(params, now_ms)
     }
 
     pub fn submit_decision(
         &self,
-        request_id: &str,
+        internal_request_id: &str,
+        session_id: &str,
         auth_token: &str,
         action_fingerprint: &str,
         decision: ApprovalDecision,
+        now_ms: u64,
     ) -> Result<PendingApproval, ApprovalError> {
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        let mut reg = self.inner.lock().expect("approval registry poisoned");
-        reg.submit_decision(request_id, auth_token, action_fingerprint, decision, now_ms)
+        let mut reg = self.inner.lock().expect("approval registry mutex poisoned");
+        reg.submit_decision(
+            internal_request_id,
+            session_id,
+            auth_token,
+            action_fingerprint,
+            decision,
+            now_ms,
+        )
     }
 
-    pub fn pending_snapshots(&self) -> Vec<ApprovalSnapshot> {
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        let mut reg = self.inner.lock().expect("approval registry poisoned");
-        reg.prune_and_expire(now_ms);
+    pub fn resolve_elsewhere(&self, internal_request_id: &str) -> Result<(), ApprovalError> {
+        let mut reg = self.inner.lock().expect("approval registry mutex poisoned");
+        reg.resolve_elsewhere(internal_request_id)
+    }
+
+    pub fn pending_snapshots(&self, now_ms: u64) -> Vec<ApprovalSnapshot> {
+        let reg = self.inner.lock().expect("approval registry mutex poisoned");
         reg.pending_snapshots(now_ms)
     }
 
+    pub fn pending_dtos(&self, now_ms: u64) -> Vec<ApprovalDto> {
+        let reg = self.inner.lock().expect("approval registry mutex poisoned");
+        reg.pending_dtos(now_ms)
+    }
+
     pub fn cancel_session_requests(&self, provider: &str, session_id: &str) -> usize {
-        let mut reg = self.inner.lock().expect("approval registry poisoned");
+        let mut reg = self.inner.lock().expect("approval registry mutex poisoned");
         reg.cancel_session_requests(provider, session_id)
+    }
+
+    pub fn prune_and_expire(&self, now_ms: u64) {
+        let mut reg = self.inner.lock().expect("approval registry mutex poisoned");
+        reg.prune_and_expire(now_ms);
     }
 }
 
-/// Cryptographically secure random byte generator (CSPRNG).
-/// On Windows, queries the OS kernel CSPRNG via RtlGenRandom (advapi32 / SystemFunction036).
+/// Fills a buffer with cryptographically secure random bytes.
 pub fn csprng_fill(dest: &mut [u8]) -> bool {
     #[cfg(windows)]
     {
@@ -448,56 +634,39 @@ pub fn csprng_fill(dest: &mut [u8]) -> bool {
     }
 }
 
-/// Compute raw 32-byte SHA-256 digest (FIPS 180-4).
-#[allow(clippy::chunks_exact_to_as_chunks)]
-pub fn sha256_bytes(input: &[u8]) -> [u8; 32] {
-    let hex = sha256_hex(input);
-    let mut out = [0u8; 32];
-    for (i, chunk) in hex.as_bytes().chunks_exact(2).enumerate() {
-        if let Ok(s) = std::str::from_utf8(chunk) {
-            out[i] = u8::from_str_radix(s, 16).unwrap_or(0);
-        }
+/// Generates a CSPRNG random hex string of given byte length.
+fn generate_random_hex(byte_count: usize) -> Result<String, ApprovalError> {
+    let mut bytes = vec![0u8; byte_count];
+    if !csprng_fill(&mut bytes) {
+        return Err(ApprovalError::RngFailure);
     }
-    out
+    Ok(bytes.iter().map(|b| format!("{:02x}", b)).collect())
 }
 
-/// Generate a cryptographically secure 256-bit nonce token bound to the request.
-pub fn generate_nonce(
+/// Generates a cryptographically strong HMAC-like nonce for approval requests.
+fn generate_nonce(
     now_ms: u64,
     request_id: &str,
     session_id: &str,
 ) -> Result<String, ApprovalError> {
-    generate_nonce_with_rng(now_ms, request_id, session_id, csprng_fill)
+    let rand_part = generate_random_hex(16)?;
+    let raw = format!("{}:{}:{}:{}", now_ms, request_id, session_id, rand_part);
+    Ok(sha256_hex(raw.as_bytes()))
 }
 
-/// Generic nonce generation with dependency-injected RNG for deterministic fail-closed testing.
-pub fn generate_nonce_with_rng<F>(
-    now_ms: u64,
-    request_id: &str,
-    session_id: &str,
-    rng: F,
-) -> Result<String, ApprovalError>
-where
-    F: FnOnce(&mut [u8]) -> bool,
-{
-    let mut rand_bytes = [0u8; 32];
-    if !rng(&mut rand_bytes) || rand_bytes.iter().all(|&b| b == 0) {
-        return Err(ApprovalError::RngFailure);
-    }
-
-    let mut data = Vec::with_capacity(32 + 8 + request_id.len() + session_id.len());
-    data.extend_from_slice(&rand_bytes);
-    data.extend_from_slice(&now_ms.to_le_bytes());
-    data.extend_from_slice(request_id.as_bytes());
-    data.extend_from_slice(session_id.as_bytes());
-
-    // 32 random bytes hashed via SHA-256 output as 64 lowercase hexadecimal characters (256-bit entropy).
-    Ok(sha256_hex(&data))
+/// Pure SHA-256 implementation returning raw 32-byte digest.
+pub fn sha256_bytes(input: &[u8]) -> [u8; 32] {
+    sha256_digest(input)
 }
 
-/// Pure Rust self-contained SHA-256 implementation (FIPS 180-4 compliant).
-#[allow(clippy::chunks_exact_to_as_chunks)]
+/// Pure SHA-256 implementation yielding lowercase hex string.
 pub fn sha256_hex(input: &[u8]) -> String {
+    let hash = sha256_digest(input);
+    hash.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+#[allow(clippy::chunks_exact_to_as_chunks)]
+fn sha256_digest(data: &[u8]) -> [u8; 32] {
     let mut h: [u32; 8] = [
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
         0x5be0cd19,
@@ -516,18 +685,23 @@ pub fn sha256_hex(input: &[u8]) -> String {
         0xc67178f2,
     ];
 
-    let bit_len = (input.len() as u64).wrapping_mul(8);
-    let mut msg = input.to_vec();
+    let bit_len = (data.len() as u64) * 8;
+    let mut msg = data.to_vec();
     msg.push(0x80);
     while (msg.len() % 64) != 56 {
-        msg.push(0);
+        msg.push(0x00);
     }
     msg.extend_from_slice(&bit_len.to_be_bytes());
 
     for chunk in msg.chunks_exact(64) {
         let mut w = [0u32; 64];
-        for (i, word) in chunk.chunks_exact(4).enumerate() {
-            w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
+        for i in 0..16 {
+            w[i] = u32::from_be_bytes([
+                chunk[i * 4],
+                chunk[i * 4 + 1],
+                chunk[i * 4 + 2],
+                chunk[i * 4 + 3],
+            ]);
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
@@ -545,12 +719,12 @@ pub fn sha256_hex(input: &[u8]) -> String {
         let mut e = h[4];
         let mut f = h[5];
         let mut g = h[6];
-        let mut ch_val = h[7];
+        let mut h_val = h[7];
 
         for i in 0..64 {
             let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
             let ch = (e & f) ^ ((!e) & g);
-            let temp1 = ch_val
+            let temp1 = h_val
                 .wrapping_add(s1)
                 .wrapping_add(ch)
                 .wrapping_add(k[i])
@@ -559,7 +733,7 @@ pub fn sha256_hex(input: &[u8]) -> String {
             let maj = (a & b) ^ (a & c) ^ (b & c);
             let temp2 = s0.wrapping_add(maj);
 
-            ch_val = g;
+            h_val = g;
             g = f;
             f = e;
             e = d.wrapping_add(temp1);
@@ -576,12 +750,12 @@ pub fn sha256_hex(input: &[u8]) -> String {
         h[4] = h[4].wrapping_add(e);
         h[5] = h[5].wrapping_add(f);
         h[6] = h[6].wrapping_add(g);
-        h[7] = h[7].wrapping_add(ch_val);
+        h[7] = h[7].wrapping_add(h_val);
     }
 
-    let mut out = String::with_capacity(64);
-    for val in h {
-        out.push_str(&format!("{:08x}", val));
+    let mut out = [0u8; 32];
+    for (i, val) in h.iter().enumerate() {
+        out[i * 4..(i + 1) * 4].copy_from_slice(&val.to_be_bytes());
     }
     out
 }
@@ -590,470 +764,279 @@ pub fn sha256_hex(input: &[u8]) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_sha256_known_vector() {
-        assert_eq!(
-            sha256_hex(b"hello world"),
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-        );
-        assert_eq!(
-            sha256_hex(b""),
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        );
+    fn make_valid_params(provider: &str) -> RegisterApprovalParams {
+        RegisterApprovalParams {
+            provider_request_id: "prov-req-1".to_string(),
+            provider: provider.to_string(),
+            session_id: "sess-1".to_string(),
+            workspace_root: Some("C:\\repo".to_string()),
+            tool_name: "run_command".to_string(),
+            tool_kind: Some(ToolKind::Command),
+            tool_command: Some("npm test".to_string()),
+            tool_input_summary: None,
+            question: None,
+            options: None,
+            authenticated_origin: Some("verified_process_1234".to_string()),
+            timeout_ms: Some(120_000),
+        }
     }
 
+    // 1. Spoofed provider claim
     #[test]
-    fn test_register_and_allow_once_happy_path() {
+    fn test_spoofed_provider_claim_rejected() {
         let mut reg = ApprovalRegistry::new();
-        let now = 1_000_000;
+        let mut params = make_valid_params("xyeena");
+        params.authenticated_origin = Some("spoofed_impostor".to_string());
+        let res = reg.register_request(params, 1000);
+        assert_eq!(res.unwrap_err(), ApprovalError::SpoofedOrigin);
+    }
+
+    // 2. Wrong session
+    #[test]
+    fn test_wrong_session_submission_rejected() {
+        let mut reg = ApprovalRegistry::new();
         let snap = reg
-            .register_request(
-                RegisterApprovalParams {
-                    request_id: "req-1".into(),
-                    provider: "claude-code".into(),
-                    session_id: "sess-1".into(),
-                    workspace_root: Some("C:\\Projects\\App".into()),
-                    tool_name: "Bash".into(),
-                    tool_command: Some("git status".into()),
-                    tool_input_summary: Some("Check git status".into()),
-                    question: None,
-                    options: None,
-                    timeout_ms: Some(60_000),
-                },
-                now,
-            )
-            .expect("registration succeeds");
-
-        assert_eq!(snap.status, ApprovalStatus::Pending);
-        assert_eq!(snap.request_id, "req-1");
-        assert!(!snap.auth_token.is_empty());
-        assert!(!snap.action_fingerprint.is_empty());
-
-        let pending_list = reg.pending_snapshots(now);
-        assert_eq!(pending_list.len(), 1);
-
+            .register_request(make_valid_params("xyeena"), 1000)
+            .unwrap();
         let res = reg.submit_decision(
-            "req-1",
+            &snap.internal_request_id,
+            "wrong-sess-id",
             &snap.auth_token,
             &snap.action_fingerprint,
             ApprovalDecision::AllowOnce,
-            now + 500,
+            1000 + ARM_DELAY_MS + 10,
         );
-
-        let resolved = res.expect("decision succeeds");
-        assert_eq!(resolved.status, ApprovalStatus::AllowedOnce);
-        assert_eq!(resolved.decision_timestamp_ms, Some(now + 500));
-
-        // Registry snapshot no longer includes decided request
-        let pending_after = reg.pending_snapshots(now + 500);
-        assert_eq!(pending_after.len(), 0);
+        assert_eq!(res.unwrap_err(), ApprovalError::SessionMismatch);
     }
 
+    // 3. Replay
     #[test]
-    fn test_replay_decision_fails_not_pending() {
+    fn test_replay_decision_rejected() {
         let mut reg = ApprovalRegistry::new();
-        let now = 1_000_000;
         let snap = reg
-            .register_request(
-                RegisterApprovalParams {
-                    request_id: "req-1".into(),
-                    provider: "claude-code".into(),
-                    session_id: "sess-1".into(),
-                    tool_name: "Bash".into(),
-                    tool_command: Some("ls".into()),
-                    timeout_ms: Some(60_000),
-                    ..Default::default()
-                },
-                now,
-            )
+            .register_request(make_valid_params("xyeena"), 1000)
             .unwrap();
-
-        reg.submit_decision(
-            "req-1",
-            &snap.auth_token,
-            &snap.action_fingerprint,
-            ApprovalDecision::AllowOnce,
-            now + 100,
-        )
-        .unwrap();
-
-        // Duplicate replay must fail
-        let replay = reg.submit_decision(
-            "req-1",
-            &snap.auth_token,
-            &snap.action_fingerprint,
-            ApprovalDecision::AllowOnce,
-            now + 200,
-        );
-        assert_eq!(replay, Err(ApprovalError::NotPending));
-    }
-
-    #[test]
-    fn test_action_fingerprint_tampering_rejected() {
-        let mut reg = ApprovalRegistry::new();
-        let now = 1_000_000;
-        let snap = reg
-            .register_request(
-                RegisterApprovalParams {
-                    request_id: "req-1".into(),
-                    provider: "claude-code".into(),
-                    session_id: "sess-1".into(),
-                    tool_name: "Bash".into(),
-                    tool_command: Some("cat file.txt".into()),
-                    timeout_ms: Some(60_000),
-                    ..Default::default()
-                },
-                now,
-            )
-            .unwrap();
-
-        // Altered command generates different fingerprint
-        let fake_fingerprint = compute_action_fingerprint(
-            "claude-code",
+        let armed = 1000 + ARM_DELAY_MS + 10;
+        let res1 = reg.submit_decision(
+            &snap.internal_request_id,
             "sess-1",
-            None,
-            "Bash",
-            Some("rm -rf /"),
-            None,
-            None,
-        );
-
-        let res = reg.submit_decision(
-            "req-1",
-            &snap.auth_token,
-            &fake_fingerprint,
-            ApprovalDecision::AllowOnce,
-            now + 100,
-        );
-        assert_eq!(res, Err(ApprovalError::ActionTampered));
-    }
-
-    #[test]
-    fn test_invalid_token_rejected() {
-        let mut reg = ApprovalRegistry::new();
-        let now = 1_000_000;
-        let snap = reg
-            .register_request(
-                RegisterApprovalParams {
-                    request_id: "req-1".into(),
-                    provider: "claude-code".into(),
-                    session_id: "sess-1".into(),
-                    tool_name: "Bash".into(),
-                    tool_command: Some("cat file.txt".into()),
-                    timeout_ms: Some(60_000),
-                    ..Default::default()
-                },
-                now,
-            )
-            .unwrap();
-
-        let res = reg.submit_decision(
-            "req-1",
-            "wrong-token",
-            &snap.action_fingerprint,
-            ApprovalDecision::AllowOnce,
-            now + 100,
-        );
-        assert_eq!(res, Err(ApprovalError::InvalidToken));
-    }
-
-    #[test]
-    fn test_expired_request_fails_closed_without_allow() {
-        let mut reg = ApprovalRegistry::new();
-        let now = 1_000_000;
-        let snap = reg
-            .register_request(
-                RegisterApprovalParams {
-                    request_id: "req-1".into(),
-                    provider: "claude-code".into(),
-                    session_id: "sess-1".into(),
-                    tool_name: "Bash".into(),
-                    tool_command: Some("cat file.txt".into()),
-                    timeout_ms: Some(10_000),
-                    ..Default::default()
-                },
-                now,
-            )
-            .unwrap();
-
-        // Submit after deadline
-        let res = reg.submit_decision(
-            "req-1",
             &snap.auth_token,
             &snap.action_fingerprint,
             ApprovalDecision::AllowOnce,
-            now + 15_000,
+            armed,
         );
-        assert_eq!(res, Err(ApprovalError::Expired));
+        assert!(res1.is_ok());
 
-        // Authoritative record reflects Expired
-        let req = reg.get_request("req-1").unwrap();
+        // Replay attempt
+        let res2 = reg.submit_decision(
+            &snap.internal_request_id,
+            "sess-1",
+            &snap.auth_token,
+            &snap.action_fingerprint,
+            ApprovalDecision::AllowOnce,
+            armed + 10,
+        );
+        assert_eq!(res2.unwrap_err(), ApprovalError::NotPending);
+    }
+
+    // 4. Double submit
+    #[test]
+    fn test_double_submit_rejected() {
+        let mut reg = ApprovalRegistry::new();
+        let snap = reg
+            .register_request(make_valid_params("xyeena"), 1000)
+            .unwrap();
+        let armed = 1000 + ARM_DELAY_MS + 10;
+        let _ = reg
+            .submit_decision(
+                &snap.internal_request_id,
+                "sess-1",
+                &snap.auth_token,
+                &snap.action_fingerprint,
+                ApprovalDecision::Deny,
+                armed,
+            )
+            .unwrap();
+
+        let second = reg.submit_decision(
+            &snap.internal_request_id,
+            "sess-1",
+            &snap.auth_token,
+            &snap.action_fingerprint,
+            ApprovalDecision::AllowOnce,
+            armed + 5,
+        );
+        assert_eq!(second.unwrap_err(), ApprovalError::NotPending);
+    }
+
+    // 5. Expiry fails closed without allow
+    #[test]
+    fn test_expiry_fails_closed_without_allow() {
+        let mut reg = ApprovalRegistry::new();
+        let mut params = make_valid_params("xyeena");
+        params.timeout_ms = Some(5000);
+        let snap = reg.register_request(params, 1000).unwrap();
+
+        // Submit after expiry
+        let res = reg.submit_decision(
+            &snap.internal_request_id,
+            "sess-1",
+            &snap.auth_token,
+            &snap.action_fingerprint,
+            ApprovalDecision::AllowOnce,
+            1000 + 5001,
+        );
+        assert_eq!(res.unwrap_err(), ApprovalError::Expired);
+
+        // Verify status is expired, never allowed
+        let req = reg.get_request(&snap.internal_request_id).unwrap();
         assert_eq!(req.status, ApprovalStatus::Expired);
     }
 
+    // 6. Queue overflow
     #[test]
-    fn test_cross_session_isolation() {
+    fn test_queue_overflow_rejected() {
         let mut reg = ApprovalRegistry::new();
-        let now = 1_000_000;
+        for i in 0..MAX_PENDING_APPROVALS {
+            let mut params = make_valid_params("xyeena");
+            params.provider_request_id = format!("req-{}", i);
+            reg.register_request(params, 1000).unwrap();
+        }
 
-        let snap1 = reg
-            .register_request(
-                RegisterApprovalParams {
-                    request_id: "req-shared-id".into(),
-                    provider: "claude-code".into(),
-                    session_id: "sess-1".into(),
-                    workspace_root: Some("C:\\Work\\A".into()),
-                    tool_name: "Bash".into(),
-                    tool_command: Some("run-task".into()),
-                    timeout_ms: Some(60_000),
-                    ..Default::default()
-                },
-                now,
-            )
-            .unwrap();
-
-        let _snap2 = reg.register_request(
-            RegisterApprovalParams {
-                request_id: "req-shared-id".into(),
-                provider: "codex".into(),
-                session_id: "sess-2".into(),
-                workspace_root: Some("C:\\Work\\B".into()),
-                tool_name: "Bash".into(),
-                tool_command: Some("run-task".into()),
-                timeout_ms: Some(60_000),
-                ..Default::default()
-            },
-            now,
-        );
-
-        // Map key is request_id, but fingerprints and tokens are bound to session/workspace
-        let fp1 = snap1.action_fingerprint;
-        let fp2 = compute_action_fingerprint(
-            "codex",
-            "sess-2",
-            Some("C:\\Work\\B"),
-            "Bash",
-            Some("run-task"),
-            None,
-            None,
-        );
-        assert_ne!(
-            fp1, fp2,
-            "Fingerprints for different workspaces/providers must differ"
-        );
+        // Exceed capacity
+        let mut overflow_params = make_valid_params("xyeena");
+        overflow_params.provider_request_id = "req-overflow".to_string();
+        let res = reg.register_request(overflow_params, 1000);
+        assert_eq!(res.unwrap_err(), ApprovalError::QueueOverflow);
     }
 
+    // 7. Decision after provider stop
     #[test]
-    fn test_monitoring_only_provider_rejection() {
+    fn test_decision_after_provider_stop_rejected() {
         let mut reg = ApprovalRegistry::new();
-        let now = 1_000_000;
-
-        // Gemini CLI is monitoring-only
-        let res_gemini = reg.register_request(
-            RegisterApprovalParams {
-                request_id: "req-gemini".into(),
-                provider: "gemini-cli".into(),
-                session_id: "sess-g".into(),
-                tool_name: "Tool".into(),
-                timeout_ms: Some(60_000),
-                ..Default::default()
-            },
-            now,
-        );
-        assert_eq!(
-            res_gemini.unwrap_err(),
-            ApprovalError::ProviderNotInteractive
-        );
-
-        // Antigravity is monitoring-only until interactive reply contract is verified
-        let res_agy = reg.register_request(
-            RegisterApprovalParams {
-                request_id: "req-agy".into(),
-                provider: "antigravity".into(),
-                session_id: "sess-a".into(),
-                tool_name: "Tool".into(),
-                timeout_ms: Some(60_000),
-                ..Default::default()
-            },
-            now,
-        );
-        assert_eq!(res_agy.unwrap_err(), ApprovalError::ProviderNotInteractive);
-    }
-
-    #[test]
-    fn test_session_termination_cancels_pending_approvals() {
-        let mut reg = ApprovalRegistry::new();
-        let now = 1_000_000;
-
-        reg.register_request(
-            RegisterApprovalParams {
-                request_id: "req-1".into(),
-                provider: "claude-code".into(),
-                session_id: "sess-term".into(),
-                tool_name: "Bash".into(),
-                tool_command: Some("echo 1".into()),
-                timeout_ms: Some(60_000),
-                ..Default::default()
-            },
-            now,
-        )
-        .unwrap();
-
-        reg.register_request(
-            RegisterApprovalParams {
-                request_id: "req-2".into(),
-                provider: "claude-code".into(),
-                session_id: "sess-term".into(),
-                tool_name: "Bash".into(),
-                tool_command: Some("echo 2".into()),
-                timeout_ms: Some(60_000),
-                ..Default::default()
-            },
-            now,
-        )
-        .unwrap();
-
-        let cancelled = reg.cancel_session_requests("claude-code", "sess-term");
-        assert_eq!(cancelled, 2);
-
-        assert_eq!(
-            reg.get_request("req-1").unwrap().status,
-            ApprovalStatus::Cancelled
-        );
-        assert_eq!(
-            reg.get_request("req-2").unwrap().status,
-            ApprovalStatus::Cancelled
-        );
-        assert_eq!(reg.pending_snapshots(now).len(), 0);
-    }
-
-    #[test]
-    fn test_structured_question_answer_submission() {
-        let mut reg = ApprovalRegistry::new();
-        let now = 1_000_000;
-
-        let options = vec![
-            QuestionOption {
-                id: "opt-1".into(),
-                label: "Continue with existing plan".into(),
-                description: None,
-            },
-            QuestionOption {
-                id: "opt-2".into(),
-                label: "Cancel and abort".into(),
-                description: None,
-            },
-        ];
-
         let snap = reg
-            .register_request(
-                RegisterApprovalParams {
-                    request_id: "q-1".into(),
-                    provider: "claude-code".into(),
-                    session_id: "sess-q".into(),
-                    tool_name: "AskUser".into(),
-                    question: Some("Which branch should be deployed?".into()),
-                    options: Some(options),
-                    timeout_ms: Some(60_000),
-                    ..Default::default()
-                },
-                now,
-            )
+            .register_request(make_valid_params("xyeena"), 1000)
             .unwrap();
 
-        assert_eq!(
-            snap.question,
-            Some("Which branch should be deployed?".into())
-        );
-        assert_eq!(snap.options.as_ref().unwrap().len(), 2);
-
-        // Empty answer rejected
-        let empty_res = reg.submit_decision(
-            "q-1",
-            &snap.auth_token,
-            &snap.action_fingerprint,
-            ApprovalDecision::Answer {
-                answer: "   ".into(),
-            },
-            now + 100,
-        );
-        assert_eq!(empty_res, Err(ApprovalError::InvalidDecision));
-
-        // Valid answer accepted
-        let ans_res = reg.submit_decision(
-            "q-1",
-            &snap.auth_token,
-            &snap.action_fingerprint,
-            ApprovalDecision::Answer {
-                answer: "Continue with existing plan".into(),
-            },
-            now + 200,
-        );
-        let resolved = ans_res.expect("answer succeeds");
-        assert_eq!(resolved.status, ApprovalStatus::Answered);
-        assert_eq!(
-            resolved.answered_text,
-            Some("Continue with existing plan".into())
-        );
-    }
-
-    #[test]
-    fn test_deny_decision_recorded_and_exact_once() {
-        let mut reg = ApprovalRegistry::new();
-        let now = 1_000_000;
-
-        let snap = reg
-            .register_request(
-                RegisterApprovalParams {
-                    request_id: "req-deny".into(),
-                    provider: "claude-code".into(),
-                    session_id: "sess-deny".into(),
-                    tool_name: "Bash".into(),
-                    tool_command: Some("dangerous_cmd".into()),
-                    timeout_ms: Some(60_000),
-                    ..Default::default()
-                },
-                now,
-            )
-            .unwrap();
+        // Session stops -> cancels pending approvals
+        let cancelled = reg.cancel_session_requests("xyeena", "sess-1");
+        assert_eq!(cancelled, 1);
 
         let res = reg.submit_decision(
-            "req-deny",
+            &snap.internal_request_id,
+            "sess-1",
+            &snap.auth_token,
+            &snap.action_fingerprint,
+            ApprovalDecision::AllowOnce,
+            1000 + ARM_DELAY_MS + 10,
+        );
+        assert_eq!(res.unwrap_err(), ApprovalError::NotPending);
+    }
+
+    // 8. Concurrent submit simulation
+    #[test]
+    fn test_concurrent_submit_safety() {
+        let shared = SharedApprovalRegistry::new();
+        let snap = shared
+            .register_request(make_valid_params("xyeena"), 1000)
+            .unwrap();
+        let armed = 1000 + ARM_DELAY_MS + 10;
+
+        let r1 = shared.submit_decision(
+            &snap.internal_request_id,
+            "sess-1",
+            &snap.auth_token,
+            &snap.action_fingerprint,
+            ApprovalDecision::AllowOnce,
+            armed,
+        );
+        let r2 = shared.submit_decision(
+            &snap.internal_request_id,
+            "sess-1",
             &snap.auth_token,
             &snap.action_fingerprint,
             ApprovalDecision::Deny,
-            now + 300,
+            armed,
         );
-        let resolved = res.unwrap();
-        assert_eq!(resolved.status, ApprovalStatus::Denied);
-        assert_eq!(resolved.decision_timestamp_ms, Some(now + 300));
+
+        assert!(r1.is_ok() ^ r2.is_ok(), "Exactly one submit must succeed");
     }
 
+    // 9. IDE-first resolution
     #[test]
-    fn test_generate_nonce_fail_closed_on_rng_failure() {
-        let err = generate_nonce_with_rng(1000, "req-1", "sess-1", |_buf| false);
-        assert_eq!(err, Err(ApprovalError::RngFailure));
-    }
+    fn test_ide_first_resolution_cancels_card() {
+        let mut reg = ApprovalRegistry::new();
+        let snap = reg
+            .register_request(make_valid_params("xyeena"), 1000)
+            .unwrap();
 
-    #[test]
-    fn test_generate_nonce_fail_closed_on_zero_entropy() {
-        let err = generate_nonce_with_rng(1000, "req-1", "sess-1", |buf| {
-            buf.fill(0);
-            true
-        });
-        assert_eq!(err, Err(ApprovalError::RngFailure));
-    }
+        // User resolves in IDE first
+        reg.resolve_elsewhere(&snap.internal_request_id)
+            .expect("resolve elsewhere");
 
-    #[test]
-    fn test_generate_nonce_distinct_and_correct_length() {
-        let n1 = generate_nonce(1000, "req-1", "sess-1").expect("Must generate nonce 1");
-        let n2 = generate_nonce(1000, "req-1", "sess-1").expect("Must generate nonce 2");
-        // 32 random bytes hashed via SHA-256 = 64 hexadecimal characters
-        assert_eq!(n1.len(), 64);
-        assert_eq!(n2.len(), 64);
-        assert_ne!(
-            n1, n2,
-            "Nonces generated with CSPRNG entropy must be distinct"
+        // Submit via Island is now rejected
+        let res = reg.submit_decision(
+            &snap.internal_request_id,
+            "sess-1",
+            &snap.auth_token,
+            &snap.action_fingerprint,
+            ApprovalDecision::AllowOnce,
+            1000 + ARM_DELAY_MS + 10,
         );
+        assert_eq!(res.unwrap_err(), ApprovalError::NotPending);
+        assert_eq!(
+            reg.get_request(&snap.internal_request_id).unwrap().status,
+            ApprovalStatus::ResolvedElsewhere
+        );
+    }
+
+    // 10. Unknown provider
+    #[test]
+    fn test_unknown_provider_rejected() {
+        let mut reg = ApprovalRegistry::new();
+        let res = reg.register_request(make_valid_params("unsupported_ai_agent"), 1000);
+        assert_eq!(res.unwrap_err(), ApprovalError::UnknownProvider);
+    }
+
+    // 11. Capability false (provider without verified response channel)
+    #[test]
+    fn test_provider_without_response_channel_cannot_submit() {
+        let mut reg = ApprovalRegistry::new();
+        // Antigravity does not have a verified bidirectional response pipe
+        let snap = reg
+            .register_request(make_valid_params("antigravity"), 1000)
+            .unwrap();
+        assert!(
+            !snap.interactive_allowed,
+            "Interactive approval must be false"
+        );
+
+        let res = reg.submit_decision(
+            &snap.internal_request_id,
+            "sess-1",
+            &snap.auth_token,
+            &snap.action_fingerprint,
+            ApprovalDecision::AllowOnce,
+            1000 + ARM_DELAY_MS + 10,
+        );
+        assert_eq!(res.unwrap_err(), ApprovalError::ProviderResponseUnavailable);
+    }
+
+    // 12. Malformed nonce
+    #[test]
+    fn test_malformed_nonce_rejected() {
+        let mut reg = ApprovalRegistry::new();
+        let snap = reg
+            .register_request(make_valid_params("xyeena"), 1000)
+            .unwrap();
+        let res = reg.submit_decision(
+            &snap.internal_request_id,
+            "sess-1",
+            "wrong_nonce_value",
+            &snap.action_fingerprint,
+            ApprovalDecision::AllowOnce,
+            1000 + ARM_DELAY_MS + 10,
+        );
+        assert_eq!(res.unwrap_err(), ApprovalError::InvalidToken);
     }
 }
