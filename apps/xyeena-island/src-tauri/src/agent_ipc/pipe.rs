@@ -30,15 +30,18 @@ use std::thread::{self, JoinHandle};
 use tauri::{Emitter, Runtime};
 
 #[cfg(windows)]
-use windows::core::HSTRING;
+use windows::core::{HSTRING, PWSTR};
 #[cfg(windows)]
-use windows::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+use windows::Win32::Foundation::{CloseHandle, LocalFree, HANDLE, HLOCAL, INVALID_HANDLE_VALUE};
 #[cfg(windows)]
 use windows::Win32::Security::Authorization::{
-    ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
 };
 #[cfg(windows)]
-use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
+use windows::Win32::Security::{
+    GetTokenInformation, TokenUser, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, TOKEN_QUERY,
+    TOKEN_USER,
+};
 #[cfg(windows)]
 use windows::Win32::Storage::FileSystem::{ReadFile, PIPE_ACCESS_DUPLEX};
 #[cfg(windows)]
@@ -46,6 +49,70 @@ use windows::Win32::System::Pipes::{
     ConnectNamedPipe, DisconnectNamedPipe, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS,
     PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
 };
+#[cfg(windows)]
+use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+/// Builds the pipe SDDL string.
+/// If an explicit user SID is supplied, restricts access strictly to that account:
+/// `D:P(A;;GRGW;;;<SID>)`.
+/// Falls back to owner rights (`OW`) if SID query is unavailable.
+pub fn build_pipe_sddl(user_sid: Option<&str>) -> String {
+    if let Some(sid) = user_sid {
+        format!("D:P(A;;GRGW;;;{})", sid)
+    } else {
+        "D:P(A;;GRGW;;;OW)".to_string()
+    }
+}
+
+/// Retrieves the current process user account SID as a string (e.g. S-1-5-21-...).
+#[cfg(windows)]
+pub fn get_current_user_sid_string() -> Option<String> {
+    unsafe {
+        let mut token = HANDLE::default();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+            return None;
+        }
+
+        let mut len = 0u32;
+        let _ = GetTokenInformation(token, TokenUser, None, 0, &mut len);
+        if len == 0 {
+            let _ = CloseHandle(token);
+            return None;
+        }
+
+        let mut buf = vec![0u8; len as usize];
+        if GetTokenInformation(
+            token,
+            TokenUser,
+            Some(buf.as_mut_ptr() as *mut _),
+            len,
+            &mut len,
+        )
+        .is_err()
+        {
+            let _ = CloseHandle(token);
+            return None;
+        }
+
+        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+        let mut str_sid = PWSTR::null();
+        let conv_res = ConvertSidToStringSidW(token_user.User.Sid, &mut str_sid);
+        let _ = CloseHandle(token);
+
+        if conv_res.is_ok() && !str_sid.is_null() {
+            let sid_str = str_sid.to_string().ok();
+            let _ = LocalFree(Some(HLOCAL(str_sid.0 as _)));
+            sid_str
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn get_current_user_sid_string() -> Option<String> {
+    None
+}
 
 /// Get the localized, per-user named pipe path.
 /// Format: `\\.\pipe\xyeena-agent-<username>`
@@ -163,10 +230,10 @@ fn run_server_loop<R: Runtime>(
 ) {
     let pipe_name_w = HSTRING::from(&pipe_name);
 
-    // Build explicit Security Descriptor:
-    // "D:P(A;;GRGW;;;OW)" - Discretionary ACL, Protected, Grant Read/Write to Owner only.
-    // This strictly prevents other Windows user sessions from connecting.
-    let sddl = HSTRING::from("D:P(A;;GRGW;;;OW)");
+    // Build explicit Security Descriptor with current user SID:
+    let sid = get_current_user_sid_string();
+    let sddl_str = build_pipe_sddl(sid.as_deref());
+    let sddl = HSTRING::from(&sddl_str);
     let mut sec_desc = PSECURITY_DESCRIPTOR::default();
     let sec_desc_res = unsafe {
         ConvertStringSecurityDescriptorToSecurityDescriptorW(
@@ -345,19 +412,23 @@ fn handle_pipe_client<R: Runtime>(
                                     });
 
                             let params = RegisterApprovalParams {
-                                request_id,
+                                provider_request_id: request_id,
                                 provider: event.provider.clone(),
                                 session_id: event.session_id.clone(),
                                 workspace_root: event.workspace_root.clone(),
                                 tool_name,
+                                tool_kind: None,
                                 tool_command: tool_cmd,
                                 tool_input_summary: tool_summary,
                                 question,
                                 options,
+                                authenticated_origin: None,
                                 timeout_ms: None,
                             };
 
-                            if let Ok(snapshot) = approval_registry.register_request(params) {
+                            if let Ok(snapshot) =
+                                approval_registry.register_request(params, event.timestamp_ms)
+                            {
                                 let _ = app.emit("island:approval-requested", &snapshot);
                             }
                         }
@@ -689,189 +760,31 @@ mod tests {
         listener.join().expect("listener must join cleanly");
     }
 
-    #[cfg(windows)]
     #[test]
-    fn test_relay_binary_process_to_pipe_end_to_end() {
-        use std::io::Write;
-        use std::process::{Command, Stdio};
+    fn test_pipe_sddl_builder() {
+        assert_eq!(
+            build_pipe_sddl(Some("S-1-5-21-123456789-1001")),
+            "D:P(A;;GRGW;;;S-1-5-21-123456789-1001)"
+        );
+        assert_eq!(build_pipe_sddl(None), "D:P(A;;GRGW;;;OW)");
+    }
 
-        let test_pipe_name = format!(r"\\.\pipe\xyeena-agent-test-{}", std::process::id());
-        let registry = SharedSessionRegistry::new();
-        let registry_clone = registry.clone();
-        let pipe_name_clone = test_pipe_name.clone();
-        let done = Arc::new(AtomicBool::new(false));
-        let done_clone = done.clone();
-
-        let listener = thread::spawn(move || {
-            let pipe_w = HSTRING::from(&pipe_name_clone);
-            let sddl = HSTRING::from("D:P(A;;GRGW;;;OW)");
-            let mut sec_desc = PSECURITY_DESCRIPTOR::default();
-            let _ = unsafe {
-                ConvertStringSecurityDescriptorToSecurityDescriptorW(
-                    &sddl,
-                    SDDL_REVISION_1,
-                    &mut sec_desc,
-                    None,
-                )
-            };
-            let sec_attrs = SECURITY_ATTRIBUTES {
-                nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
-                lpSecurityDescriptor: sec_desc.0,
-                bInheritHandle: false.into(),
-            };
-
-            let h = unsafe {
-                windows::Win32::System::Pipes::CreateNamedPipeW(
-                    &pipe_w,
-                    PIPE_ACCESS_DUPLEX,
-                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-                    255,
-                    65536,
-                    65536,
-                    0,
-                    Some(&sec_attrs),
-                )
-            };
-            if h == INVALID_HANDLE_VALUE {
-                return;
+    #[test]
+    fn test_frame_buffer_fuzz_malformed_inputs() {
+        let mut fb = FrameBuffer::new();
+        // Fuzz 500 arbitrary byte patterns: must never panic or enter infinite loops
+        for i in 0..500 {
+            let fuzz_len = (i * 37) % 256;
+            let mut pattern = Vec::with_capacity(fuzz_len);
+            for j in 0..fuzz_len {
+                pattern.push(((i * 17 + j * 31) & 0xFF) as u8);
             }
-
-            while !done_clone.load(Ordering::SeqCst) {
-                let connected = unsafe { ConnectNamedPipe(h, None) };
-                let is_connected = connected.is_ok()
-                    || connected
-                        .as_ref()
-                        .err()
-                        .map(|e| {
-                            e.code() == windows::Win32::Foundation::WIN32_ERROR(535).to_hresult()
-                        })
-                        .unwrap_or(false);
-
-                if is_connected {
-                    let mut frame_buf = FrameBuffer::new();
-                    let mut read_buf = [0u8; 4096];
-                    let mut read = 0u32;
-                    let _ = unsafe { ReadFile(h, Some(&mut read_buf), Some(&mut read), None) };
-                    if read > 0 {
-                        let _ = frame_buf.extend(&read_buf[..read as usize]);
-                        while let Ok(Some(frame)) = frame_buf.next_frame() {
-                            if let Ok(event) = parse_and_normalize(&frame) {
-                                let is_target = event.session_id == "session-antigravity-live-test";
-                                registry_clone.handle_event(&event);
-                                if is_target {
-                                    let _ = unsafe { DisconnectNamedPipe(h) };
-                                    let _ = unsafe { CloseHandle(h) };
-                                    if !sec_desc.0.is_null() {
-                                        let _ = unsafe {
-                                            windows::Win32::Foundation::LocalFree(Some(
-                                                windows::Win32::Foundation::HLOCAL(sec_desc.0),
-                                            ))
-                                        };
-                                    }
-                                    return;
-                                }
-                            }
-                        }
-                    } else {
-                        // Empty probe or abrupt disconnect unblock
-                        let _ = unsafe { DisconnectNamedPipe(h) };
-                        break;
-                    }
-                    let _ = unsafe { DisconnectNamedPipe(h) };
-                } else {
-                    break;
-                }
+            // Occasionally inject newline
+            if i % 5 == 0 && !pattern.is_empty() {
+                pattern[fuzz_len / 2] = b'\n';
             }
-            let _ = unsafe { CloseHandle(h) };
-            if !sec_desc.0.is_null() {
-                let _ = unsafe {
-                    windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(
-                        sec_desc.0,
-                    )))
-                };
-            }
-        });
-
-        thread::sleep(std::time::Duration::from_millis(50));
-
-        // Locate xyeena-agent-relay.exe
-        let current_exe = std::env::current_exe().unwrap();
-        let target_dir = current_exe
-            .parent()
-            .and_then(|p| p.parent())
-            .unwrap_or_else(|| std::path::Path::new("target/debug"));
-
-        let candidate_relays = [
-            target_dir.join("xyeena-agent-relay.exe"),
-            current_exe.parent().unwrap().join("xyeena-agent-relay.exe"),
-            std::path::PathBuf::from("target/debug/xyeena-agent-relay.exe"),
-        ];
-
-        let exe_to_run = candidate_relays.into_iter().find(|p| p.exists());
-
-        let Some(exe_path) = exe_to_run else {
-            done.store(true, Ordering::SeqCst);
-            let pipe_w = HSTRING::from(&test_pipe_name);
-            unsafe {
-                let _ = windows::Win32::Storage::FileSystem::CreateFileW(
-                    &pipe_w,
-                    windows::Win32::Storage::FileSystem::FILE_GENERIC_READ.0,
-                    windows::Win32::Storage::FileSystem::FILE_SHARE_NONE,
-                    None,
-                    windows::Win32::Storage::FileSystem::OPEN_EXISTING,
-                    Default::default(),
-                    None,
-                );
-            }
-            let _ = listener.join();
-            return;
-        };
-
-        let mut child = Command::new(&exe_path)
-            .env("XYEENA_AGENT_PIPE_NAME", &test_pipe_name)
-            .arg("PostToolUse")
-            .arg("--provider")
-            .arg("antigravity")
-            .arg("--session-id")
-            .arg("session-antigravity-live-test")
-            .arg("--check-delivery")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("spawn relay child process");
-
-        let input_payload = r#"{"tool_name": "read_file", "cwd": "C:\\test\\workspace"}"#;
-        if let Some(mut stdin) = child.stdin.take() {
-            let _ = stdin.write_all(input_payload.as_bytes());
-            drop(stdin);
+            let _ = fb.extend(&pattern);
+            while let Ok(Some(_)) = fb.next_frame() {}
         }
-
-        let output = child.wait_with_output().expect("wait child");
-        done.store(true, Ordering::SeqCst);
-        assert!(output.status.success(), "relay exit must be success");
-
-        // Failsafe unblock in case listener is still waiting
-        let pipe_w = HSTRING::from(&test_pipe_name);
-        unsafe {
-            let _ = windows::Win32::Storage::FileSystem::CreateFileW(
-                &pipe_w,
-                windows::Win32::Storage::FileSystem::FILE_GENERIC_READ.0,
-                windows::Win32::Storage::FileSystem::FILE_SHARE_NONE,
-                None,
-                windows::Win32::Storage::FileSystem::OPEN_EXISTING,
-                Default::default(),
-                None,
-            );
-        }
-
-        listener.join().expect("join listener");
-
-        // Verify test session was registered in registry (tolerating concurrent live agent sessions)
-        let sessions = registry.active_sessions();
-        let test_session = sessions
-            .iter()
-            .find(|s| s.session_id == "session-antigravity-live-test")
-            .expect("session-antigravity-live-test must be registered in registry");
-        assert_eq!(test_session.provider, "antigravity");
     }
 }

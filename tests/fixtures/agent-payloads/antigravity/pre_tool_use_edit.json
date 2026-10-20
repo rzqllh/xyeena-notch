@@ -1,0 +1,15 @@
+{
+  "hook_event_name": "PreToolUse",
+  "conversationId": "cc0f4824-f2de-406b-959a-8f5f7f676603",
+  "workspacePaths": [
+    "C:\\Users\\Hafizh Rizqullah\\Documents\\Code\\_active\\xyeena-notch"
+  ],
+  "toolCall": {
+    "name": "replace_file_content",
+    "args": {
+      "TargetFile": "C:\\Users\\Hafizh Rizqullah\\Documents\\Code\\_active\\xyeena-notch\\apps\\xyeena-island\\src-tauri\\Cargo.toml",
+      "Instruction": "Add Win32_Security_Credentials to Cargo.toml"
+    }
+  },
+  "timestamp": 1792464602000
+}

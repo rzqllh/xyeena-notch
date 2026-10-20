@@ -351,7 +351,7 @@
       "wired": true,
       "tests": [
         "agent_ipc::pipe::tests::test_named_pipe_roundtrip_message",
-        "agent_ipc::pipe::tests::test_relay_binary_process_to_pipe_end_to_end",
+        "test_relay_binary_to_pipe_integration",
         "agent_ipc::event::tests::test_normalize_native_antigravity_lifecycle_hook"
       ]
     },
@@ -437,9 +437,11 @@
       ],
       "wired": true,
       "tests": [
-        "agent_ipc::session::tests::test_concurrent_sessions_isolated",
         "agent_ipc::session::tests::test_session_lifecycle_happy_path",
-        "agent_ipc::session::tests::test_ttl_expiry_and_pruning"
+        "agent_ipc::session::tests::test_max_live_sessions_bounding",
+        "agent_ipc::session::tests::test_manual_focus_pin_and_attention_counter",
+        "agent_ipc::session::tests::test_collision_resolution_rules",
+        "agent_ipc::state_machine::tests::test_ttl_expiry_ends_session"
       ]
     },
     "status": "VERIFIED",
@@ -652,21 +654,37 @@
     },
     "notch": {
       "paths": [
-        "apps/xyeena-island/src/core/provider-credentials.mjs",
+        "src/core/provider-credentials.mjs",
+        "src-tauri/src/credentials.rs",
         "src-tauri/src/lib.rs"
       ],
       "wired": true,
-      "tests": []
+      "tests": [
+        "credentials::tests::test_windows_credential_manager_roundtrip",
+        "credentials::tests::test_in_memory_session_only_lifecycle",
+        "credentials::tests::test_secret_redaction_in_debug_and_display",
+        "credentials::tests::test_rejects_empty_or_oversized_keys",
+        "credentials::tests::test_validate_provider_name_rules",
+        "credentials::tests::test_release_build_rejects_env_files"
+      ]
     },
-    "status": "FOUNDATION",
+    "status": "VERIFIED",
     "tier": "A",
     "phase": "P1",
-    "decision": "adapt",
-    "reason": "Currently in-memory JS store; migrating to Rust Windows Credential Manager in Phase 1.",
+    "decision": "verified",
+    "reason": "Hardened in Phase 1 via ADR 0002. Secrets stored in Windows Credential Manager under xyeena-island:<provider> target prefix with Zeroizing in-memory fallback. Stored secrets never returned to JS from Rust.",
     "evidence": [
       {
         "class": "E1",
-        "ref": "apps/xyeena-island/src/core/provider-credentials.mjs:5-30"
+        "ref": "apps/xyeena-island/src-tauri/src/credentials.rs"
+      },
+      {
+        "class": "E2",
+        "ref": "cargo test --locked --lib credentials::tests"
+      },
+      {
+        "class": "E3",
+        "ref": "credentials::tests::test_windows_credential_manager_roundtrip"
       }
     ],
     "docs_claims": [

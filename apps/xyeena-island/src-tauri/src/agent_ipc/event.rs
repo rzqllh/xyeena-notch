@@ -52,6 +52,7 @@ pub struct NormalizedToolInput {
     pub query: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    #[serde(skip_serializing)]
     pub raw_args: serde_json::Value,
 }
 
@@ -72,6 +73,7 @@ pub struct NormalizedEvent {
     pub tool_input: Option<NormalizedToolInput>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_output: Option<String>,
+    #[serde(skip_serializing)]
     pub raw: serde_json::Value,
 }
 
@@ -474,5 +476,37 @@ mod tests {
             }
             _ => panic!("Expected FieldTooLong, got {:?}", err),
         }
+    }
+
+    #[test]
+    fn test_serialized_event_excludes_raw_and_raw_args() {
+        let payload = json!({
+            "event": "PreToolUse",
+            "provider": "antigravity",
+            "session_id": "sess-canary-123",
+            "secret_env_var": "CANARY_SENSITIVE_SECRET",
+            "tool_name": "run_command",
+            "tool_input": {
+                "command": "npm test",
+                "hidden_token": "TOKEN_SECRET_987"
+            }
+        });
+
+        let event = parse_and_normalize(&payload).unwrap();
+        let serialized = serde_json::to_string(&event).unwrap();
+
+        assert!(
+            !serialized.contains("CANARY_SENSITIVE_SECRET"),
+            "Raw secret must not be serialized"
+        );
+        assert!(
+            !serialized.contains("TOKEN_SECRET_987"),
+            "Raw tool args must not be serialized"
+        );
+        assert!(!serialized.contains("\"raw\""), "raw field must be omitted");
+        assert!(
+            !serialized.contains("\"raw_args\""),
+            "raw_args field must be omitted"
+        );
     }
 }

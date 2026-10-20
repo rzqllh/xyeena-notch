@@ -267,36 +267,82 @@ export class SessionStore {
       const key = sessionKey(snap.provider, snap.session_id);
       const existing = this.sessions.get(key);
 
-      const status = snap.state === 'terminated'
-        ? 'idle'
-        : snap.last_tool_name ? 'working' : 'thinking';
+      let activityState = snap.activity_state;
+      let status = 'thinking';
+      let state = 'active';
+
+      if (activityState) {
+        if (activityState === 'awaiting_approval') status = 'approval';
+        else if (activityState === 'tool_running' || activityState === 'recently_active') status = 'working';
+        else if (activityState === 'stalled') status = 'thinking';
+        else if (activityState === 'idle' || activityState === 'ended') status = 'idle';
+        else if (activityState === 'error') status = 'error';
+        state = activityState === 'ended' ? 'terminated' : (activityState === 'idle' ? 'idle' : 'active');
+      } else {
+        status = snap.state === 'terminated'
+          ? 'idle'
+          : (snap.last_tool_name || snap.last_tool_kind ? 'working' : 'thinking');
+        state = snap.state || (status === 'idle' ? 'idle' : 'active');
+        activityState = status === 'working' ? 'tool_running' : (status === 'idle' ? 'idle' : 'idle');
+      }
+
+      const touchedFiles = Array.isArray(snap.touched_files)
+        ? snap.touched_files.map(f => (typeof f === 'string' ? f : f?.path)).filter(Boolean)
+        : [];
 
       if (!existing) {
         this.sessions.set(key, {
           key,
           provider: snap.provider,
           sessionId: snap.session_id,
-          state: snap.state,
+          displayName: snap.display_name,
+          displaySuffix: snap.display_suffix,
+          activityState,
+          activityCopy: snap.activity_copy,
+          attention: Boolean(snap.attention),
+          attentionCount: snap.attention_count || 0,
+          state,
           status,
-          workspaceRoot: snap.workspace_root,
+          workspaceRoot: snap.workspace_folder || snap.workspace_root,
           cwd: snap.cwd,
-          startedAt: snap.started_at_ms,
-          lastActivity: snap.last_activity_ms,
-          eventCount: snap.event_count,
-          activeTool: snap.last_tool_name,
-          lastCommand: snap.last_tool_command,
-          touchedFiles: [],
-          recentEvents: []
+          startedAt: snap.started_at_ms || Date.now(),
+          lastActivity: snap.last_activity_ms || Date.now(),
+          eventCount: snap.event_count || 0,
+          activeTool: snap.last_tool_kind || snap.last_tool_name,
+          lastCommand: snap.last_tool_preview || snap.last_tool_command,
+          touchedFiles,
+          timeline: snap.timeline || [],
+          recentEvents: [],
+          pendingApproval: snap.pending_approval
         });
       } else {
-        existing.state = snap.state;
-        if (snap.workspace_root) existing.workspaceRoot = snap.workspace_root;
+        existing.state = state;
+        existing.status = status;
+        if (snap.display_name) existing.displayName = snap.display_name;
+        if (snap.display_suffix) existing.displaySuffix = snap.display_suffix;
+        if (snap.activity_state) existing.activityState = snap.activity_state;
+        if (snap.activity_copy) existing.activityCopy = snap.activity_copy;
+        existing.attention = Boolean(snap.attention);
+        existing.attentionCount = snap.attention_count || 0;
+        if (snap.workspace_folder || snap.workspace_root) {
+          existing.workspaceRoot = snap.workspace_folder || snap.workspace_root;
+        }
         if (snap.cwd) existing.cwd = snap.cwd;
-        existing.eventCount = Math.max(existing.eventCount, snap.event_count);
-        existing.lastActivity = Math.max(existing.lastActivity, snap.last_activity_ms);
-        if (snap.last_tool_name) existing.activeTool = snap.last_tool_name;
-        if (snap.last_tool_command) existing.lastCommand = snap.last_tool_command;
-        if (!existing.touchedFiles) existing.touchedFiles = [];
+        existing.eventCount = Math.max(existing.eventCount, snap.event_count || 0);
+        existing.lastActivity = Math.max(existing.lastActivity, snap.last_activity_ms || 0);
+        if (snap.last_tool_kind || snap.last_tool_name) {
+          existing.activeTool = snap.last_tool_kind || snap.last_tool_name;
+        }
+        if (snap.last_tool_preview || snap.last_tool_command) {
+          existing.lastCommand = snap.last_tool_preview || snap.last_tool_command;
+        }
+        if (touchedFiles.length > 0) existing.touchedFiles = touchedFiles;
+        if (snap.timeline) existing.timeline = snap.timeline;
+        if (snap.pending_approval) existing.pendingApproval = snap.pending_approval;
+      }
+
+      if (snap.is_focused) {
+        this.focusedKey = key;
       }
     }
 
