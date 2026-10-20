@@ -21,6 +21,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run init:audit
+      - run: npm run ledger:verify
       - run: npm test
       - run: npm run build
       - run: npm run release:audit

@@ -16,7 +16,8 @@
     "doctor": "npm run doctor --workspace @xyeena/island",
     "desktop": "npm run desktop --workspace @xyeena/island",
     "release:audit": "npm run release:audit --workspace @xyeena/island",
-    "check": "npm run init:audit && npm test && npm run build && npm run release:audit",
+    "ledger:verify": "node scripts/verify-ledger.mjs",
+    "check": "npm run init:audit && npm run ledger:verify && npm test && npm run build && npm run release:audit",
     "init:audit": "node scripts/audit-init.mjs"
   },
   "engines": {
