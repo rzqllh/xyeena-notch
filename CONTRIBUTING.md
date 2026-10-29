@@ -1,6 +1,6 @@
 # Contributing to Xyeena Notch
 
-Thank you for your interest in contributing to Xyeena Notch. This repository hosts the Windows-first desktop Island companion (`apps/xyeena-island`) and the canonical Xyn Lion Guardian mascot package (`packages/xyn`).
+This repository hosts the Windows-first desktop Island companion (`apps/xyeena-island`) and the canonical Xyn Lion Guardian mascot package (`packages/xyn`).
 
 ---
 

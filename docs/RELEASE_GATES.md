@@ -1,82 +1,57 @@
-# Release Gates — 1.0.0-alpha.1
+# Release requirements
 
-This document outlines the strict automated, security, visual, performance, packaging, and runtime acceptance gates required for the `1.0.0-alpha.1` Windows prerelease.
+These requirements apply to a new Xyeena Island Windows alpha candidate. The published [v1.0.0-alpha.1](https://github.com/rzqllh/xyeena-notch/releases/tag/v1.0.0-alpha.1) has an installer and checksum file. Their existence does not verify a newer source checkout or every Windows configuration.
 
----
+Record the exact candidate commit, tool versions, command results, and manual observations in the release or pull request. Historical counts and unchecked assumptions are not current pass results.
 
-## 1. Automated Verification Gates (Blocking)
+## Automated checks
 
-All automated checks must pass on a clean working tree from an immutable Git commit:
+Run from a clean checkout with Node.js 22.14+:
 
-- [x] **Monorepo Lockfile Integrity:** `npm ci` installs cleanly with zero lockfile drift across all workspaces.
-- [x] **Initial Workspace Audit:** `node scripts/audit-init.mjs` verifies package versions, canonical identities (`@xyeena/island`, `@xyeena/xyn`), and absence of stale build artifacts.
-- [x] **Automated JavaScript/TypeScript Tests (105/105 PASS):**
-  - `@xyeena/island`: 72/72 tests pass (DOM, runtime, clipboard, media, AI chat, notifications, layout constraints).
-  - `@xyeena/xyn`: 16/16 tests pass (engine, rig motion, expressions, wardrobe, reduced motion, gaze bounds).
-  - `@xyeena/recap`: 14/14 tests pass (archive bounds, date calculation, event deduplication, SVG rendering).
-  - `guardian-playground`: 3/3 tests pass (canonical mascot consumption, minimal desktop shell, static build).
-- [x] **TypeScript Strict Compilation:** `tsc --noEmit` completes with zero type errors.
-- [x] **Vite Web Production Bundle:** `vite build` builds the client bundle without warnings.
-- [x] **Release Manifest Audit:** `npm run release:audit` verifies synchronized `1.0.0-alpha.1` versions across root `package.json`, `apps/xyeena-island/package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`.
-- [x] **Rust Formatting:** `cargo fmt --all -- --check` passes with zero formatting diffs.
-- [x] **Rust Clippy Linting:** `cargo clippy --locked --all-targets -- -D warnings` completes with 0 warnings.
-- [x] **Rust Unit & Integration Tests (10/10 PASS):**
-  - `xyeena_island_lib`: 10/10 tests pass (authority validation, query sanitization, cancellation registry, geometry bounds, metadata limits).
-- [x] **Git Cleanliness:** `git diff --check` reports zero whitespace or newline anomalies.
+```sh
+npm ci
+npm run check
+```
 
----
+This checks workspace consistency, JavaScript tests, TypeScript/web build, and release manifest requirements. It does not run every Rust or physical Windows check.
 
-## 2. Security & Privacy Gates (Blocking)
+From `apps/xyeena-island/src-tauri`, run:
 
-- [x] **Zero Secret Exposure:** Repository history and working tree scanned; zero API keys, personal access tokens, or private certificates exist.
-- [x] **In-Memory Credential Safety:** BYOK API keys reside solely in `#keys` private heap memory and never touch `localStorage`, IndexedDB, or disk.
-- [x] **Loopback AI Enforcement:** Local model endpoints (Ollama/LM Studio) are strictly validated to loopback addresses (`localhost`/`127.0.0.1`) and reject cloud credentials.
-- [x] **3xx Redirect Rejection:** Native curl transport fails closed on HTTP 3xx redirect responses.
-- [x] **Clipboard Privacy:** Clipboard observation defaults to OFF; history buffer is bounded to 64 MiB total and wipes completely on session exit.
-- [x] **Read-Only Project Boundary:** Run summaries only read `.xyeena/runs/*/snapshot.json`; no file mutation or script execution privileges exist.
+```sh
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+```
 
----
+Check actual output. Do not copy an old test count into a new release. The Windows packaging environment needs Rust, Microsoft C++ Build Tools, Windows SDK, and WebView2.
 
-## 3. Visual & Mascot Integration Gates (Blocking)
+## Security and data
 
-- [x] **Stationary Top Notch Framing:** Island docks to top center display without horizontal drift.
-- [x] **Expanded Mascot Integration:** Xyn Lion framed inside a 54×54px area in the 58px header, anchored with a clean physical contact shadow.
-- [x] **No Overlapping Artifacts:** Eliminated unclipped 500-radius blue radial halo and oversaturated floor glow. No bleeding into notch shoulder wings or navigation tabs.
-- [x] **WCAG AA Contrast:** Typography verified in Dark (`--text: #f0f3f6`) and Light (`--text: #1b232c`) themes.
-- [x] **Dual Theme Visual Verification:** Verified via automated browser screenshots in both Dark and Light themes.
+Verify that clipboard capture defaults off, clearing and exit remove session history, and item/byte bounds hold. Confirm that API keys are not persisted, local-model requests remain loopback-only, and cloud requests use the selected supported endpoint.
 
----
+Verify cancellation and error handling without exposing keys in logs, snapshots, or issue reports. The read-only project view must not acquire script execution or hook-writing authority. These tests do not provide a security certification or protect against a compromised same-user OS process.
 
-## 4. Performance & Rendering Gates (Blocking)
+## Windows acceptance
 
-- [x] **Gradient Caching:** Linear and radial gradients cached via `WeakMap` per context, eliminating Direct2D brush allocations on every frame.
-- [x] **Wash Geometry Bounded:** Replaced 8000×8000 polygon with tight 1100×1100 quad enclosing the 1000×1000 design space.
-- [x] **Adaptive Frame Pacing:** Idle breathing throttled to ~30 FPS; bursts to 60 FPS during user interactions or active emotes.
-- [x] **Multi-Instance Suspension:** Inactive guardian slots suspended (`stop()`); only the visible mode's canvas loop runs.
-- [x] **Pointer Event Hygiene:** Global pointermove listeners skip geometry calculations when the mascot canvas is paused.
+Use the [Windows smoke test guide](SMOKE-TEST-WINDOWS.md). Record results on the actual target machine for:
 
----
+- Installation, launch, restart, and uninstall.
+- Single-window behavior, tray restore, pinning, and monitor changes.
+- Media transport and volume with supported applications.
+- Clipboard opt-in, clearing, and session exit.
+- Theme changes, keyboard access, and reduced motion.
+- Multiple monitors and 125%-200% DPI.
 
-## 5. Packaging & Distribution Gates
+A Tauri configuration or browser screenshot alone does not prove native behavior. Keep a failed or untested requirement visible. Teams automatic detection and global shortcuts remain deferred features, not completed acceptance items.
 
-- [x] **Unsigned NSIS Installer:** Bundles only the single `main` Island window; no duplicate desktop windows or debug schemas.
-- [x] **Checksum Integrity:** `SHA256SUMS.txt` generated alongside the installer binary.
-- [x] **GitHub Release Workflow:** `.github/workflows/release.yml` triggers via authenticated `workflow_dispatch` requiring an annotated `v1.0.0-alpha.N` tag.
-- [ ] **Windows SmartScreen Notice:** Prerelease installer is unsigned; user must be informed of the Windows SmartScreen notice.
+## Packaging and publication
 
----
+Run `npm run release:audit` and build the NSIS package from the approved source. Confirm versions agree across npm, Cargo, and Tauri configuration. Retain licenses, notices, genuine lockfiles, and required icons; exclude keys, local settings, debug output, and duplicate desktop hosts.
 
-## 6. Manual Windows Runtime Gates (Recorded Status)
+Generate SHA-256 for the actual installer and publish its matching `SHA256SUMS.txt`. The current alpha installer is unsigned; disclose this on the download page and in installation instructions.
 
-The following items are physically validated or recorded as PENDING for physical hardware testing:
+The [manual release workflow](../.github/workflows/release.yml) accepts an existing approved alpha tag and creates a draft prerelease. Review the artifact, checksums, limitations, and owner approval before publishing the draft. [GitHub release guide](GITHUB_RELEASE.md) describes the steps.
 
-| Gate | Status | Evidence / Notes |
-|---|---|---|
-| Single Notch Window | PASS | Tauri config enforces 1 window (`main`), `skipTaskbar: true`, `transparent: true`. |
-| Tray Minimize / Restore | PASS | Win32 tray icon restored and functional. |
-| GSMTC Media Transport | PASS | Tested with Windows media sessions (Spotify/Edge). |
-| Master Volume Endpoint | PASS | Verified with Core Audio default endpoint. |
-| In-Memory Clipboard Lifecycle | PASS | Tested across mode collapse/expand; verified memory wipe on exit. |
-| Windows Toast Alerts | PASS | User opt-in verified; alerts recorded in Activity feed. |
-| Multi-Monitor / DPI 125%-200% | PENDING | Canvas DPR logic uses `Math.min(3, devicePixelRatio)`; physical multi-DPI monitor validation pending user hardware. |
-| Teams Native Call Auto-Detect | DEFERRED | Explicit roadmap item; manual meeting timer provided. |
+## Release decision
+
+An alpha can be offered with explicit support limits and recorded unresolved checks. A stable or enterprise-readiness claim needs additional evidence for its declared devices, safety boundary, support, and recovery expectations. Documentation changes do not close those gates.
