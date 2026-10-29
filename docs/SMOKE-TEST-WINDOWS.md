@@ -1,4 +1,4 @@
-# Xyeena Notch — Windows Manual Smoke Test Guide (1.0.0-alpha.1)
+# Xyeena Notch : Windows Manual Smoke Test Guide (1.0.0-alpha.1)
 
 **Application:** Xyeena Island (`@xyeena/island`)<br>
 **Version:** `1.0.0-alpha.1`<br>
@@ -11,19 +11,9 @@
 
 ---
 
-## Pre-Requisites and Automated Baseline
+## Prerequisites
 
-Automated gates executed and verified prior to manual test distribution:
-
-- [x] Node.js workspace unit tests: 64 tests passed (Island: 51, Mascot: 10, Playground: 3)
-- [x] Native Rust tests: 5 tests passed (`cargo test --locked`)
-- [x] Rust Clippy: 0 warnings (`cargo clippy --locked --all-targets -- -D warnings`)
-- [x] Rust formatting: Checked and verified (`cargo fmt --all -- --check`)
-- [x] TypeScript & Vite build: 0 errors
-- [x] Release audit & license compliance: PASS (`npm run release:audit`)
-- [x] NSIS bundle generation: PASS (`tauri build --bundles nsis`)
-
----
+Run the automated checks in [release requirements](RELEASE_GATES.md) on the exact candidate before manual testing. Record the source commit, artifact hash, Windows version, monitor/DPI setup, and command results. This guide does not declare those checks passed.
 
 ## Manual Smoke Test Scenarios
 
@@ -250,7 +240,7 @@ Instructions: Perform each test on a physical or dedicated virtual Windows machi
 
 ### Scenario 17: Notch-only Lion gaze across the Windows desktop
 
-- **Status:** NOT RUN — physical Windows acceptance required.
+- **Status:** NOT RUN : physical Windows acceptance required.
 - **Steps:**
   1. Launch the Island and verify only the main notch window exists. No desktop placement, Perch, Follow, or detach action.
   2. Move the pointer inside the Island: Lion eyes move first, head follows subtly, body stays anchored.
